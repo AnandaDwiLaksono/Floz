@@ -1,0 +1,6 @@
+{
+  "name": "@floz/infra",
+  "private": true,
+  "scripts": {"lint":"eslint . --ext .ts --no-error-on-unmatched-pattern","typecheck":"tsc --noEmit","test":"vitest run --passWithNoTests","build":"tsc --noEmit"},
+  "devDependencies": {"typescript":"^5.8.2","vitest":"^3.0.8"}
+}
