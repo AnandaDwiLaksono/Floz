@@ -7,6 +7,7 @@ Requirements: Node.js 22+, Corepack.
 ```bash
 corepack enable
 pnpm install
+pnpm --filter @floz/database migrate
 pnpm lint
 pnpm typecheck
 pnpm test

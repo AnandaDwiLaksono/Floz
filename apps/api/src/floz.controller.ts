@@ -2,12 +2,14 @@ import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get,
 import type { Request, Response } from 'express';
 import { AuthService } from './auth';
 import { FlozService } from './floz.service';
+import { TaskService, type AssignTaskDto, type CreateTaskDto, type TaskQueryDto, type TransitionTaskDto, type UpdateTaskDto } from './task.service';
+import type { TaskRole } from './task.policy';
 
 const ok = <T>(data: T) => ({ data });
 
 @Controller()
 export class FlozController {
-  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService) {}
+  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService) {}
 
   private get auth() { return this.authService.auth; }
 
@@ -56,6 +58,27 @@ export class FlozController {
   @Delete('workspaces/:workspaceId/teams/:teamId/members/:userId')
   @HttpCode(204)
   async removeTeamMember(@Req() req: Request, @Param('workspaceId') wid: string, @Param('teamId') tid: string, @Param('userId') uid: string) { await this.admin(req, wid); if (!(await this.floz.team(wid, tid))) throw new NotFoundException('NOT_FOUND'); await this.floz.removeTeamMember(tid, uid); }
+  @Get('workspaces/:workspaceId/workflows')
+  async workflows(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); return ok(await this.tasks.workflows(wid)); }
+  @Get('workspaces/:workspaceId/tasks')
+  async listTasks(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); const result = await this.tasks.list(wid, req.query as TaskQueryDto); return { data: result.rows, meta: { pagination: { limit: result.limit, next_cursor: result.nextCursor, has_more: result.hasMore } } }; }
+  @Post('workspaces/:workspaceId/tasks')
+  async createTask(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateTaskDto) { const ctx = await this.member(req, wid); return ok(await this.tasks.create(wid, ctx.user.id, ctx.membership.role as TaskRole, body)); }
+  @Get('workspaces/:workspaceId/tasks/:taskId')
+  async task(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { await this.member(req, wid); return ok(await this.tasks.detail(wid, tid)); }
+  @Patch('workspaces/:workspaceId/tasks/:taskId')
+  async updateTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Body() body: UpdateTaskDto) { const ctx = await this.member(req, wid); return ok(await this.tasks.update(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body)); }
+  @Post('workspaces/:workspaceId/tasks/:taskId/assignments')
+  async assignTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Body() body: AssignTaskDto) { const ctx = await this.member(req, wid); return ok(await this.tasks.assign(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body)); }
+  @Delete('workspaces/:workspaceId/tasks/:taskId')
+  @HttpCode(204)
+  async deleteTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { const ctx = await this.member(req, wid); await this.tasks.remove(wid, ctx.membership.role as TaskRole, tid, Number(req.query.version)); }
+  @Get('workspaces/:workspaceId/tasks/:taskId/available-transitions')
+  async availableTransitions(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { await this.member(req, wid); return ok(await this.tasks.transitions(wid, tid)); }
+  @Post('workspaces/:workspaceId/tasks/:taskId/transitions')
+  async transitionTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Body() body: TransitionTaskDto) { const ctx = await this.member(req, wid); const task = await this.tasks.transition(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body); return { task, transition: { to_status_id: body.to_status_id } }; }
+  @Get('workspaces/:workspaceId/tasks/:taskId/history')
+  async taskHistory(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { await this.member(req, wid); return { data: await this.tasks.history(wid, tid), meta: { pagination: { limit: 50, next_cursor: null, has_more: false } } }; }
 
   private async current(req: Request) { const session = await this.auth.api.getSession({ headers: req.headers as HeadersInit }); if (!session) throw new UnauthorizedException('UNAUTHENTICATED'); const user = await this.floz.user(session.user.id); if (!user) throw new UnauthorizedException('UNAUTHENTICATED'); if (!user.isActive) throw new ForbiddenException('ACCOUNT_INACTIVE'); return user; }
   private async member(req: Request, wid: string) { const user = await this.current(req); const membership = await this.floz.membership(user.id, wid); if (!membership) throw new NotFoundException('NOT_FOUND'); return { user, membership }; }

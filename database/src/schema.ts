@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { boolean, pgTable, text, timestamp, unique, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 const now = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 const updated = () => timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
@@ -105,6 +105,81 @@ export const teamMemberships = pgTable('team_memberships', {
   leftAt: timestamp('left_at', { withTimezone: true }),
   createdAt: now()
 }, (table) => ({ teamUser: unique().on(table.teamId, table.userId) }));
+
+export const workflows = pgTable('workflows', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  teamId: uuid('team_id').references(() => teams.id),
+  code: varchar('code', { length: 64 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  isDefault: boolean('is_default').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: now(),
+  updatedAt: updated()
+}, (table) => ({ workspaceName: unique().on(table.workspaceId, table.name), workspaceCode: unique().on(table.workspaceId, table.code) }));
+
+export const taskStatuses = pgTable('task_statuses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workflowId: uuid('workflow_id').notNull().references(() => workflows.id),
+  code: varchar('code', { length: 32 }).notNull(),
+  name: varchar('name', { length: 64 }).notNull(),
+  category: varchar('category', { length: 32 }).notNull(),
+  position: integer('position').notNull(),
+  isInitial: boolean('is_initial').notNull().default(false),
+  isTerminal: boolean('is_terminal').notNull().default(false),
+  createdAt: now()
+}, (table) => ({ workflowCode: unique().on(table.workflowId, table.code) }));
+
+export const workflowTransitions = pgTable('workflow_transitions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workflowId: uuid('workflow_id').notNull().references(() => workflows.id),
+  fromStatusId: uuid('from_status_id').notNull().references(() => taskStatuses.id),
+  toStatusId: uuid('to_status_id').notNull().references(() => taskStatuses.id),
+  requiresPermission: boolean('requires_permission').notNull().default(false),
+  createdAt: now()
+}, (table) => ({ transition: unique().on(table.workflowId, table.fromStatusId, table.toStatusId) }));
+
+export const tasks = pgTable('tasks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  taskKey: varchar('task_key', { length: 64 }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  workflowId: uuid('workflow_id').notNull().references(() => workflows.id),
+  statusId: uuid('status_id').notNull().references(() => taskStatuses.id),
+  priority: varchar('priority', { length: 16 }).notNull().default('MEDIUM'),
+  teamId: uuid('team_id').references(() => teams.id),
+  creatorId: uuid('creator_id').notNull().references(() => users.id),
+  startAt: timestamp('start_at', { withTimezone: true }),
+  dueAt: timestamp('due_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  version: integer('version').notNull().default(1),
+  createdAt: now(),
+  updatedAt: updated(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true })
+}, (table) => ({ workspaceTaskKey: unique().on(table.workspaceId, table.taskKey), workspaceStatus: index('tasks_workspace_status_idx').on(table.workspaceId, table.statusId), workspacePriority: index('tasks_workspace_priority_idx').on(table.workspaceId, table.priority) }));
+
+export const taskAssignees = pgTable('task_assignees', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  taskId: uuid('task_id').notNull().references(() => tasks.id),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  isPrimary: boolean('is_primary').notNull().default(false),
+  assignedBy: uuid('assigned_by').notNull().references(() => users.id),
+  assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => ({ taskUser: unique().on(table.taskId, table.userId), onePrimary: uniqueIndex('task_assignees_one_primary_idx').on(table.taskId).where(sql`${table.isPrimary} = true`) }));
+
+export const taskHistory = pgTable('task_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  taskId: uuid('task_id').notNull().references(() => tasks.id),
+  actorUserId: uuid('actor_user_id').notNull().references(() => users.id),
+  eventType: varchar('event_type', { length: 32 }).notNull(),
+  fromStatusId: uuid('from_status_id').references(() => taskStatuses.id),
+  toStatusId: uuid('to_status_id').references(() => taskStatuses.id),
+  metadata: jsonb('metadata'),
+  createdAt: now()
+});
 
 export const userRelations = relations(users, ({ many }) => ({ sessions: many(sessions), memberships: many(workspaceMemberships) }));
 export const workspaceRelations = relations(workspaces, ({ many }) => ({ memberships: many(workspaceMemberships), teams: many(teams) }));

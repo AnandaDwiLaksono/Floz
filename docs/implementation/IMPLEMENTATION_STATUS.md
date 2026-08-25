@@ -7,12 +7,13 @@ Completed
 - Better Auth secure HttpOnly cookie session transport documented in ADR.
 - Provisional ADMIN-only team mutation policy documented in ADR.
 - Disposable PostgreSQL migration, seed, auth persistence, workspace isolation, cross-workspace read/mutation/reference, and repository test coverage.
+- Phase 2 workflow and task core with seeded default workflows/statuses/transitions, transactional task CRUD/assignment/transition/history, centralized task policy, and PostgreSQL-backed integration coverage.
 
 In Progress
 - None.
 
 Next
-- Phase 2: workflow and task core.
+- Phase 3 features not yet started.
 
 Blocked
 - None.
@@ -21,5 +22,6 @@ Open Decisions
 - See `docs/decisions/OPEN_DECISIONS.md`.
 
 Known Limitations
-- No tasks, queue, recurrence, workflow, notifications, approvals, comments, attachments, audit, KPI, or product UI in Phase 1.
-- Better Auth `baseURL` remains unset in test environment, producing a non-blocking warning only.
+- Task list cursors are versioned opaque base64url JSON; changing cursor shape requires a new version.
+- Queue, recurrence, notifications, approvals, comments, attachments, audit, KPI, and product UI remain out of scope.
+- Better Auth `baseURL` is set in test env for deterministic API integration tests.

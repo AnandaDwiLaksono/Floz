@@ -15,6 +15,20 @@
       "when": 1787657574115,
       "tag": "0001_flawless_magma",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787668689819,
+      "tag": "0002_flippant_landau",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787669500000,
+      "tag": "0003_phase2_constraints_seed",
+      "breakpoints": true
     }
   ]
 }

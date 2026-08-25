@@ -65,6 +65,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(kysely@0.29.5)(postgres@3.4.9)
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
