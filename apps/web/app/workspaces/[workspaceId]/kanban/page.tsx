@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { api, ApiError, KanbanBoard, KanbanCardSummary, Team, Workflow, WorkspaceMember } from '../../../../lib/api-client';
 
@@ -21,7 +21,7 @@ export default function KanbanPage() {
   const [error, setError] = useState('');
   const [dragged, setDragged] = useState<KanbanCardSummary | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setError('');
       const [result, workflowResult, teamResult, memberResult] = await Promise.all([
@@ -33,9 +33,9 @@ export default function KanbanPage() {
       setTeams(teamResult.data);
       setMembers(memberResult.data);
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load kanban'); }
-  };
+  }, [workspaceId, workflow_id, team_id, assignee_id, priority, due_from, due_to]);
 
-  useEffect(() => { void load(); }, [workspaceId, workflow_id, team_id, assignee_id, priority, due_from, due_to]);
+  useEffect(() => { void load(); }, [load]);
 
   const update = (values: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString());

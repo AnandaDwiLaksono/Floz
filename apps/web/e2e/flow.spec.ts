@@ -52,4 +52,23 @@ test.describe('Floz Kanban', () => {
     await expect(page.getByText('VERSION_CONFLICT')).toBeVisible();
     await expect(page.getByText('Kanban Task')).toBeVisible();
   });
+
+  test('calendar create handoff opens task form with prefilled schedule fields', async ({ page }) => {
+    const { sql } = createDatabase(databaseUrl);
+    const admin = await auth.api.signUpEmail({ body: { email: 'admin2@example.com', password: 'password123', name: 'Admin User' } });
+    const workspaceId = 'a8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    const adminRoleId = String((await sql`SELECT id FROM roles WHERE code='ADMIN'`)[0].id);
+    await sql`INSERT INTO workspaces (id,name,slug,created_by,is_active) VALUES (${workspaceId},'Test Work','test-work',${String(admin.user.id)},true)`;
+    await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${String(admin.user.id)},${adminRoleId},'ACTIVE')`;
+    await sql.end();
+
+    await page.goto('/login');
+    await page.fill('#email', 'admin2@example.com');
+    await page.fill('#password', 'password123');
+    await page.click('button[type="submit"]');
+    await page.goto(`/workspaces/${workspaceId}/tasks?create=1&prefill_start_at=2026-08-18T09:00&prefill_due_at=2026-08-18T10:00`);
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.locator('input#start_at')).toHaveValue('2026-08-18T09:00');
+    await expect(page.locator('input#due_at')).toHaveValue('2026-08-18T10:00');
+  });
 });

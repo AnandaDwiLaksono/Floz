@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { api, Task, Team, WorkspaceMember, Workflow, ApiError } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
@@ -92,7 +92,7 @@ export default function TasksPage() {
   }, [workspaceId]);
 
   // Load Task list on filter change
-  const fetchTasks = async (cursor?: string) => {
+  const fetchTasks = useCallback(async (cursor?: string) => {
     if (cursor) {
       setLoadingMore(true);
     } else {
@@ -124,17 +124,11 @@ export default function TasksPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  };
-
-  useEffect(() => {
-    fetchTasks();
   }, [workspaceId, q, status_id, priority, assignee_id, team_id, sort]);
 
   useEffect(() => {
-    const selectedTaskId = searchParams.get('selected_task_id');
-    if (!selectedTaskId) return;
-    void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data));
-  }, [workspaceId, searchParams]);
+    fetchTasks();
+  }, [fetchTasks]);
 
   const updateFilters = (newParams: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -146,7 +140,7 @@ export default function TasksPage() {
   };
 
   // Open Detail & load transitions/history
-  const handleOpenDetail = async (task: Task) => {
+  const handleOpenDetail = useCallback(async (task: Task) => {
     setSelectedTask(task);
     setIsEditMode(false);
     setConflictError(null);
@@ -162,7 +156,26 @@ export default function TasksPage() {
     } catch (err) {
       console.error('Failed to load transitions', err);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    const create = searchParams.get('create');
+    const prefillStart = searchParams.get('prefill_start_at') || '';
+    const prefillDue = searchParams.get('prefill_due_at') || '';
+
+    if (create === '1') {
+      setCreateValidationError(null);
+      setIsCreateOpen(true);
+      setCreateStartAt(prefillStart);
+      setCreateDueAt(prefillDue);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const selectedTaskId = searchParams.get('selected_task_id');
+    if (!selectedTaskId) return;
+    void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data));
+  }, [workspaceId, searchParams, handleOpenDetail]);
 
   const handleRefreshDetail = async (id: string) => {
     try {
