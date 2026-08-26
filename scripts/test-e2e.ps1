@@ -1,91 +1,91 @@
 $ErrorActionPreference = 'Stop'
 $name = 'floz-e2e-db'
-$port = 15433
+$apiJob = $null
+$webJob = $null
 
-# Start fresh DB container
-docker rm -f $name 2>$null | Out-Null
-docker run --name $name -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=floz -p "${port}:5432" -d postgres:16-alpine | Out-Null
-Write-Host "Started container $name on port $port"
+function Get-FreePort {
+  $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+  $listener.Start()
+  $port = $listener.LocalEndpoint.Port
+  $listener.Stop()
+  return $port
+}
+
+function Wait-ForHttp($url, $job, $stdout, $stderr, $label) {
+  for ($i = 0; $i -lt 60; $i++) {
+    if ($job.State -ne 'Running') {
+      throw "$label exited before readiness.`n$(Get-Content $stdout -Raw -ErrorAction SilentlyContinue)$(Get-Content $stderr -Raw -ErrorAction SilentlyContinue)"
+    }
+    try {
+      $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2
+      if ($response.StatusCode -eq 200) { return }
+    } catch {}
+    Start-Sleep -Milliseconds 500
+  }
+  throw "$label did not become ready at $url.`n$(Get-Content $stdout -Raw -ErrorAction SilentlyContinue)$(Get-Content $stderr -Raw -ErrorAction SilentlyContinue)"
+}
 
 try {
-  # Free ports
-  $apiPort = 13001
-  while ((Test-NetConnection localhost -Port $apiPort -WarningAction SilentlyContinue).TcpTestSucceeded) { $apiPort++ }
-  $webPort = 13000
-  while ((Test-NetConnection localhost -Port $webPort -WarningAction SilentlyContinue).TcpTestSucceeded) { $webPort++ }
+  $dbPort = Get-FreePort
+  $apiPort = Get-FreePort
+  do { $webPort = Get-FreePort } while ($webPort -eq $apiPort)
 
-  $env:DATABASE_URL = "postgres://postgres:postgres@localhost:$port/floz"
+  docker rm -f $name 2>$null | Out-Null
+  docker run --name $name -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=floz -p "${dbPort}:5432" -d postgres:16-alpine | Out-Null
+
+  $env:DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:$dbPort/floz"
   $env:BETTER_AUTH_SECRET = 'test-secret-at-least-32-characters-long'
-  $env:BETTER_AUTH_URL = "http://localhost:$apiPort"
-  $env:NEXT_PUBLIC_API_URL = "http://localhost:$apiPort"
-  $env:ALLOWED_ORIGIN = "http://localhost:$webPort"
+  $env:BETTER_AUTH_URL = "http://127.0.0.1:$apiPort"
+  $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:$apiPort"
+  $env:ALLOWED_ORIGIN = "http://127.0.0.1:$webPort"
 
-  $ready = $false
   for ($i = 0; $i -lt 30; $i++) {
     docker exec $name pg_isready -U postgres -d floz 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+    if ($LASTEXITCODE -eq 0) { break }
     Start-Sleep -Seconds 1
   }
-  if (-not $ready) { throw 'Postgres did not become ready' }
+  if ($LASTEXITCODE -ne 0) { throw 'Postgres did not become ready' }
 
-  # Migrate and seed
   pnpm --filter @floz/database migrate
-  
-  # Start API background
-  Write-Host "Starting API on port $apiPort..."
-  $apiJob = Start-Job -ScriptBlock {
-    $env:DATABASE_URL = $args[0]
-    $env:BETTER_AUTH_SECRET = $args[1]
-    $env:BETTER_AUTH_URL = $args[2]
-    $env:API_PORT = $args[3]
-    $env:ALLOWED_ORIGIN = $args[4]
-    Set-Location $args[5]
-    pnpm --filter @floz/api start
-  } -ArgumentList $env:DATABASE_URL, $env:BETTER_AUTH_SECRET, $env:BETTER_AUTH_URL, $apiPort, $env:ALLOWED_ORIGIN, (Get-Location).Path
-
-  # Wait for API to be responsive
-  $apiReady = $false
-  for ($i = 0; $i -lt 30; $i++) {
-    try {
-      $res = Invoke-WebRequest -Uri "http://localhost:$apiPort/api/v1/health" -UseBasicParsing
-      if ($res.StatusCode -eq 200) { $apiReady = $true; break }
-    } catch {}
-    Start-Sleep -Seconds 1
-  }
-  if (-not $apiReady) { throw 'API did not become ready' }
-
-  # Start Web background
-  Write-Host "Rebuilding Web for E2E..."
-  $env:NEXT_PUBLIC_API_URL = "http://localhost:$apiPort"
+  if ($LASTEXITCODE -ne 0) { throw 'Database migration failed' }
+  pnpm --filter @floz/api build
+  if ($LASTEXITCODE -ne 0) { throw 'API build failed' }
   pnpm --filter @floz/web build
+  if ($LASTEXITCODE -ne 0) { throw 'Web build failed' }
 
-  Write-Host "Starting Web on port $webPort..."
+  $root = (Get-Location).Path
+  $logDir = Join-Path $env:TEMP 'floz-e2e'
+  New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+  $apiStdout = Join-Path $logDir 'api.out.log'
+  $apiStderr = Join-Path $logDir 'api.err.log'
+  $webStdout = Join-Path $logDir 'web.out.log'
+  $webStderr = Join-Path $logDir 'web.err.log'
+  $apiJob = Start-Job -ScriptBlock {
+    param($root, $databaseUrl, $secret, $authUrl, $port, $origin, $stdout, $stderr)
+    Set-Location $root
+    $env:DATABASE_URL = $databaseUrl
+    $env:BETTER_AUTH_SECRET = $secret
+    $env:BETTER_AUTH_URL = $authUrl
+    $env:API_PORT = $port
+    $env:ALLOWED_ORIGIN = $origin
+    node apps/api/dist/src/main.js > $stdout 2> $stderr
+  } -ArgumentList $root, $env:DATABASE_URL, $env:BETTER_AUTH_SECRET, $env:BETTER_AUTH_URL, $apiPort, $env:ALLOWED_ORIGIN, $apiStdout, $apiStderr
+  Wait-ForHttp "http://127.0.0.1:$apiPort/api/v1/health" $apiJob $apiStdout $apiStderr 'API'
+
   $webJob = Start-Job -ScriptBlock {
-    $env:NEXT_PUBLIC_API_URL = $args[0]
-    $env:PORT = $args[1]
-    Set-Location $args[2]
-    pnpm --filter @floz/web start
-  } -ArgumentList $env:NEXT_PUBLIC_API_URL, $webPort, (Get-Location).Path
+    param($root, $apiUrl, $port, $stdout, $stderr)
+    Set-Location (Join-Path $root 'apps/web')
+    $env:NEXT_PUBLIC_API_URL = $apiUrl
+    $env:PORT = $port
+    pnpm start -- --hostname 127.0.0.1 > $stdout 2> $stderr
+  } -ArgumentList $root, $env:NEXT_PUBLIC_API_URL, $webPort, $webStdout, $webStderr
+  Wait-ForHttp "http://127.0.0.1:$webPort/login" $webJob $webStdout $webStderr 'Web'
 
-  # Wait for Web to be responsive
-  $webReady = $false
-  for ($i = 0; $i -lt 30; $i++) {
-    try {
-      $res = Invoke-WebRequest -Uri "http://localhost:$webPort" -UseBasicParsing
-      if ($res.StatusCode -eq 200 -and $res.Content -notmatch "NINOX System") { $webReady = $true; break }
-    } catch {}
-    Start-Sleep -Seconds 1
-  }
-  if (-not $webReady) { throw 'Web did not become ready' }
-
-  # Run Playwright
-  Write-Host "Running Playwright E2E..."
-  $env:PLAYWRIGHT_TEST_BASE_URL = "http://localhost:$webPort"
+  $env:PLAYWRIGHT_TEST_BASE_URL = "http://127.0.0.1:$webPort"
   pnpm --filter @floz/web exec playwright test
-
+  if ($LASTEXITCODE -ne 0) { throw 'Playwright E2E failed' }
 } finally {
-  # Cleanup
-  if ($apiJob) { Stop-Job $apiJob; Remove-Job $apiJob }
-  if ($webJob) { Stop-Job $webJob; Remove-Job $webJob }
+  if ($webJob) { Stop-Job $webJob -ErrorAction SilentlyContinue; Remove-Job $webJob -Force -ErrorAction SilentlyContinue }
+  if ($apiJob) { Stop-Job $apiJob -ErrorAction SilentlyContinue; Remove-Job $apiJob -Force -ErrorAction SilentlyContinue }
   docker rm -f $name 2>$null | Out-Null
 }

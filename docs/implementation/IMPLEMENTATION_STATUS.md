@@ -10,12 +10,14 @@ Completed
 - Phase 2 workflow and task core with seeded default workflows/statuses/transitions, transactional task CRUD/assignment/transition/history, centralized task policy, and PostgreSQL-backed integration coverage.
 - Phase 2 keyset cursor pagination with deterministic ID tie-breaker sorting.
 - Phase 3 Core Web Application building on Next.js App Router, fully integrating Better Auth HTTP session cookies, responsive Shell layout, active workspace loading, task filtering, creation, patch editing, assignments, soft delete, and version conflict UI handling.
+- Phase 4 Kanban API projection and web board with workflow, team, assignee, priority, and due-date filters; native drag/drop and accessible status controls; transition and version-conflict handling.
+- Phase 4 production-build E2E harness verified with 1/1 Playwright test passing against disposable PostgreSQL.
 
 In Progress
 - None.
 
 Next
-- Phase 4 features not yet started (Kanban, Calendars).
+- None scheduled.
 
 Blocked
 - None.
@@ -24,6 +26,7 @@ Open Decisions
 - See `docs/decisions/OPEN_DECISIONS.md`.
 
 Known Limitations
-- Queue, recurrence, notifications, approvals, comments, attachments, audit, KPI, and product UI remain out of scope.
+- Calendar, queue, recurrence, notifications, approvals, comments, attachments, audit, KPI, and remaining product UI are out of scope.
 - Better Auth `baseURL` is set in test env for deterministic API integration tests.
+- Web production builds report three existing React Hook dependency warnings.
 
