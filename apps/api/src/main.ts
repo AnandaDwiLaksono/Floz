@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { parseApiEnv } from '@floz/config';
 import { createLogger } from '@floz/observability';
+import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -11,6 +12,10 @@ async function bootstrap() {
   const env = parseApiEnv(process.env);
   const logger = createLogger('api', env.LOG_LEVEL);
   const app = await NestFactory.create(AppModule, { logger: false });
+  app.use(cors({
+    origin: (origin, callback) => callback(null, true),
+    credentials: true,
+  }));
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new ErrorFilter());

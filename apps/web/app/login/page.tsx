@@ -19,9 +19,11 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
+      console.log('SUBMITTING LOGIN:', email);
       await login(email, password);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Invalid credentials or connection failure';
+      console.log('LOGIN CAUGHT ERROR:', msg);
       setError(msg);
     } finally {
       setSubmitting(false);

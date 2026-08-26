@@ -156,17 +156,18 @@ export async function apiFetch<T>(
     return undefined as unknown as T;
   }
 
-  let body: ApiErrorResponse | null = null;
+  let body: Record<string, unknown> | null = null;
   try {
-    body = (await response.json()) as ApiErrorResponse;
+    body = (await response.json()) as Record<string, unknown>;
   } catch {
     body = null;
   }
 
+  const errObj = (body?.error as Record<string, unknown>) || undefined;
   if (!response.ok) {
-    const code = body?.code || body?.message || response.statusText;
-    const message = body?.message || 'An error occurred';
-    throw new ApiError(response.status, code, message, body?.details);
+    const code = String(errObj?.code || body?.code || errObj?.message || body?.message || response.statusText);
+    const message = String(errObj?.message || body?.message || errObj?.code || body?.code || 'An error occurred');
+    throw new ApiError(response.status, code, message, errObj?.details || body?.details);
   }
 
   return body as T;

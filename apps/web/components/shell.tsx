@@ -20,6 +20,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const pathname = usePathname();
 
+  if (pathname === '/login') {
+    return <>{children}</>;
+  }
+
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -29,10 +33,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
-  }
-
-  if (!user && pathname === '/login') {
-    return <>{children}</>;
   }
 
   return (

@@ -507,10 +507,11 @@ export default function TasksPage() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                <label htmlFor="title" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                   Title
                 </label>
                 <input
+                  id="title"
                   type="text"
                   required
                   value={createTitle}
@@ -519,10 +520,11 @@ export default function TasksPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                <label htmlFor="description" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                   Description
                 </label>
                 <textarea
+                  id="description"
                   value={createDescription}
                   onChange={(e) => setCreateDescription(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 h-20"
@@ -530,10 +532,11 @@ export default function TasksPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  <label htmlFor="priority" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                     Priority
                   </label>
                   <select
+                    id="priority"
                     value={createPriority}
                     onChange={(e) => setCreatePriority(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
@@ -545,10 +548,11 @@ export default function TasksPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  <label htmlFor="team_id" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                     Team
                   </label>
                   <select
+                    id="team_id"
                     value={createTeamId}
                     onChange={(e) => setCreateTeamId(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
@@ -564,10 +568,11 @@ export default function TasksPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  <label htmlFor="start_at" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                     Start Date
                   </label>
                   <input
+                    id="start_at"
                     type="datetime-local"
                     value={createStartAt}
                     onChange={(e) => setCreateStartAt(e.target.value)}
@@ -575,10 +580,11 @@ export default function TasksPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  <label htmlFor="due_at" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                     Due Date
                   </label>
                   <input
+                    id="due_at"
                     type="datetime-local"
                     value={createDueAt}
                     onChange={(e) => setCreateDueAt(e.target.value)}
@@ -588,10 +594,11 @@ export default function TasksPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  <label htmlFor="primary_assignee" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                     Primary Assignee
                   </label>
                   <select
+                    id="primary_assignee"
                     value={createAssigneeId}
                     onChange={(e) => setCreateAssigneeId(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
@@ -605,10 +612,11 @@ export default function TasksPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  <label htmlFor="initial_status" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                     Initial Status
                   </label>
                   <select
+                    id="initial_status"
                     value={createStatusId}
                     onChange={(e) => setCreateStatusId(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
@@ -656,6 +664,7 @@ export default function TasksPage() {
                 <button
                   onClick={() => {
                     setConflictError(null);
+                    setIsEditMode(false);
                     handleRefreshDetail(selectedTask.id);
                   }}
                   className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded"
