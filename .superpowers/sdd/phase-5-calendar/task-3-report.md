@@ -20,5 +20,8 @@ Tests:
 - `pnpm --filter @floz/api build` — passed
 
 Concerns:
+- Calendar uses strict half-open `[from, to)` semantics with `from < to`.
+- Scheduled overlap includes only `start_at < to` and `due_at > from`.
+- Primary assignee comes from one `is_primary=true` row; null when absent.
 - PostgreSQL driver returns `timestamptz` strings in this stack; projection normalizes them through `Date` before returning ISO timestamps.
 - Full phase verification intentionally not run; Task 3 backend scope only.
