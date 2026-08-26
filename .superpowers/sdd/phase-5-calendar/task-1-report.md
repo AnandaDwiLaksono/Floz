@@ -39,3 +39,20 @@ Verification:
 - `pnpm --filter @floz/web build`: PASS; no React Hook dependency warnings.
 - Targeted Playwright: BLOCKED/FAIL in the local stack. The test reaches the browser runner but exits after Better Auth warnings (`Base URL is not set`) without exposing an assertion or server error in the configured line reporter. No `test-results` or `playwright-report` artifacts were produced. The app server/API stack required by `playwright.config.ts` (`http://localhost:3000`) is not started by the config, so a passing result requires the project E2E stack to be running.
 - `git diff --check`: PASS.
+
+## API Build Blocker Fix
+
+Root cause:
+- `apps/api/package.json` declared workspace dependencies `@floz/config` and `@floz/observability`, but `pnpm --filter @floz/api build` invoked `nest build` directly, so their `dist` outputs were not built first.
+- Reproduced with exact command: `pnpm --filter @floz/api build` failed with TS2307 for both imports in `apps/api/src/main.ts`.
+- This is repo-wide, not worktree-only: the root checkout has the same package layout and the same missing `dist` outputs before build.
+
+Fix:
+- Added `prebuild` to `apps/api/package.json` to build only `@floz/config` and `@floz/observability` before API build:
+  - `pnpm --filter @floz/config --filter @floz/observability build`
+
+Verification:
+- `pnpm --filter @floz/api build`: PASS.
+- `./scripts/test-e2e.ps1`: PASS after the fix; full harness completed with 2/2 Playwright tests passing.
+- Evidence from harness: database migrate PASS, API build PASS, web build PASS, Playwright PASS.
+- Next.js workspace-root warning remains non-blocking.
