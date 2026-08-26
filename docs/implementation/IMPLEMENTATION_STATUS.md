@@ -8,12 +8,14 @@ Completed
 - Provisional ADMIN-only team mutation policy documented in ADR.
 - Disposable PostgreSQL migration, seed, auth persistence, workspace isolation, cross-workspace read/mutation/reference, and repository test coverage.
 - Phase 2 workflow and task core with seeded default workflows/statuses/transitions, transactional task CRUD/assignment/transition/history, centralized task policy, and PostgreSQL-backed integration coverage.
+- Phase 2 keyset cursor pagination with deterministic ID tie-breaker sorting.
+- Phase 3 Core Web Application building on Next.js App Router, fully integrating Better Auth HTTP session cookies, responsive Shell layout, active workspace loading, task filtering, creation, patch editing, assignments, soft delete, and version conflict UI handling.
 
 In Progress
 - None.
 
 Next
-- Phase 3 features not yet started.
+- Phase 4 features not yet started (Kanban, Calendars).
 
 Blocked
 - None.
@@ -22,6 +24,6 @@ Open Decisions
 - See `docs/decisions/OPEN_DECISIONS.md`.
 
 Known Limitations
-- Task list cursors are versioned opaque base64url JSON; changing cursor shape requires a new version.
 - Queue, recurrence, notifications, approvals, comments, attachments, audit, KPI, and product UI remain out of scope.
 - Better Auth `baseURL` is set in test env for deterministic API integration tests.
+
