@@ -14,11 +14,19 @@ function addDays(date: CivilDate, days: number): CivilDate {
 
 function addMonths(date: CivilDate, months: number): CivilDate {
   const next = new Date(Date.UTC(date.year, date.month - 1 + months, 1));
-  return { year: next.getUTCFullYear(), month: next.getUTCMonth() + 1, day: 1 };
+  const year = next.getUTCFullYear();
+  const month = next.getUTCMonth() + 1;
+  const day = Math.min(date.day, new Date(Date.UTC(year, month, 0)).getUTCDate());
+  return { year, month, day };
 }
 
 function formatDate(date: CivilDate): string {
   return `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
+}
+
+function mondayStart(date: CivilDate): CivilDate {
+  const weekday = new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay();
+  return addDays(date, -((weekday + 6) % 7));
 }
 
 function zonedParts(instant: Date, timezone: string) {
@@ -51,7 +59,10 @@ function fromZonedMidnight(date: CivilDate, timezone: string): Date {
 function rangeDates(view: CalendarView, date: string): { start: CivilDate; end: CivilDate } {
   const value = parseDate(date);
   if (view === 'day') return { start: value, end: addDays(value, 1) };
-  if (view === 'week') return { start: value, end: addDays(value, 7) };
+  if (view === 'week') {
+    const start = mondayStart(value);
+    return { start, end: addDays(start, 7) };
+  }
   const start = { year: value.year, month: value.month, day: 1 };
   return { start, end: addMonths(start, 1) };
 }

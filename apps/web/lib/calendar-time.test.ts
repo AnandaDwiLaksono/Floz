@@ -24,8 +24,18 @@ describe('calendar-time', () => {
     expect(getCalendarDayKey('2026-08-01T00:30:00.000Z', 'America/New_York')).toBe('2026-07-31');
   });
 
-  it('shifts week navigation by workspace calendar weeks', () => {
+  it('builds Monday-start week boundaries in the workspace timezone', () => {
+    expect(getCalendarRange('week', '2026-08-18', 'Asia/Jakarta')).toEqual({
+      from: '2026-08-16T17:00:00.000Z',
+      to: '2026-08-23T17:00:00.000Z',
+    });
+  });
+
+  it('shifts calendar dates by their explicit view interval', () => {
+    expect(shiftCalendarDate('day', '2026-08-18', -1, 'America/New_York')).toBe('2026-08-17');
     expect(shiftCalendarDate('week', '2026-08-18', 1, 'Asia/Jakarta')).toBe('2026-08-25');
+    expect(shiftCalendarDate('month', '2026-01-31', 1, 'Asia/Jakarta')).toBe('2026-02-28');
+    expect(shiftCalendarDate('month', '2026-03-31', -1, 'America/New_York')).toBe('2026-02-28');
   });
 
   it('handles DST-aware range conversion', () => {
