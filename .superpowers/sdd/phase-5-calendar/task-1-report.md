@@ -25,3 +25,17 @@ Concerns:
 - Targeted E2E did not pass in this environment despite implementation; failure details were not printed beyond the summary.
 - Clean web build required modifying `apps/web/app/workspaces/[workspaceId]/kanban/page.tsx` to remove the only remaining React hook warning, although Task 1 file list named Tasks page plus flow spec.
 - Repo typecheck is blocked by worker package resolution unrelated to Task 1.
+
+## Review Fix Report
+
+Status: BLOCKED
+
+Fixes:
+- Added `role="dialog"`, `aria-modal="true"`, and accessible labels to create/detail modal containers in `apps/web/app/workspaces/[workspaceId]/tasks/page.tsx`.
+- Replaced broad `searchParams` effect dependencies with scalar `create`, prefill, and `selectedTaskId` dependencies.
+- Kept the Kanban `useCallback` change: the clean web build previously emitted its missing `load` dependency warning; the change removes that warning without disabling lint.
+
+Verification:
+- `pnpm --filter @floz/web build`: PASS; no React Hook dependency warnings.
+- Targeted Playwright: BLOCKED/FAIL in the local stack. The test reaches the browser runner but exits after Better Auth warnings (`Base URL is not set`) without exposing an assertion or server error in the configured line reporter. No `test-results` or `playwright-report` artifacts were produced. The app server/API stack required by `playwright.config.ts` (`http://localhost:3000`) is not started by the config, so a passing result requires the project E2E stack to be running.
+- `git diff --check`: PASS.

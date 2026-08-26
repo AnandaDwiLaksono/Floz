@@ -28,6 +28,10 @@ export default function TasksPage() {
   const assignee_id = searchParams.get('assignee_id') || '';
   const team_id = searchParams.get('team_id') || '';
   const sort = searchParams.get('sort') || '-created_at';
+  const create = searchParams.get('create');
+  const prefillStart = searchParams.get('prefill_start_at') || '';
+  const prefillDue = searchParams.get('prefill_due_at') || '';
+  const selectedTaskId = searchParams.get('selected_task_id');
 
   // Server State
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -159,23 +163,18 @@ export default function TasksPage() {
   }, [workspaceId]);
 
   useEffect(() => {
-    const create = searchParams.get('create');
-    const prefillStart = searchParams.get('prefill_start_at') || '';
-    const prefillDue = searchParams.get('prefill_due_at') || '';
-
     if (create === '1') {
       setCreateValidationError(null);
       setIsCreateOpen(true);
       setCreateStartAt(prefillStart);
       setCreateDueAt(prefillDue);
     }
-  }, [searchParams]);
+  }, [create, prefillStart, prefillDue]);
 
   useEffect(() => {
-    const selectedTaskId = searchParams.get('selected_task_id');
     if (!selectedTaskId) return;
     void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data));
-  }, [workspaceId, searchParams, handleOpenDetail]);
+  }, [workspaceId, selectedTaskId, handleOpenDetail]);
 
   const handleRefreshDetail = async (id: string) => {
     try {
@@ -517,8 +516,8 @@ export default function TasksPage() {
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/50" onClick={() => setIsCreateOpen(false)} />
-          <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
-            <h3 className="text-lg font-bold mb-4">Create Task</h3>
+          <div role="dialog" aria-modal="true" aria-labelledby="create-task-title" className="relative w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
+            <h3 id="create-task-title" className="text-lg font-bold mb-4">Create Task</h3>
             <form onSubmit={handleCreate} className="space-y-4">
               {createValidationError && (
                 <div className="bg-red-50 dark:bg-red-950/50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700 dark:text-red-300">
@@ -673,7 +672,7 @@ export default function TasksPage() {
       {selectedTask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/50" onClick={() => setSelectedTask(null)} />
-          <div className="relative w-full max-w-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
+          <div role="dialog" aria-modal="true" aria-label="Task details" className="relative w-full max-w-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
             {conflictError && (
               <div className="bg-orange-50 dark:bg-orange-950/50 border-l-4 border-orange-500 p-4 rounded mb-4 text-orange-700 dark:text-orange-300 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
