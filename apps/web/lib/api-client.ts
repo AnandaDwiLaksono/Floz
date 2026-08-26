@@ -96,6 +96,26 @@ export interface Workflow {
   statuses: TaskStatus[];
 }
 
+export interface KanbanCardSummary {
+  id: string;
+  task_key: string;
+  title: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  due_at: string | null;
+  is_overdue?: boolean;
+  assignees: TaskAssignee[];
+  status: TaskStatus;
+  version: number;
+  workflow_id: string;
+  team_id: string | null;
+  creator_id: string;
+}
+
+export interface KanbanBoard {
+  workflow: Workflow;
+  columns: Array<{ status: TaskStatus; task_count: number; cards: KanbanCardSummary[] }>;
+}
+
 export interface Team {
   id: string;
   workspace_id: string;
@@ -285,5 +305,11 @@ export const api = {
       ),
     history: (workspaceId: string, taskId: string) =>
       apiFetch<{ data: TaskHistoryItem[] }>(`/workspaces/${workspaceId}/tasks/${taskId}/history`),
+    kanban: (workspaceId: string, params: Record<string, string | undefined> = {}) => {
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, val]) => { if (val) searchParams.set(key, val); });
+      const query = searchParams.toString();
+      return apiFetch<{ data: KanbanBoard }>(`/workspaces/${workspaceId}/kanban${query ? `?${query}` : ''}`);
+    }
   },
 };

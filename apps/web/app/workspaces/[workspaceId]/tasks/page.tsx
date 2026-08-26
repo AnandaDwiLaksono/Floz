@@ -130,6 +130,12 @@ export default function TasksPage() {
     fetchTasks();
   }, [workspaceId, q, status_id, priority, assignee_id, team_id, sort]);
 
+  useEffect(() => {
+    const selectedTaskId = searchParams.get('selected_task_id');
+    if (!selectedTaskId) return;
+    void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data));
+  }, [workspaceId, searchParams]);
+
   const updateFilters = (newParams: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(newParams).forEach(([k, v]) => {

@@ -166,6 +166,22 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(otherPath).set('Cookie', f.outsiderCookie).query({ sort: 'priority', limit: 2, cursor: first.body.meta.pagination.next_cursor }).expect(200).expect(({ body }) => expect(body.data.map((task: { title: string }) => task.title)).toEqual(['Other']));
   });
 
+  it('projects the default workflow kanban with ordered columns, public filters, counts, isolation, and deleted exclusion', async () => {
+    const f = await fixture(app!);
+    const path = `/api/v1/workspaces/${f.workspaceId}/tasks`;
+    const first = await request(app!.getHttpServer()).post(path).set('Cookie', f.memberCookie).send({ title: 'Due first', priority: 'HIGH', due_at: '2026-08-01T00:00:00.000Z', assignees: [{ user_id: f.memberId, is_primary: true }] }).expect(201);
+    const second = await request(app!.getHttpServer()).post(path).set('Cookie', f.memberCookie).send({ title: 'Due last', priority: 'LOW' }).expect(201);
+    const doing = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/tasks/${second.body.data.id}/transitions`).set('Cookie', f.memberCookie).send({ to_status_id: f.doingId, version: second.body.data.version }).expect(201);
+    await request(app!.getHttpServer()).delete(`/api/v1/workspaces/${f.workspaceId}/tasks/${doing.body.task.id}`).set('Cookie', f.adminCookie).query({ version: doing.body.task.version }).expect(204);
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/tasks`).set('Cookie', f.outsiderCookie).send({ title: 'Other task', priority: 'URGENT' }).expect(201);
+    const board = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/kanban`).set('Cookie', f.memberCookie).query({ workflow_id: f.workflowId, priority: 'HIGH,URGENT', assignee_id: f.memberId, due_from: '2026-08-01T00:00:00.000Z', due_to: '2026-08-02T00:00:00.000Z' }).expect(200);
+    expect(board.body.data.workflow.id).toBe(f.workflowId);
+    expect(board.body.data.columns.map((column: { status: { id: string } }) => column.status.id)).toEqual([f.todoId, f.doingId, f.doneId]);
+    expect(board.body.data.columns[0]).toMatchObject({ task_count: 1, cards: [{ id: first.body.data.id, title: 'Due first', assignees: [{ user_id: f.memberId, is_primary: true, full_name: 'Member' }] }] });
+    expect(board.body.data.columns.flatMap((column: { cards: { title: string }[] }) => column.cards).map((card: { title: string }) => card.title)).not.toContain('Other task');
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.otherWorkspaceId}/kanban`).set('Cookie', f.memberCookie).expect(404);
+  });
+
   it('supports task workflow, assignment, transition, filtering, and history APIs', async () => {
     const f = await fixture(app!);
     const workflows = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/workflows`).set('Cookie', f.memberCookie).expect(200);

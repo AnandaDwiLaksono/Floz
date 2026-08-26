@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get,
 import type { Request, Response } from 'express';
 import { AuthService } from './auth';
 import { FlozService } from './floz.service';
-import { TaskService, type AssignTaskDto, type CreateTaskDto, type TaskQueryDto, type TransitionTaskDto, type UpdateTaskDto } from './task.service';
+import { TaskService, type AssignTaskDto, type CreateTaskDto, type KanbanQueryDto, type TaskQueryDto, type TransitionTaskDto, type UpdateTaskDto } from './task.service';
 import type { TaskRole } from './task.policy';
 
 const ok = <T>(data: T) => ({ data });
@@ -60,6 +60,8 @@ export class FlozController {
   async removeTeamMember(@Req() req: Request, @Param('workspaceId') wid: string, @Param('teamId') tid: string, @Param('userId') uid: string) { await this.admin(req, wid); if (!(await this.floz.team(wid, tid))) throw new NotFoundException('NOT_FOUND'); await this.floz.removeTeamMember(tid, uid); }
   @Get('workspaces/:workspaceId/workflows')
   async workflows(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); return ok(await this.tasks.workflows(wid)); }
+  @Get('workspaces/:workspaceId/kanban')
+  async kanban(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); return ok(await this.tasks.kanban(wid, req.query as KanbanQueryDto)); }
   @Get('workspaces/:workspaceId/tasks')
   async listTasks(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); const result = await this.tasks.list(wid, req.query as TaskQueryDto); return { data: result.rows, meta: { pagination: { limit: result.limit, next_cursor: result.nextCursor, has_more: result.hasMore } } }; }
   @Post('workspaces/:workspaceId/tasks')

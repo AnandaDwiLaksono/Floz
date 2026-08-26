@@ -91,30 +91,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
         {/* Navigation Links */}
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
           {activeWorkspace && (
-            <Link
-              href={`/workspaces/${activeWorkspace.id}/tasks`}
-              className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${
-                pathname.includes('/tasks')
-                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-            >
-              <CheckSquare className="h-5 w-5" />
-              <span>Tasks</span>
-            </Link>
-          )}
-
-          <div className="pt-4">
-            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              Future Modules
-            </p>
-            <div className="mt-2 space-y-1 text-sm text-gray-400">
-              <div className="flex items-center space-x-3 px-3 py-2 opacity-50 cursor-not-allowed">
+            <>
+              <Link href={`/workspaces/${activeWorkspace.id}/tasks`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/tasks') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                <CheckSquare className="h-5 w-5" />
+                <span>Tasks</span>
+              </Link>
+              <Link href={`/workspaces/${activeWorkspace.id}/kanban`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/kanban') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <Layers className="h-5 w-5" />
-                <span>Kanban (P0 MVP Phase 4)</span>
-              </div>
-            </div>
-          </div>
+                <span>Kanban</span>
+              </Link>
+            </>
+          )}
         </nav>
 
         {/* User Footer */}
