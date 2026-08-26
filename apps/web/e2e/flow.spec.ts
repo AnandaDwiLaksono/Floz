@@ -66,9 +66,11 @@ test.describe('Floz Kanban', () => {
     await page.fill('#email', 'admin2@example.com');
     await page.fill('#password', 'password123');
     await page.click('button[type="submit"]');
+    await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     await page.goto(`/workspaces/${workspaceId}/tasks?create=1&prefill_start_at=2026-08-18T09:00&prefill_due_at=2026-08-18T10:00`);
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.locator('input#start_at')).toHaveValue('2026-08-18T09:00');
-    await expect(page.locator('input#due_at')).toHaveValue('2026-08-18T10:00');
+    const dialog = page.getByRole('dialog', { name: 'Create Task' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('input#start_at')).toHaveValue('2026-08-18T09:00');
+    await expect(dialog.locator('input#due_at')).toHaveValue('2026-08-18T10:00');
   });
 });
