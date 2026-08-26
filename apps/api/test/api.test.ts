@@ -182,6 +182,57 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.otherWorkspaceId}/kanban`).set('Cookie', f.memberCookie).expect(404);
   });
 
+  it('projects scheduled and deadline-only tasks for a bounded calendar range', async () => {
+    const f = await fixture(app!);
+    const path = `/api/v1/workspaces/${f.workspaceId}/tasks`;
+    const scheduled = await request(app!.getHttpServer()).post(path).set('Cookie', f.memberCookie).send({ title: 'Scheduled', start_at: '2026-08-10T01:00:00.000Z', due_at: '2026-08-10T03:00:00.000Z', assignees: [{ user_id: f.memberId, is_primary: true }] }).expect(201);
+    await request(app!.getHttpServer()).post(path).set('Cookie', f.memberCookie).send({ title: 'Deadline only', due_at: '2026-08-10T04:00:00.000Z' }).expect(201);
+    await request(app!.getHttpServer()).post(path).set('Cookie', f.memberCookie).send({ title: 'Outside', due_at: '2026-08-12T00:00:00.000Z' }).expect(201);
+    await request(app!.getHttpServer()).post(path).set('Cookie', f.memberCookie).send({ title: 'Start only', start_at: '2026-08-10T05:00:00.000Z' }).expect(201);
+
+    const res = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ from: '2026-08-10T00:00:00.000Z', to: '2026-08-11T00:00:00.000Z' }).expect(200);
+
+    expect(res.body.meta).toEqual({ from: '2026-08-10T00:00:00.000Z', to: '2026-08-11T00:00:00.000Z' });
+    expect(res.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: scheduled.body.data.id, task_key: scheduled.body.data.task_key, title: 'Scheduled', start_at: '2026-08-10T01:00:00.000Z', due_at: '2026-08-10T03:00:00.000Z', is_deadline_only: false, primary_assignee: { id: f.memberId, full_name: 'Member' } }),
+      expect.objectContaining({ title: 'Deadline only', start_at: null, due_at: '2026-08-10T04:00:00.000Z', is_deadline_only: true, primary_assignee: null }),
+    ]));
+    expect(res.body.data.map((task: { title: string }) => task.title)).toEqual(['Scheduled', 'Deadline only']);
+  });
+
+  it('filters calendar projection by workspace team and assignee and validates references', async () => {
+    const f = await fixture(app!);
+    const path = `/api/v1/workspaces/${f.workspaceId}/tasks`;
+    const team = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Ops' }).expect(201);
+    const alienTeam = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/teams`).set('Cookie', f.outsiderCookie).send({ name: 'Other Ops' }).expect(201);
+    await request(app!.getHttpServer()).post(path).set('Cookie', f.memberCookie).send({ title: 'Mine', team_id: team.body.data.id, due_at: '2026-08-10T01:00:00.000Z', assignees: [{ user_id: f.memberId, is_primary: true }] }).expect(201);
+    await request(app!.getHttpServer()).post(path).set('Cookie', f.memberCookie).send({ title: 'Admin', due_at: '2026-08-10T02:00:00.000Z', assignees: [{ user_id: f.adminId, is_primary: true }] }).expect(201);
+
+    const query = { from: '2026-08-10T00:00:00.000Z', to: '2026-08-11T00:00:00.000Z' };
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ ...query, team_id: team.body.data.id }).expect(200).expect(({ body }) => expect(body.data.map((task: { title: string }) => task.title)).toEqual(['Mine']));
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ ...query, assignee_id: f.memberId }).expect(200).expect(({ body }) => expect(body.data.map((task: { title: string }) => task.title)).toEqual(['Mine']));
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ ...query, team_id: alienTeam.body.data.id }).expect(400).expect(({ body }) => expect(body.message).toBe('TEAM_SCOPE_MISMATCH'));
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ ...query, assignee_id: f.outsiderId }).expect(400).expect(({ body }) => expect(body.message).toBe('CROSS_WORKSPACE_REFERENCE'));
+  });
+
+  it('rejects invalid calendar bounds and excludes deleted tasks', async () => {
+    const f = await fixture(app!);
+    const task = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).send({ title: 'Deleted', due_at: '2026-08-10T01:00:00.000Z' }).expect(201);
+    await request(app!.getHttpServer()).delete(`/api/v1/workspaces/${f.workspaceId}/tasks/${task.body.data.id}`).set('Cookie', f.adminCookie).query({ version: task.body.data.version }).expect(204);
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ from: '2026-08-10T00:00:00.000Z', to: '2026-08-11T00:00:00.000Z' }).expect(200).expect(({ body }) => expect(body.data).toEqual([]));
+    for (const query of [{ to: '2026-08-11T00:00:00.000Z' }, { from: '2026-08-10T00:00:00.000Z' }, { from: 'bad', to: '2026-08-11T00:00:00.000Z' }, { from: '2026-08-11T00:00:00.000Z', to: '2026-08-10T00:00:00.000Z' }]) {
+      await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query(query).expect(400).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
+    }
+  });
+
+  it('supports scheduled overlap half-open calendar ranges', async () => {
+    const f = await fixture(app!);
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).send({ title: 'Overlap start', start_at: '2026-08-09T23:00:00.000Z', due_at: '2026-08-10T00:00:00.000Z' }).expect(201);
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).send({ title: 'Overlap body', start_at: '2026-08-09T23:00:00.000Z', due_at: '2026-08-10T01:00:00.000Z' }).expect(201);
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ from: '2026-08-10T00:00:00.000Z', to: '2026-08-11T00:00:00.000Z' }).expect(200).expect(({ body }) => expect(body.data.map((task: { title: string }) => task.title)).toEqual(['Overlap start', 'Overlap body']));
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.otherWorkspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ from: '2026-08-10T00:00:00.000Z', to: '2026-08-11T00:00:00.000Z' }).expect(404);
+  });
+
   it('supports task workflow, assignment, transition, filtering, and history APIs', async () => {
     const f = await fixture(app!);
     const workflows = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/workflows`).set('Cookie', f.memberCookie).expect(200);
