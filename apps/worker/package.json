@@ -8,12 +8,15 @@
     "lint": "eslint src test --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run test/*.integration.test.ts --passWithNoTests",
     "build": "tsc",
     "start": "node dist/main.js"
   },
   "dependencies": {
     "@floz/config": "workspace:*",
-    "@floz/observability": "workspace:*"
+    "@floz/observability": "workspace:*",
+    "bullmq": "^5",
+    "ioredis": "^5"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
