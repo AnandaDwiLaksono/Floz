@@ -18,7 +18,7 @@ In Progress
 - None.
 
 Next
-- Phase 6 planning only after Phase 5 final gates.
+- Phase 6 implementation is in progress.
 
 Blocked
 - None.
@@ -27,7 +27,7 @@ Open Decisions
 - See `docs/decisions/OPEN_DECISIONS.md`.
 
 Known Limitations
-- Calendar, queue, recurrence, notifications, approvals, comments, attachments, audit, KPI, and remaining product UI are out of scope.
+- Recurrence, worker activation, queue/outbox, notifications, approvals, comments, attachments, audit, KPI, and remaining product UI beyond Phase 6 are out of scope.
 - Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported and are excluded from projection.
 - Better Auth `baseURL` is set in test env for deterministic API integration tests.
 - Web production builds now pass; previous React Hook dependency warnings were cleared.
