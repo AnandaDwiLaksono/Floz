@@ -20,3 +20,8 @@ Added pure dependency-free recurrence calculation helpers for `DAILY`, `WEEKLY`,
 ## Concerns
 - DST ambiguous/nonexistent local times remain aligned with the existing `Intl.DateTimeFormat`-based timezone conversion pattern; no new policy invented here.
 - Existing unrelated worktree changes outside Task 4 were left untouched.
+
+## Review fixes
+- Enforced `occurrenceLimit` and `generatedCount` for prospective updates.
+- Removed the fixed 9,999-candidate search cap; daily/weekly schedules advance directly and monthly schedules advance until a valid candidate or `endAt` boundary.
+- Added coverage for `first == end`, multi-month fallback, prospective monthly anchor preservation, and long-running daily schedules.

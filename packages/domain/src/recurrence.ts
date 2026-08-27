@@ -69,6 +69,31 @@ function passesEnd(input: RecurrenceScheduleInput, candidate: Date): boolean {
   return !input.endAt || candidate <= input.endAt;
 }
 
+function nextCandidate(input: RecurrenceScheduleInput, after: Date): Date | null {
+  if (input.frequency === 'DAILY' || input.frequency === 'WEEKLY') {
+    const local = parts(input.startAt, input.timezone);
+    const stepDays = input.frequency === 'DAILY' ? input.intervalValue : input.intervalValue * 7;
+    let candidate = fromLocal(addDays(local, stepDays), input.timezone);
+    while (candidate <= after) {
+      candidate = fromLocal(addDays(parts(candidate, input.timezone), stepDays), input.timezone);
+    }
+    return passesEnd(input, candidate) ? candidate : null;
+  }
+  const local = parts(input.startAt, input.timezone);
+  const anchorDay = input.anchorDay ?? local.day;
+  const monthStep = input.intervalValue;
+  let months = 0;
+  while (true) {
+    const candidate = fromLocal(addMonths(local, months, anchorDay), input.timezone);
+    if (candidate > after) return passesEnd(input, candidate) ? candidate : null;
+    months += monthStep;
+    if (input.endAt) {
+      const limit = fromLocal(addMonths(local, months, anchorDay), input.timezone);
+      if (limit > input.endAt && candidate > input.endAt) return null;
+    }
+  }
+}
+
 export function resolveFirstOccurrence(input: RecurrenceScheduleInput): Date {
   validateExecutableRecurrence(input);
   const first = occurrence(input, 0);
@@ -78,27 +103,14 @@ export function resolveFirstOccurrence(input: RecurrenceScheduleInput): Date {
 
 export function resolveNextOccurrence(input: RecurrenceScheduleInput): Date | null {
   validateExecutableRecurrence(input);
-  if (input.occurrenceLimit != null && (input.generatedCount ?? 1) >= input.occurrenceLimit) return null;
-  const after = input.latestGeneratedScheduledFor ?? input.startAt;
-  for (let i = 1; i < 10000; i += 1) {
-    const candidate = occurrence(input, i);
-    if (candidate <= after) continue;
-    if (!passesEnd(input, candidate)) return null;
-    return candidate;
-  }
-  return null;
+  if (input.occurrenceLimit != null && (input.generatedCount ?? 0) >= input.occurrenceLimit) return null;
+  return nextCandidate(input, input.latestGeneratedScheduledFor ?? input.startAt);
 }
 
 export function resolveNextOccurrenceAfterUpdate(input: RecurrenceUpdateInput): Date | null {
   validateExecutableRecurrence(input);
-  const after = new Date(Math.max(input.effectiveChangeTime.getTime(), input.latestGeneratedScheduledFor.getTime()));
-  for (let i = 1; i < 10000; i += 1) {
-    const candidate = occurrence(input, i);
-    if (candidate <= after) continue;
-    if (!passesEnd(input, candidate)) return null;
-    return candidate;
-  }
-  return null;
+  if (input.occurrenceLimit != null && (input.generatedCount ?? 0) >= input.occurrenceLimit) return null;
+  return nextCandidate(input, new Date(Math.max(input.effectiveChangeTime.getTime(), input.latestGeneratedScheduledFor.getTime())));
 }
 
 export function validateGeneratedSchedule(startAt: Date | null, dueAt: Date | null): void {
