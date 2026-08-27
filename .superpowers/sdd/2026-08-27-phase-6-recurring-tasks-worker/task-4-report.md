@@ -28,4 +28,8 @@ Added pure dependency-free recurrence calculation helpers for `DAILY`, `WEEKLY`,
 
 ## Performance fix
 - Replaced linear DAILY/WEEKLY catch-up with direct elapsed-interval index calculation while preserving strict-after and timezone wall-clock semantics.
-- Added a bounded long-range daily lookup assertion; focused tests completed in 26ms.
+- Long-range verification now asserts the returned occurrence structurally instead of using an environment-dependent timing threshold.
+
+## DST fix
+- DAILY/WEEKLY direct indexing now uses elapsed local calendar days in the recurrence timezone, not UTC millisecond deltas.
+- Added a DST fallback regression for `America/New_York` anchored valid local occurrences without inventing ambiguous-local-time behavior.

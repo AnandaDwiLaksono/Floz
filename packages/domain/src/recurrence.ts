@@ -69,11 +69,15 @@ function passesEnd(input: RecurrenceScheduleInput, candidate: Date): boolean {
   return !input.endAt || candidate <= input.endAt;
 }
 
+function localDayNumber(value: LocalTime): number {
+  return Date.UTC(value.year, value.month - 1, value.day) / 86400000;
+}
+
 function nextCandidate(input: RecurrenceScheduleInput, after: Date): Date | null {
   const local = parts(input.startAt, input.timezone);
   if (input.frequency === 'DAILY' || input.frequency === 'WEEKLY') {
     const stepDays = input.frequency === 'DAILY' ? input.intervalValue : input.intervalValue * 7;
-    const deltaDays = Math.max(0, Math.ceil((after.getTime() - input.startAt.getTime()) / 86400000));
+    const deltaDays = Math.max(0, localDayNumber(parts(after, input.timezone)) - localDayNumber(local));
     let index = Math.max(1, Math.ceil(deltaDays / stepDays));
     let candidate = fromLocal(addDays(local, index * stepDays), input.timezone);
     if (candidate <= after) candidate = fromLocal(addDays(local, ++index * stepDays), input.timezone);
