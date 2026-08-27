@@ -15,7 +15,7 @@ Completed
 - Phase 5 Calendar projection, thin route, timezone utility, task handoff, docs, and integration coverage.
 
 In Progress
-- None.
+- Phase 6 implementation is in progress.
 
 Next
 - Phase 6 implementation is in progress.

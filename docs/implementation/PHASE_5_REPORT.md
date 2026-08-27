@@ -20,7 +20,7 @@
 
 - `start_at != null && due_at == null` has no defined Phase 5 Calendar semantics. Start-only tasks are excluded; no due time or duration is fabricated.
 - Calendar is read-only. Rescheduling uses existing task editing; drag-rescheduling is not implemented.
-- Queue, recurrence, notifications, approvals, comments, attachments, audit, KPI, and later-phase UI remain out of scope.
+- Queue, recurrence, notifications, approvals, comments, attachments, audit, KPI, and later-phase UI remained out of scope for Phase 5.
 
 ## Documentation checklist
 
