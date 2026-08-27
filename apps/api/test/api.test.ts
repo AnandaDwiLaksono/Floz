@@ -259,6 +259,10 @@ describe('API', () => {
     expect(workflows.body.data[0].statuses[0].is_initial).toBe(true);
     const created = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).send({ title: 'Fix pump', assignees: [{ user_id: f.memberId, is_primary: true }] }).expect(201);
     expect(created.body.data).toMatchObject({ title: 'Fix pump', task_key: 'TASK-1', assignees: [{ user_id: f.memberId, is_primary: true, full_name: 'Member' }] });
+    const { sql: historyDb } = createDatabase(databaseUrl);
+    const history = await historyDb`SELECT event_type, actor_user_id, metadata FROM task_history WHERE task_id=${created.body.data.id} ORDER BY created_at, id`;
+    expect(history).toEqual([{ event_type: 'CREATED', actor_user_id: f.memberId, metadata: {} }]);
+    await historyDb.end();
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).query({ q: 'Fix', sort: '-created_at', limit: 10 }).expect(200).expect(({ body }) => expect(body.meta.pagination.has_more).toBe(false));
     const transitions = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/tasks/${created.body.data.id}/available-transitions`).set('Cookie', f.memberCookie).expect(200);
     expect(transitions.body.data.length).toBeGreaterThan(0);
