@@ -25,3 +25,7 @@ Added pure dependency-free recurrence calculation helpers for `DAILY`, `WEEKLY`,
 - Enforced `occurrenceLimit` and `generatedCount` for prospective updates.
 - Removed the fixed 9,999-candidate search cap; daily/weekly schedules advance directly and monthly schedules advance until a valid candidate or `endAt` boundary.
 - Added coverage for `first == end`, multi-month fallback, prospective monthly anchor preservation, and long-running daily schedules.
+
+## Performance fix
+- Replaced linear DAILY/WEEKLY catch-up with direct elapsed-interval index calculation while preserving strict-after and timezone wall-clock semantics.
+- Added a bounded long-range daily lookup assertion; focused tests completed in 26ms.

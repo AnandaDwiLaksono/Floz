@@ -70,27 +70,23 @@ function passesEnd(input: RecurrenceScheduleInput, candidate: Date): boolean {
 }
 
 function nextCandidate(input: RecurrenceScheduleInput, after: Date): Date | null {
+  const local = parts(input.startAt, input.timezone);
   if (input.frequency === 'DAILY' || input.frequency === 'WEEKLY') {
-    const local = parts(input.startAt, input.timezone);
     const stepDays = input.frequency === 'DAILY' ? input.intervalValue : input.intervalValue * 7;
-    let candidate = fromLocal(addDays(local, stepDays), input.timezone);
-    while (candidate <= after) {
-      candidate = fromLocal(addDays(parts(candidate, input.timezone), stepDays), input.timezone);
-    }
+    const deltaDays = Math.max(0, Math.ceil((after.getTime() - input.startAt.getTime()) / 86400000));
+    let index = Math.max(1, Math.ceil(deltaDays / stepDays));
+    let candidate = fromLocal(addDays(local, index * stepDays), input.timezone);
+    if (candidate <= after) candidate = fromLocal(addDays(local, ++index * stepDays), input.timezone);
     return passesEnd(input, candidate) ? candidate : null;
   }
-  const local = parts(input.startAt, input.timezone);
   const anchorDay = input.anchorDay ?? local.day;
   const monthStep = input.intervalValue;
-  let months = 0;
+  const elapsedMonths = Math.max(0, (parts(after, input.timezone).year - local.year) * 12 + parts(after, input.timezone).month - local.month);
+  let index = Math.max(1, Math.ceil(elapsedMonths / monthStep));
   while (true) {
-    const candidate = fromLocal(addMonths(local, months, anchorDay), input.timezone);
+    const candidate = fromLocal(addMonths(local, index * monthStep, anchorDay), input.timezone);
     if (candidate > after) return passesEnd(input, candidate) ? candidate : null;
-    months += monthStep;
-    if (input.endAt) {
-      const limit = fromLocal(addMonths(local, months, anchorDay), input.timezone);
-      if (limit > input.endAt && candidate > input.endAt) return null;
-    }
+    index += 1;
   }
 }
 
