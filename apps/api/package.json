@@ -14,6 +14,7 @@
   "dependencies": {
     "@floz/config": "workspace:*",
     "@floz/database": "workspace:^",
+    "@floz/domain": "workspace:*",
     "@floz/observability": "workspace:*",
     "@nestjs/common": "^11.0.11",
     "@nestjs/core": "^11.0.11",

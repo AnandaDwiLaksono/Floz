@@ -1,1 +1,1 @@
-export * from './recurrence';
+export * from './recurrence.js';

@@ -6,7 +6,7 @@ import {
   validateExecutableRecurrence,
   validateGeneratedSchedule,
   type RecurrenceScheduleInput,
-} from './recurrence';
+} from './recurrence.js';
 
 const base = (overrides: Partial<RecurrenceScheduleInput> = {}): RecurrenceScheduleInput => ({
   frequency: 'MONTHLY', intervalValue: 1, timezone: 'Asia/Jakarta', startAt: new Date('2027-01-31T02:00:00Z'), ...overrides,
