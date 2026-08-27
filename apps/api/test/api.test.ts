@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { Test } from '@nestjs/testing';
-import { type INestApplication } from '@nestjs/common';
+import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { createDatabase } from '@floz/database';
 import { AppModule } from '../src/app.module';
@@ -21,6 +21,7 @@ async function createApp() {
   const app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.init();
   return app;
 }
@@ -251,6 +252,21 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ from: query.from, to: query.from }).expect(400).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ ...query, team_id: 'not-a-uuid' }).expect(400).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ ...query, assignee_id: 'not-a-uuid' }).expect(400).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
+  });
+
+  it('wires recurrence routes and validates inputs; Task 7 owns business behavior', async () => {
+    const f = await fixture(app!);
+    const base = `/api/v1/workspaces/${f.workspaceId}`;
+    const create = `${base}/recurring-tasks`;
+    const rule = `${base}/recurrence-rules/${randomUUID()}`;
+    const valid = { name: 'Daily inspection', frequency: 'DAILY', interval_value: 1, timezone: 'Asia/Jakarta', start_at: '2026-08-27T09:00:00.000Z', title: 'Inspect pump', workflow_id: f.workflowId, team_id: f.workspaceId, assignee_ids: [f.memberId], primary_assignee_id: f.memberId };
+    await request(app!.getHttpServer()).post(create).send(valid).expect(401);
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).send(valid).expect(501);
+    for (const body of [{ ...valid, frequency: 'CUSTOM' }, { ...valid, interval_value: 0 }, { ...valid, occurrence_limit: 0 }, { ...valid, end_at: '2026-09-01T09:00:00.000Z', occurrence_limit: 2 }, { ...valid, timezone: 'UTC' }, { ...valid, workflow_id: 'not-a-uuid' }]) await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).send(body).expect(400);
+    await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ active: true, team_id: f.workspaceId, assignee_id: f.memberId, cursor: 'opaque', limit: 10 }).expect(501);
+    await request(app!.getHttpServer()).get(`${base}/recurrence-rules/not-a-uuid`).set('Cookie', f.memberCookie).expect(400);
+    await request(app!.getHttpServer()).patch(rule).set('Cookie', f.memberCookie).send({ frequency: 'WEEKLY', interval_value: 2 }).expect(501);
+    await request(app!.getHttpServer()).post(`${rule}/stop`).set('Cookie', f.memberCookie).expect(501);
   });
 
   it('supports task workflow, assignment, transition, filtering, and history APIs', async () => {

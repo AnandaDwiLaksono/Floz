@@ -4,12 +4,15 @@ import { AuthService } from './auth';
 import { FlozService } from './floz.service';
 import { TaskService, type AssignTaskDto, type CalendarQueryDto, type CreateTaskDto, type KanbanQueryDto, type TaskQueryDto, type TransitionTaskDto, type UpdateTaskDto } from './task.service';
 import type { TaskRole } from './task.policy';
+import { RecurrenceService } from './recurrence.service';
+import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto } from './recurrence.dto';
 
 const ok = <T>(data: T) => ({ data });
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Controller()
 export class FlozController {
-  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService) {}
+  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService, @Inject(RecurrenceService) private readonly recurrence: RecurrenceService) {}
 
   private get auth() { return this.authService.auth; }
 
@@ -83,6 +86,17 @@ export class FlozController {
   async transitionTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Body() body: TransitionTaskDto) { const ctx = await this.member(req, wid); const task = await this.tasks.transition(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body); return { task, transition: { to_status_id: body.to_status_id } }; }
   @Get('workspaces/:workspaceId/tasks/:taskId/history')
   async taskHistory(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { await this.member(req, wid); return { data: await this.tasks.history(wid, tid), meta: { pagination: { limit: 50, next_cursor: null, has_more: false } } }; }
+
+  @Post('workspaces/:workspaceId/recurring-tasks')
+  async createRecurringTask(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateRecurringTaskDto) { const ctx = await this.member(req, wid); if (body.frequency === 'CUSTOM' || (body.end_at && body.occurrence_limit !== undefined) || body.interval_value < 1 || (body.occurrence_limit !== undefined && body.occurrence_limit < 1) || !/^[A-Za-z_]+(?:[\/-][A-Za-z0-9_+\-]+)+$/.test(body.timezone) || (body.workflow_id && !uuidPattern.test(body.workflow_id))) throw new BadRequestException('VALIDATION_ERROR'); return ok(this.recurrence.create(wid, ctx.user.id, body)); }
+  @Get('workspaces/:workspaceId/recurrence-rules')
+  async listRecurrenceRules(@Req() req: Request, @Param('workspaceId') wid: string, @Req() rawReq: Request) { await this.member(req, wid); return ok(this.recurrence.list(wid, rawReq.query as unknown as RecurrenceRuleQueryDto)); }
+  @Get('workspaces/:workspaceId/recurrence-rules/:id')
+  async recurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); return ok(this.recurrence.get(wid, id)); }
+  @Patch('workspaces/:workspaceId/recurrence-rules/:id')
+  async updateRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string, @Body() body: UpdateRecurrenceRuleDto) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); if (body.frequency === 'CUSTOM') throw new BadRequestException('VALIDATION_ERROR'); return ok(this.recurrence.update(wid, id, body)); }
+  @Post('workspaces/:workspaceId/recurrence-rules/:id/stop')
+  async stopRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); return ok(this.recurrence.stop(wid, id)); }
 
   private async current(req: Request) { const session = await this.auth.api.getSession({ headers: req.headers as HeadersInit }); if (!session) throw new UnauthorizedException('UNAUTHENTICATED'); const user = await this.floz.user(session.user.id); if (!user) throw new UnauthorizedException('UNAUTHENTICATED'); if (!user.isActive) throw new ForbiddenException('ACCOUNT_INACTIVE'); return user; }
   private async member(req: Request, wid: string) { const user = await this.current(req); const membership = await this.floz.membership(user.id, wid); if (!membership) throw new NotFoundException('NOT_FOUND'); return { user, membership }; }
