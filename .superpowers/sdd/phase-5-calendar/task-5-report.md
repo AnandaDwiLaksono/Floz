@@ -2,20 +2,27 @@
 
 ## Status
 
-Implemented and committed thin workspace Calendar page plus shell links.
+Implemented and committed thin workspace Calendar page plus shell links. Review follow-up fixes applied.
 
 ## Included
 
 - URL-backed month/week/day navigation, date, team, assignee state.
 - Workspace timezone range fetches and workspace-local grouping.
 - Task open/create handoffs to existing Tasks flow.
-- Loading, error, empty, filtered-empty states; deadline-only label.
+- Loading, range-loading, error, empty, filtered-empty states; deadline-only label.
 - Accessible controls; mobile agenda smoke coverage.
+
+## Review fixes
+
+- Invalid `view` / `date` URL values render explicit errors and skip calendar projection fetches.
+- Calendar create handoff carries `prefill_timezone`; Tasks converts workspace-local form values to UTC deterministically.
+- E2E asserts `Deadline only` and verifies Jakarta-local create handoff persists as UTC.
 
 ## Verification
 
+- `pnpm --filter @floz/web test -- calendar-time.test.ts`
+- `./scripts/test-e2e.ps1`
 - `./scripts/test-clean-db.ps1`
-- `./scripts/test-e2e.ps1` — 4 Playwright tests passed.
 - `pnpm lint`
 - `pnpm typecheck`
 - `pnpm test`
@@ -23,5 +30,5 @@ Implemented and committed thin workspace Calendar page plus shell links.
 
 ## Concerns
 
-- Root `pnpm build` initially raced Next.js generated files while concurrent build work ran; immediate clean rerun passed.
-- Next.js reports existing multiple-lockfile workspace-root warning.
+- Existing Next.js multiple-lockfile workspace-root warning remains.
+- Root `pnpm build` was previously flaky once under concurrent workspace builds; fresh rerun passed.

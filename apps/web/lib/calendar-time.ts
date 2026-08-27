@@ -51,9 +51,13 @@ function offsetMs(instant: Date, timezone: string): number {
   return localAsUtc - instant.getTime();
 }
 
-function fromZonedMidnight(date: CivilDate, timezone: string): Date {
-  const guess = new Date(Date.UTC(date.year, date.month - 1, date.day));
+function fromZoned(date: CivilDate, timezone: string, hour = 0, minute = 0): Date {
+  const guess = new Date(Date.UTC(date.year, date.month - 1, date.day, hour, minute));
   return new Date(guess.getTime() - offsetMs(guess, timezone));
+}
+
+function fromZonedMidnight(date: CivilDate, timezone: string): Date {
+  return fromZoned(date, timezone);
 }
 
 function rangeDates(view: CalendarView, date: string): { start: CivilDate; end: CivilDate } {
@@ -98,4 +102,11 @@ export function shiftCalendarDate(view: CalendarView, date: string, direction: -
 
 export function getTodayInTimezone(timezone: string): string {
   return getCalendarDayKey(new Date().toISOString(), timezone);
+}
+
+export function getWorkspaceDateTime(value: string, timezone: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match) throw new Error('Invalid workspace date-time');
+  const date = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+  return fromZoned(date, timezone, Number(match[4]), Number(match[5])).toISOString();
 }

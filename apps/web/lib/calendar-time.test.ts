@@ -5,6 +5,7 @@ import {
   getCalendarDayKey,
   getCalendarRange,
   getTodayInTimezone,
+  getWorkspaceDateTime,
   shiftCalendarDate,
 } from './calendar-time';
 
@@ -52,6 +53,11 @@ describe('calendar-time', () => {
     expect(getCalendarDayKey('2026-08-01T23:30:00.000Z', 'Asia/Jakarta')).toBe('2026-08-02');
     expect(formatCalendarLabel('2026-08-01T23:30:00.000Z', 'Asia/Jakarta', { dateStyle: 'short' })).toBe('02/08/2026');
     expect(getTodayInTimezone('Asia/Jakarta')).toBe('2026-08-02');
+  });
+
+  it('converts workspace-local task form values to deterministic UTC', () => {
+    expect(getWorkspaceDateTime('2026-08-18T09:00', 'Asia/Jakarta')).toBe('2026-08-18T02:00:00.000Z');
+    expect(getWorkspaceDateTime('2026-11-01T09:00', 'America/New_York')).toBe('2026-11-01T14:00:00.000Z');
   });
 
   it('fetches and returns the calendar task list', async () => {

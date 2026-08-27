@@ -58,7 +58,7 @@ test.describe('Floz Kanban', () => {
     const admin = await auth.api.signUpEmail({ body: { email: 'admin2@example.com', password: 'password123', name: 'Admin User' } });
     const workspaceId = 'a8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
     const adminRoleId = String((await sql`SELECT id FROM roles WHERE code='ADMIN'`)[0].id);
-    await sql`INSERT INTO workspaces (id,name,slug,created_by,is_active) VALUES (${workspaceId},'Test Work','test-work',${String(admin.user.id)},true)`;
+    await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'Test Work','test-work','Asia/Jakarta',${String(admin.user.id)},true)`;
     await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${String(admin.user.id)},${adminRoleId},'ACTIVE')`;
     await sql.end();
 
@@ -67,11 +67,19 @@ test.describe('Floz Kanban', () => {
     await page.fill('#password', 'password123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
-    await page.goto(`/workspaces/${workspaceId}/tasks?create=1&prefill_start_at=2026-08-18T09:00&prefill_due_at=2026-08-18T10:00`);
+    await page.goto(`/workspaces/${workspaceId}/tasks?create=1&prefill_start_at=2026-08-18T09:00&prefill_due_at=2026-08-18T10:00&prefill_timezone=Asia%2FJakarta`);
     const dialog = page.getByRole('dialog', { name: 'Create Task' });
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('input#start_at')).toHaveValue('2026-08-18T09:00');
     await expect(dialog.locator('input#due_at')).toHaveValue('2026-08-18T10:00');
+    await dialog.locator('input#title').fill('Timezone handoff');
+    await dialog.getByRole('button', { name: 'Create' }).click();
+    await expect(dialog).toBeHidden();
+    const stored = createDatabase(databaseUrl);
+    const saved = (await stored.sql`SELECT start_at FROM tasks WHERE title='Timezone handoff'`)[0];
+    expect(saved).toBeTruthy();
+    expect(new Date(saved.start_at).toISOString()).toBe('2026-08-18T02:00:00.000Z');
+    await stored.sql.end();
   });
 
   test('login, open calendar, navigate ranges, filter, create from context, and open task detail', async ({ page }) => {
@@ -101,7 +109,9 @@ test.describe('Floz Kanban', () => {
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     await page.goto(`/workspaces/${workspaceId}/calendar?view=month&date=2026-08-18`);
     await expect(page.getByRole('heading', { name: 'Calendar' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Deadline task/ })).toBeVisible();
+    const deadline = page.getByRole('button', { name: /Deadline task/ });
+    await expect(deadline).toBeVisible();
+    await expect(deadline).toContainText('Deadline only');
     await page.getByRole('button', { name: 'Week view' }).click();
     await expect(page).toHaveURL(/view=week/);
     await page.getByRole('button', { name: 'Next period' }).click();
@@ -110,11 +120,32 @@ test.describe('Floz Kanban', () => {
     await expect(page).toHaveURL(new RegExp(`team_id=${teamId}`));
     await page.getByRole('button', { name: /Create task on/ }).first().click();
     await expect(page).toHaveURL(/\/tasks\?/);
+    await expect(page).toHaveURL(/prefill_timezone=Asia%2FJakarta/);
     await expect(page.locator('input#start_at')).not.toHaveValue('');
     await page.goto(`/workspaces/${workspaceId}/calendar?view=day&date=2026-08-10`);
     await page.getByRole('button', { name: /Scheduled/ }).click();
     await expect(page).toHaveURL(/selected_task_id=/);
     await expect(page.getByText('Change Status')).toBeVisible();
+  });
+
+  test('calendar invalid URL state does not fetch calendar tasks', async ({ page }) => {
+    const { sql } = createDatabase(databaseUrl);
+    const admin = await auth.api.signUpEmail({ body: { email: 'admin5@example.com', password: 'password123', name: 'Admin User' } });
+    const workspaceId = 'a8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    const adminRoleId = String((await sql`SELECT id FROM roles WHERE code='ADMIN'`)[0].id);
+    await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'Test Work','test-work','Asia/Jakarta',${String(admin.user.id)},true)`;
+    await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${String(admin.user.id)},${adminRoleId},'ACTIVE')`;
+    await sql.end();
+    await page.goto('/login');
+    await page.fill('#email', 'admin5@example.com');
+    await page.fill('#password', 'password123');
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
+    const calendarRequests: string[] = [];
+    page.on('request', (request) => { if (request.url().includes('/calendar/tasks')) calendarRequests.push(request.url()); });
+    await page.goto(`/workspaces/${workspaceId}/calendar?view=bad&date=2026-02-31`);
+    await expect(page.getByText('Invalid calendar view.')).toBeVisible();
+    expect(calendarRequests).toEqual([]);
   });
 
   test('calendar mobile smoke renders agenda controls', async ({ page }) => {
