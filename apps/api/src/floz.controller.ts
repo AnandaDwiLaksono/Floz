@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get,
 import type { Request, Response } from 'express';
 import { AuthService } from './auth';
 import { FlozService } from './floz.service';
-import { TaskService, type AssignTaskDto, type CreateTaskDto, type KanbanQueryDto, type TaskQueryDto, type TransitionTaskDto, type UpdateTaskDto } from './task.service';
+import { TaskService, type AssignTaskDto, type CalendarQueryDto, type CreateTaskDto, type KanbanQueryDto, type TaskQueryDto, type TransitionTaskDto, type UpdateTaskDto } from './task.service';
 import type { TaskRole } from './task.policy';
 
 const ok = <T>(data: T) => ({ data });
@@ -62,6 +62,8 @@ export class FlozController {
   async workflows(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); return ok(await this.tasks.workflows(wid)); }
   @Get('workspaces/:workspaceId/kanban')
   async kanban(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); return ok(await this.tasks.kanban(wid, req.query as KanbanQueryDto)); }
+  @Get('workspaces/:workspaceId/calendar/tasks')
+  async calendar(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); return this.tasks.calendar(wid, req.query as CalendarQueryDto); }
   @Get('workspaces/:workspaceId/tasks')
   async listTasks(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); const result = await this.tasks.list(wid, req.query as TaskQueryDto); return { data: result.rows, meta: { pagination: { limit: result.limit, next_cursor: result.nextCursor, has_more: result.hasMore } } }; }
   @Post('workspaces/:workspaceId/tasks')

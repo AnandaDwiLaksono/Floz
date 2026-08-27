@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "prebuild": "pnpm --filter @floz/config --filter @floz/observability build",
     "dev": "nest start --watch",
     "lint": "eslint src test --ext .ts",
     "typecheck": "tsc --noEmit",

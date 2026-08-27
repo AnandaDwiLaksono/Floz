@@ -12,6 +12,7 @@ import {
   X,
   ChevronDown,
   Layers,
+  Calendar,
 } from 'lucide-react';
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -100,6 +101,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <Layers className="h-5 w-5" />
                 <span>Kanban</span>
               </Link>
+              <Link href={`/workspaces/${activeWorkspace.id}/calendar`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/calendar') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                <Calendar className="h-5 w-5" />
+                <span>Calendar</span>
+              </Link>
             </>
           )}
         </nav>
@@ -187,10 +192,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   <Link
                     href={`/workspaces/${activeWorkspace.id}/tasks`}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center space-x-2 px-3 py-2 text-blue-600 font-medium rounded bg-blue-50"
+                    className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
                   >
                     <CheckSquare className="h-5 w-5" />
                     <span>Tasks</span>
+                  </Link>
+                  <Link
+                    href={`/workspaces/${activeWorkspace.id}/calendar`}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
+                  >
+                    <Calendar className="h-5 w-5" />
+                    <span>Calendar</span>
                   </Link>
                 </div>
               )}

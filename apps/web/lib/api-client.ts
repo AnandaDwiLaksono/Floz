@@ -116,6 +116,23 @@ export interface KanbanBoard {
   columns: Array<{ status: TaskStatus; task_count: number; cards: KanbanCardSummary[] }>;
 }
 
+export interface CalendarTaskSummary {
+  id: string;
+  task_key: string;
+  title: string;
+  status: { id: string; name: string; code?: string; category?: string };
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  start_at: string | null;
+  due_at: string | null;
+  is_deadline_only: boolean;
+  primary_assignee: { id: string; full_name: string } | null;
+}
+
+export interface CalendarTaskList {
+  data: CalendarTaskSummary[];
+  meta: { from: string; to: string };
+}
+
 export interface Team {
   id: string;
   workspace_id: string;
@@ -310,6 +327,13 @@ export const api = {
       Object.entries(params).forEach(([key, val]) => { if (val) searchParams.set(key, val); });
       const query = searchParams.toString();
       return apiFetch<{ data: KanbanBoard }>(`/workspaces/${workspaceId}/kanban${query ? `?${query}` : ''}`);
+    },
+    calendar: (workspaceId: string, params: { from: string; to: string; team_id?: string; assignee_id?: string }) => {
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== '') searchParams.set(key, String(val));
+      });
+      return apiFetch<CalendarTaskList>(`/workspaces/${workspaceId}/calendar/tasks?${searchParams.toString()}`);
     }
   },
 };
