@@ -294,11 +294,18 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data.id).toBe(created.body.data.id));
     const patched = await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ interval_value: 2 }).expect(200);
     expect(patched.body.data.next_run_at > created.body.data.first_occurrence.start_at).toBe(true);
+    const patchedWakeups = await db`SELECT status,available_at FROM outbox_events WHERE aggregate_id=${created.body.data.id} AND event_type='RECURRENCE_WAKEUP'`;
+    expect(patchedWakeups).toHaveLength(1);
+    expect(patchedWakeups[0].status).toBe('PENDING');
+    expect(new Date(patchedWakeups[0].available_at).toISOString()).toBe(patched.body.data.next_run_at);
     expect((await db`SELECT count(*)::int AS count FROM recurrence_occurrences WHERE recurrence_rule_id=${created.body.data.id}`)[0].count).toBe(1);
     const noFuture = await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ end_at: created.body.data.first_occurrence.start_at }).expect(200);
     expect(noFuture.body.data.next_run_at).toBeNull();
+    expect(await db`SELECT id FROM outbox_events WHERE aggregate_id=${created.body.data.id} AND event_type='RECURRENCE_WAKEUP' AND status='PENDING'`).toEqual([]);
+    await db`INSERT INTO outbox_events(workspace_id,aggregate_type,aggregate_id,event_type,payload,available_at) VALUES(${f.workspaceId},'recurrence_rule',${created.body.data.id},'RECURRENCE_WAKEUP','{}',NOW()+INTERVAL '1 day')`;
     const stopped = await request(app!.getHttpServer()).post(`${base}/recurrence-rules/${created.body.data.id}/stop`).set('Cookie', f.memberCookie).expect(200);
     expect(stopped.body.data).toMatchObject({ is_active: false, next_run_at: null });
+    expect(await db`SELECT id FROM outbox_events WHERE aggregate_id=${created.body.data.id} AND event_type='RECURRENCE_WAKEUP' AND status='PENDING'`).toEqual([]);
     expect((await db`SELECT id FROM tasks WHERE recurrence_rule_id=${created.body.data.id}`)).toHaveLength(1);
     await db.end();
   });
