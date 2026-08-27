@@ -12,12 +12,13 @@ Completed
 - Phase 3 Core Web Application building on Next.js App Router, fully integrating Better Auth HTTP session cookies, responsive Shell layout, active workspace loading, task filtering, creation, patch editing, assignments, soft delete, and version conflict UI handling.
 - Phase 4 Kanban API projection and web board with workflow, team, assignee, priority, and due-date filters; native drag/drop and accessible status controls; transition and version-conflict handling.
 - Phase 4 production-build E2E harness verified with 1/1 Playwright test passing against disposable PostgreSQL.
+- Phase 5 Calendar projection, thin route, timezone utility, task handoff, docs, and integration coverage.
 
 In Progress
 - None.
 
 Next
-- None scheduled.
+- Phase 6 planning only after Phase 5 final gates.
 
 Blocked
 - None.
@@ -27,6 +28,7 @@ Open Decisions
 
 Known Limitations
 - Calendar, queue, recurrence, notifications, approvals, comments, attachments, audit, KPI, and remaining product UI are out of scope.
+- Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported and are excluded from projection.
 - Better Auth `baseURL` is set in test env for deterministic API integration tests.
-- Web production builds report three existing React Hook dependency warnings.
+- Web production builds now pass; previous React Hook dependency warnings were cleared.
 
