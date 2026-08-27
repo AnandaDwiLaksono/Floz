@@ -32,7 +32,7 @@ export default function TasksPage() {
   const create = searchParams.get('create');
   const prefillStart = searchParams.get('prefill_start_at') || '';
   const prefillDue = searchParams.get('prefill_due_at') || '';
-  const prefillTimezone = searchParams.get('prefill_timezone') || '';
+  const workspaceTimezone = user?.workspaces.find((workspace) => workspace.id === workspaceId)?.timezone || '';
   const selectedTaskId = searchParams.get('selected_task_id');
 
   // Server State
@@ -204,8 +204,8 @@ export default function TasksPage() {
         priority: createPriority,
         team_id: createTeamId || null,
         assignees,
-        start_at: createStartAt ? prefillTimezone ? getWorkspaceDateTime(createStartAt, prefillTimezone) : new Date(createStartAt).toISOString() : null,
-        due_at: createDueAt ? prefillTimezone ? getWorkspaceDateTime(createDueAt, prefillTimezone) : new Date(createDueAt).toISOString() : null,
+        start_at: createStartAt ? workspaceTimezone ? getWorkspaceDateTime(createStartAt, workspaceTimezone) : new Date(createStartAt).toISOString() : null,
+        due_at: createDueAt ? workspaceTimezone ? getWorkspaceDateTime(createDueAt, workspaceTimezone) : new Date(createDueAt).toISOString() : null,
         status_id: createStatusId || undefined,
       });
       setIsCreateOpen(false);

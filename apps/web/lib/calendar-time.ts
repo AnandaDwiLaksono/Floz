@@ -104,6 +104,20 @@ export function getTodayInTimezone(timezone: string): string {
   return getCalendarDayKey(new Date().toISOString(), timezone);
 }
 
+export function getTaskCalendarDayKeys(task: { start_at: string | null; due_at: string | null; is_deadline_only: boolean }, days: string[], timezone: string): string[] {
+  if (!task.due_at) return [];
+  if (task.is_deadline_only || !task.start_at) {
+    const dueDay = getCalendarDayKey(task.due_at, timezone);
+    return days.includes(dueDay) ? [dueDay] : [];
+  }
+  const startAt = task.start_at;
+  const dueAt = task.due_at;
+  return days.filter((day) => {
+    const dayRange = getCalendarRange('day', day, timezone);
+    return startAt < dayRange.to && dueAt > dayRange.from;
+  });
+}
+
 export function getWorkspaceDateTime(value: string, timezone: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
   if (!match) throw new Error('Invalid workspace date-time');

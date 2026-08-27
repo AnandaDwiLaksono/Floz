@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { api, ApiError, CalendarTaskSummary, Team, WorkspaceMember } from '../../../../lib/api-client';
-import { CalendarView, formatCalendarLabel, getCalendarDayKey, getCalendarRange, getTodayInTimezone, shiftCalendarDate } from '../../../../lib/calendar-time';
+import { CalendarView, formatCalendarLabel, getCalendarDayKey, getTaskCalendarDayKeys, getCalendarRange, getTodayInTimezone, shiftCalendarDate } from '../../../../lib/calendar-time';
 
 const views: CalendarView[] = ['month', 'week', 'day'];
 
@@ -79,11 +79,6 @@ export default function CalendarPage() {
     return () => { active = false; };
   }, [workspaceId, view, date, teamId, assigneeId, invalidState, hasInvalidView]);
 
-  const grouped = useMemo(() => tasks.reduce<Record<string, CalendarTaskSummary[]>>((result, task) => {
-    const key = getCalendarDayKey(task.start_at || task.due_at || range.from, timezone);
-    (result[key] ||= []).push(task);
-    return result;
-  }, {}), [tasks, range.from, timezone]);
   const days = useMemo(() => {
     const output: string[] = [];
     for (let cursor = range.from; cursor < range.to;) {
@@ -93,6 +88,10 @@ export default function CalendarPage() {
     }
     return output;
   }, [range, timezone]);
+  const grouped = useMemo(() => tasks.reduce<Record<string, CalendarTaskSummary[]>>((result, task) => {
+    for (const key of getTaskCalendarDayKeys(task, days, timezone)) (result[key] ||= []).push(task);
+    return result;
+  }, {}), [tasks, days, timezone]);
   const create = (day: string) => router.push(`/workspaces/${workspaceId}/tasks?create=1&prefill_start_at=${day}T09:00&prefill_due_at=${day}T10:00&prefill_timezone=${encodeURIComponent(timezone)}`);
 
   return <div className="space-y-4">

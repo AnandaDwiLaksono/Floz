@@ -6,6 +6,7 @@ import {
   getCalendarRange,
   getTodayInTimezone,
   getWorkspaceDateTime,
+  getTaskCalendarDayKeys,
   shiftCalendarDate,
 } from './calendar-time';
 
@@ -58,6 +59,22 @@ describe('calendar-time', () => {
   it('converts workspace-local task form values to deterministic UTC', () => {
     expect(getWorkspaceDateTime('2026-08-18T09:00', 'Asia/Jakarta')).toBe('2026-08-18T02:00:00.000Z');
     expect(getWorkspaceDateTime('2026-11-01T09:00', 'America/New_York')).toBe('2026-11-01T14:00:00.000Z');
+  });
+
+  it('renders scheduled tasks on every visible workspace-local day they overlap', () => {
+    expect(getTaskCalendarDayKeys(
+      { start_at: '2026-07-31T16:00:00.000Z', due_at: '2026-08-02T18:00:00.000Z', is_deadline_only: false },
+      ['2026-08-01', '2026-08-02', '2026-08-03'],
+      'Asia/Jakarta',
+    )).toEqual(['2026-08-01', '2026-08-02', '2026-08-03']);
+  });
+
+  it('renders deadline-only tasks only on their due day', () => {
+    expect(getTaskCalendarDayKeys(
+      { start_at: null, due_at: '2026-08-02T18:00:00.000Z', is_deadline_only: true },
+      ['2026-08-01', '2026-08-02', '2026-08-03'],
+      'Asia/Jakarta',
+    )).toEqual(['2026-08-03']);
   });
 
   it('fetches and returns the calendar task list', async () => {

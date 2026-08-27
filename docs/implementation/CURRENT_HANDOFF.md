@@ -1,6 +1,6 @@
 ## Current phase
 
-Phase 5 Calendar implementation complete. Task 7 final verification remains.
+Phase 5 Calendar complete and verified.
 
 ## Completed work
 
@@ -16,8 +16,8 @@ None.
 
 ## Next actions
 
-- Run Task 7 final gates in order: clean DB, E2E, lint, typecheck, test, build.
-- Inspect git hygiene and create the Phase 5 checkpoint only after all gates pass.
+- Integrate the verified Phase 5 branch into `master`.
+- Do not start Phase 6 without explicit instruction.
 
 ## Phases/features that must not be started
 

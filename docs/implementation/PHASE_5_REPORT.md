@@ -14,7 +14,7 @@
 - Task 3: API Calendar suite passed 13 tests; API lint, typecheck, and build passed.
 - Task 5: Calendar unit tests, clean-DB integration tests, real-stack Playwright E2E, root lint, typecheck, test, and build passed.
 - Task 6 pre-documentation `pnpm build`: passed; Calendar route compiled. Existing Next.js multiple-lockfile workspace-root warning remains.
-- Task 7 final ordered gates have not run; this report does not claim the final Phase 5 checkpoint.
+- Task 7 final ordered gates ran sequentially and passed: `./scripts/test-clean-db.ps1`, `./scripts/test-e2e.ps1`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`. The Next.js multiple-lockfile warning remains informational only.
 
 ## Limitations
 
