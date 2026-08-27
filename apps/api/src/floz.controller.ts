@@ -1,11 +1,11 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth';
 import { FlozService } from './floz.service';
 import { TaskService, type AssignTaskDto, type CalendarQueryDto, type CreateTaskDto, type KanbanQueryDto, type TaskQueryDto, type TransitionTaskDto, type UpdateTaskDto } from './task.service';
 import type { TaskRole } from './task.policy';
 import { RecurrenceService } from './recurrence.service';
-import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto } from './recurrence.dto';
+import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto, validateCreateRecurringTask, validateRecurrenceRuleQuery, validateUpdateRecurrenceRule } from './recurrence.dto';
 
 const ok = <T>(data: T) => ({ data });
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -88,13 +88,13 @@ export class FlozController {
   async taskHistory(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { await this.member(req, wid); return { data: await this.tasks.history(wid, tid), meta: { pagination: { limit: 50, next_cursor: null, has_more: false } } }; }
 
   @Post('workspaces/:workspaceId/recurring-tasks')
-  async createRecurringTask(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateRecurringTaskDto) { const ctx = await this.member(req, wid); if (body.frequency === 'CUSTOM' || (body.end_at && body.occurrence_limit !== undefined) || body.interval_value < 1 || (body.occurrence_limit !== undefined && body.occurrence_limit < 1) || !/^[A-Za-z_]+(?:[\/-][A-Za-z0-9_+\-]+)+$/.test(body.timezone) || (body.workflow_id && !uuidPattern.test(body.workflow_id))) throw new BadRequestException('VALIDATION_ERROR'); return ok(this.recurrence.create(wid, ctx.user.id, body)); }
+  async createRecurringTask(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateRecurringTaskDto) { const ctx = await this.member(req, wid); try { validateCreateRecurringTask(body); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(this.recurrence.create(wid, ctx.user.id, body)); }
   @Get('workspaces/:workspaceId/recurrence-rules')
-  async listRecurrenceRules(@Req() req: Request, @Param('workspaceId') wid: string, @Req() rawReq: Request) { await this.member(req, wid); return ok(this.recurrence.list(wid, rawReq.query as unknown as RecurrenceRuleQueryDto)); }
+  async listRecurrenceRules(@Req() req: Request, @Param('workspaceId') wid: string, @Query() query: RecurrenceRuleQueryDto) { await this.member(req, wid); try { validateRecurrenceRuleQuery(query); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(this.recurrence.list(wid, query)); }
   @Get('workspaces/:workspaceId/recurrence-rules/:id')
   async recurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); return ok(this.recurrence.get(wid, id)); }
   @Patch('workspaces/:workspaceId/recurrence-rules/:id')
-  async updateRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string, @Body() body: UpdateRecurrenceRuleDto) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); if (body.frequency === 'CUSTOM') throw new BadRequestException('VALIDATION_ERROR'); return ok(this.recurrence.update(wid, id, body)); }
+  async updateRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string, @Body() body: UpdateRecurrenceRuleDto) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); try { validateUpdateRecurrenceRule(body); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(this.recurrence.update(wid, id, body)); }
   @Post('workspaces/:workspaceId/recurrence-rules/:id/stop')
   async stopRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); return ok(this.recurrence.stop(wid, id)); }
 

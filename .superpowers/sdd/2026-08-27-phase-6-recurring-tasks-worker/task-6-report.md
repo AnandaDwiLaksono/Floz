@@ -22,4 +22,11 @@
 ## Notes
 - Service methods intentionally stay stubbed with `NOT_IMPLEMENTED`; Task 7 owns persistence/orchestration.
 - Timezone validation is shape-only for now; authoritative validation deferred per brief.
-- Query DTO is defined, but list route currently passes raw query shape through existing controller style to keep diff minimal.
+- Query DTO is now bound through `@Query()`, with runtime transformation and contract validation in the real app path.
+- Unsupported `CUSTOM` behavior is centralized in DTO validation helpers invoked by the controller; no persistence or Task 7 behavior added.
+
+## Review follow-up
+- Fixed real `RecurrenceRuleQueryDto` binding for GET list route.
+- Enforced active, limit, and UUID query validation in app wiring.
+- Centralized unsupported `CUSTOM` rejection for create/update contract validation.
+- Re-ran focused API test, lint, typecheck, and build successfully.

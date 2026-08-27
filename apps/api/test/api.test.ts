@@ -264,7 +264,9 @@ describe('API', () => {
     await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).send(valid).expect(501);
     for (const body of [{ ...valid, frequency: 'CUSTOM' }, { ...valid, interval_value: 0 }, { ...valid, occurrence_limit: 0 }, { ...valid, end_at: '2026-09-01T09:00:00.000Z', occurrence_limit: 2 }, { ...valid, timezone: 'UTC' }, { ...valid, workflow_id: 'not-a-uuid' }]) await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).send(body).expect(400);
     await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ active: true, team_id: f.workspaceId, assignee_id: f.memberId, cursor: 'opaque', limit: 10 }).expect(501);
+    for (const query of [{ active: 'maybe' }, { limit: 0 }, { limit: 'many' }, { team_id: 'not-a-uuid' }, { assignee_id: 'not-a-uuid' }]) await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query(query).expect(400);
     await request(app!.getHttpServer()).get(`${base}/recurrence-rules/not-a-uuid`).set('Cookie', f.memberCookie).expect(400);
+    await request(app!.getHttpServer()).patch(rule).set('Cookie', f.memberCookie).send({ frequency: 'CUSTOM' }).expect(400);
     await request(app!.getHttpServer()).patch(rule).set('Cookie', f.memberCookie).send({ frequency: 'WEEKLY', interval_value: 2 }).expect(501);
     await request(app!.getHttpServer()).post(`${rule}/stop`).set('Cookie', f.memberCookie).expect(501);
   });
