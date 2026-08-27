@@ -254,21 +254,53 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ ...query, assignee_id: 'not-a-uuid' }).expect(400).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
   });
 
-  it('wires recurrence routes and validates inputs; Task 7 owns business behavior', async () => {
+  it('implements recurrence API persistence and orchestration', async () => {
     const f = await fixture(app!);
+    const { sql: db } = createDatabase(databaseUrl);
+    const team = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Ops', manager_user_id: f.memberId }).expect(201)).body.data;
+    const otherTeam = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/teams`).set('Cookie', f.outsiderCookie).send({ name: 'Alien' }).expect(201)).body.data;
     const base = `/api/v1/workspaces/${f.workspaceId}`;
     const create = `${base}/recurring-tasks`;
-    const rule = `${base}/recurrence-rules/${randomUUID()}`;
-    const valid = { name: 'Daily inspection', frequency: 'DAILY', interval_value: 1, timezone: 'Asia/Jakarta', start_at: '2026-08-27T09:00:00.000Z', title: 'Inspect pump', workflow_id: f.workflowId, team_id: f.workspaceId, assignee_ids: [f.memberId], primary_assignee_id: f.memberId };
+    const valid = { name: 'Daily inspection', frequency: 'DAILY', interval_value: 1, timezone: 'Asia/Jakarta', start_at: '2026-08-27T09:00:00.000Z', title: 'Inspect pump', workflow_id: f.workflowId, team_id: team.id, assignee_ids: [f.memberId], primary_assignee_id: f.memberId };
     await request(app!.getHttpServer()).post(create).send(valid).expect(401);
-    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).send(valid).expect(501);
-    for (const body of [{ ...valid, frequency: 'CUSTOM' }, { ...valid, interval_value: 0 }, { ...valid, occurrence_limit: 0 }, { ...valid, end_at: '2026-09-01T09:00:00.000Z', occurrence_limit: 2 }, { ...valid, timezone: 'UTC' }, { ...valid, workflow_id: 'not-a-uuid' }]) await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).send(body).expect(400);
-    await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ active: true, team_id: f.workspaceId, assignee_id: f.memberId, cursor: 'opaque', limit: 10 }).expect(501);
-    for (const query of [{ active: 'maybe' }, { limit: 0 }, { limit: 'many' }, { team_id: 'not-a-uuid' }, { assignee_id: 'not-a-uuid' }]) await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query(query).expect(400);
-    await request(app!.getHttpServer()).get(`${base}/recurrence-rules/not-a-uuid`).set('Cookie', f.memberCookie).expect(400);
-    await request(app!.getHttpServer()).patch(rule).set('Cookie', f.memberCookie).send({ frequency: 'CUSTOM' }).expect(400);
-    await request(app!.getHttpServer()).patch(rule).set('Cookie', f.memberCookie).send({ frequency: 'WEEKLY', interval_value: 2 }).expect(501);
-    await request(app!.getHttpServer()).post(`${rule}/stop`).set('Cookie', f.memberCookie).expect(501);
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).send(valid).expect(400).expect(({ body }) => expect(body.message).toBe('IDEMPOTENCY_KEY_REQUIRED'));
+    for (const body of [{ ...valid, frequency: 'CUSTOM' }, { ...valid, interval_value: 0 }, { ...valid, occurrence_limit: 0 }, { ...valid, end_at: '2026-09-01T09:00:00.000Z', occurrence_limit: 2 }, { ...valid, timezone: 'UTC' }, { ...valid, workflow_id: 'not-a-uuid' }]) await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', randomUUID()).send(body).expect(400);
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', randomUUID()).send({ ...valid, team_id: otherTeam.id }).expect(400).expect(({ body }) => expect(body.message).toBe('TEAM_SCOPE_MISMATCH'));
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', randomUUID()).send({ ...valid, assignee_ids: [f.outsiderId], primary_assignee_id: f.outsiderId }).expect(400).expect(({ body }) => expect(body.message).toBe('CROSS_WORKSPACE_REFERENCE'));
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', randomUUID()).send({ ...valid, end_at: '2026-08-26T09:00:00.000Z' }).expect(400).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
+    const created = await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-1').send(valid).expect(201);
+    expect(created.body.data.first_occurrence.recurrence_rule_id).toBe(created.body.data.id);
+    expect(created.body.data.next_run_at > created.body.data.first_occurrence.start_at).toBe(true);
+    const history = await db`SELECT event_type, metadata FROM task_history WHERE task_id=${created.body.data.first_occurrence.id} ORDER BY created_at, id`;
+    expect(history).toEqual([{ event_type: 'RECURRING_GENERATED', metadata: { recurrence_rule_id: created.body.data.id, scheduled_for: created.body.data.first_occurrence.start_at } }]);
+    const occurrence = await db`SELECT recurrence_rule_id, task_id, scheduled_for FROM recurrence_occurrences WHERE task_id=${created.body.data.first_occurrence.id}`;
+    expect(occurrence[0]).toMatchObject({ recurrence_rule_id: created.body.data.id, task_id: created.body.data.first_occurrence.id });
+    const outbox = await db`SELECT status, event_type, available_at FROM outbox_events WHERE aggregate_id=${created.body.data.id}`;
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({ status: 'PENDING', event_type: 'RECURRENCE_WAKEUP' });
+    const replay = await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-1').send(valid).expect(201);
+    expect(replay.body).toEqual(created.body);
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-1').send({ ...valid, title: 'Changed' }).expect(409).expect(({ body }) => expect(body.message).toBe('IDEMPOTENCY_REUSE'));
+    const limitOne = await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-2').send({ ...valid, name: 'One-shot', occurrence_limit: 1 }).expect(201);
+    expect(limitOne.body.data.next_run_at).toBeNull();
+    expect((await db`SELECT id FROM outbox_events WHERE aggregate_id=${limitOne.body.data.id}`)).toEqual([]);
+    const endBoundary = await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-3').send({ ...valid, name: 'Ends once', end_at: valid.start_at }).expect(201);
+    expect(endBoundary.body.data.next_run_at).toBeNull();
+    const rules = await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ active: true, team_id: team.id, assignee_id: f.memberId, limit: 10 }).expect(200);
+    expect(rules.body.data.map((r: { id: string }) => r.id)).toContain(created.body.data.id);
+    await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ team_id: otherTeam.id }).expect(400).expect(({ body }) => expect(body.message).toBe('TEAM_SCOPE_MISMATCH'));
+    await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ assignee_id: f.outsiderId }).expect(400).expect(({ body }) => expect(body.message).toBe('CROSS_WORKSPACE_REFERENCE'));
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.otherWorkspaceId}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.outsiderCookie).expect(404);
+    await request(app!.getHttpServer()).get(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data.id).toBe(created.body.data.id));
+    const patched = await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ interval_value: 2 }).expect(200);
+    expect(patched.body.data.next_run_at > created.body.data.first_occurrence.start_at).toBe(true);
+    expect((await db`SELECT count(*)::int AS count FROM recurrence_occurrences WHERE recurrence_rule_id=${created.body.data.id}`)[0].count).toBe(1);
+    const noFuture = await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ end_at: created.body.data.first_occurrence.start_at }).expect(200);
+    expect(noFuture.body.data.next_run_at).toBeNull();
+    const stopped = await request(app!.getHttpServer()).post(`${base}/recurrence-rules/${created.body.data.id}/stop`).set('Cookie', f.memberCookie).expect(200);
+    expect(stopped.body.data).toMatchObject({ is_active: false, next_run_at: null });
+    expect((await db`SELECT id FROM tasks WHERE recurrence_rule_id=${created.body.data.id}`)).toHaveLength(1);
+    await db.end();
   });
 
   it('supports task workflow, assignment, transition, filtering, and history APIs', async () => {
