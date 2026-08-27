@@ -8,12 +8,13 @@ Phase 6 Recurring Tasks + Worker Foundation implementation in progress.
 - Task 2 completed: worker BullMQ/Redis manifest dependencies and exact `test:integration` script added.
 - Task 3 completed: recurrence rules, occurrence ledger, outbox, task relationship, and API idempotency schema/migration added; database validation passed.
 - Task 4 completed: pure recurrence calculator, anchor semantics, end-condition handling, monthly fallback, DST-safe local interval math, and domain tests added.
+- Task 5 completed: canonical Task validation, creation, assignee, and history transaction helpers extracted and review-clean.
 
 ## Current blocker
 None.
 
 ## Next actions
-- Extract shared canonical Task creation primitives for recurrence generation.
+- Implement the recurrence API surface/contracts only.
 - Continue sequentially through Phase 6 plan. Stop after Phase 6.
 
 ## Phases/features that must not be started
