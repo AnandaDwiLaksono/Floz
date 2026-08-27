@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 const now = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 const updated = () => timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
@@ -141,6 +141,35 @@ export const workflowTransitions = pgTable('workflow_transitions', {
   createdAt: now()
 }, (table) => ({ transition: unique().on(table.workflowId, table.fromStatusId, table.toStatusId) }));
 
+export const recurrenceRules = pgTable('recurrence_rules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  name: varchar('name', { length: 255 }).notNull(),
+  frequency: varchar('frequency', { length: 16 }).notNull(),
+  intervalValue: integer('interval_value').notNull(),
+  startAt: timestamp('start_at', { withTimezone: true }).notNull(),
+  endAt: timestamp('end_at', { withTimezone: true }),
+  occurrenceLimit: integer('occurrence_limit'),
+  timezone: varchar('timezone', { length: 64 }).notNull(),
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+  isActive: boolean('is_active').notNull().default(true),
+  anchorDay: integer('anchor_day'),
+  generatedCount: integer('generated_count').notNull().default(0),
+  ruleConfig: jsonb('rule_config').notNull().default({}),
+  templateSnapshot: jsonb('template_snapshot').notNull(),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: now(),
+  updatedAt: updated()
+}, (table) => ({
+  frequencyCheck: check('recurrence_rules_frequency_check', sql`${table.frequency} IN ('DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM')`),
+  intervalValueCheck: check('recurrence_rules_interval_value_check', sql`${table.intervalValue} > 0`),
+  occurrenceLimitCheck: check('recurrence_rules_occurrence_limit_check', sql`${table.occurrenceLimit} IS NULL OR ${table.occurrenceLimit} > 0`),
+  anchorDayCheck: check('recurrence_rules_anchor_day_check', sql`${table.anchorDay} IS NULL OR ${table.anchorDay} BETWEEN 1 AND 31`),
+  generatedCountCheck: check('recurrence_rules_generated_count_check', sql`${table.generatedCount} >= 0`),
+  endOrLimitCheck: check('recurrence_rules_end_or_limit_check', sql`NOT (${table.endAt} IS NOT NULL AND ${table.occurrenceLimit} IS NOT NULL)`),
+  dueScan: index('recurrence_rules_due_scan_idx').on(table.workspaceId, table.nextRunAt).where(sql`${table.isActive} = true`)
+}));
+
 export const tasks = pgTable('tasks', {
   id: uuid('id').primaryKey().defaultRandom(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
@@ -152,6 +181,7 @@ export const tasks = pgTable('tasks', {
   priority: varchar('priority', { length: 16 }).notNull().default('MEDIUM'),
   teamId: uuid('team_id').references(() => teams.id),
   creatorId: uuid('creator_id').notNull().references(() => users.id),
+  recurrenceRuleId: uuid('recurrence_rule_id').references(() => recurrenceRules.id),
   startAt: timestamp('start_at', { withTimezone: true }),
   dueAt: timestamp('due_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -160,6 +190,46 @@ export const tasks = pgTable('tasks', {
   updatedAt: updated(),
   deletedAt: timestamp('deleted_at', { withTimezone: true })
 }, (table) => ({ workspaceTaskKey: unique().on(table.workspaceId, table.taskKey), workspaceStatus: index('tasks_workspace_status_idx').on(table.workspaceId, table.statusId), workspacePriority: index('tasks_workspace_priority_idx').on(table.workspaceId, table.priority) }));
+
+export const recurrenceOccurrences = pgTable('recurrence_occurrences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  recurrenceRuleId: uuid('recurrence_rule_id').notNull().references(() => recurrenceRules.id),
+  scheduledFor: timestamp('scheduled_for', { withTimezone: true }).notNull(),
+  taskId: uuid('task_id').notNull().references(() => tasks.id),
+  createdAt: now()
+}, (table) => ({ recurrenceRuleScheduledFor: unique().on(table.recurrenceRuleId, table.scheduledFor), task: unique().on(table.taskId) }));
+
+export const outboxEvents = pgTable('outbox_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').references(() => workspaces.id),
+  aggregateType: varchar('aggregate_type', { length: 64 }).notNull(),
+  aggregateId: uuid('aggregate_id').notNull(),
+  eventType: varchar('event_type', { length: 64 }).notNull(),
+  payload: jsonb('payload').notNull(),
+  status: varchar('status', { length: 16 }).notNull().default('PENDING'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  availableAt: timestamp('available_at', { withTimezone: true }).notNull().defaultNow(),
+  claimedBy: varchar('claimed_by', { length: 255 }),
+  claimedUntil: timestamp('claimed_until', { withTimezone: true }),
+  createdAt: now(),
+  dispatchedAt: timestamp('dispatched_at', { withTimezone: true })
+}, (table) => ({
+  statusCheck: check('outbox_events_status_check', sql`${table.status} IN ('PENDING', 'DISPATCHED', 'FAILED')`),
+  attemptCountCheck: check('outbox_events_attempt_count_check', sql`${table.attemptCount} >= 0`),
+  statusAvailable: index('outbox_events_status_available_idx').on(table.status, table.availableAt)
+}));
+
+export const recurrenceIdempotencyKeys = pgTable('recurrence_idempotency_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  idempotencyKey: text('idempotency_key').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  recurrenceRuleId: uuid('recurrence_rule_id').references(() => recurrenceRules.id),
+  firstOccurrenceTaskId: uuid('first_occurrence_task_id').references(() => tasks.id),
+  createdAt: now(),
+  updatedAt: updated()
+}, (table) => ({ workspaceKey: unique().on(table.workspaceId, table.idempotencyKey) }));
 
 export const taskAssignees = pgTable('task_assignees', {
   id: uuid('id').primaryKey().defaultRandom(),
