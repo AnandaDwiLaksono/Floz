@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import { createDatabase } from '@floz/database';
 import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/auth';
+import { createTaskAssigneesTx, createTaskRecordTx, validateTaskTemplateReferences, writeTaskHistoryTx } from '../src/task-core';
 
 const databaseUrl = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/floz';
 process.env.DATABASE_URL = databaseUrl;
@@ -61,6 +62,10 @@ async function fixture(app: INestApplication): Promise<Fixture> {
 }
 
 describe('API', () => {
+  it('exports canonical transactional task creation helpers', () => {
+    expect([validateTaskTemplateReferences, createTaskRecordTx, createTaskAssigneesTx, writeTaskHistoryTx].every((helper) => typeof helper === 'function')).toBe(true);
+  });
+
   let app: INestApplication | undefined;
 
   beforeAll(async () => { await resetDatabase(); });
@@ -253,8 +258,7 @@ describe('API', () => {
     const workflows = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/workflows`).set('Cookie', f.memberCookie).expect(200);
     expect(workflows.body.data[0].statuses[0].is_initial).toBe(true);
     const created = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).send({ title: 'Fix pump', assignees: [{ user_id: f.memberId, is_primary: true }] }).expect(201);
-    expect(created.body.data.title).toBe('Fix pump');
-    expect(created.body.data.assignees).toEqual([{ user_id: f.memberId, is_primary: true, full_name: 'Member' }]);
+    expect(created.body.data).toMatchObject({ title: 'Fix pump', task_key: 'TASK-1', assignees: [{ user_id: f.memberId, is_primary: true, full_name: 'Member' }] });
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).query({ q: 'Fix', sort: '-created_at', limit: 10 }).expect(200).expect(({ body }) => expect(body.meta.pagination.has_more).toBe(false));
     const transitions = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/tasks/${created.body.data.id}/available-transitions`).set('Cookie', f.memberCookie).expect(200);
     expect(transitions.body.data.length).toBeGreaterThan(0);
