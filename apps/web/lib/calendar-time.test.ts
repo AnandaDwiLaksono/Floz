@@ -54,12 +54,42 @@ describe('calendar-time', () => {
     expect(getTodayInTimezone('Asia/Jakarta')).toBe('2026-08-02');
   });
 
-  it('builds a calendar endpoint query with bounded range and filters', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ data: [], meta: { from: 'a', to: 'b' } });
-    vi.stubGlobal('fetch', fetchMock as never);
+  it('fetches and returns the calendar task list', async () => {
+    const calendarTaskList = {
+      data: [
+        {
+          id: 'task-1',
+          task_key: 'TASK-1',
+          title: 'Plan release',
+          status: { id: 'status-1', name: 'In Progress', code: 'IN_PROGRESS', category: 'active' },
+          priority: 'HIGH' as const,
+          start_at: '2026-08-01T09:00:00.000Z',
+          due_at: '2026-08-01T10:00:00.000Z',
+          is_deadline_only: false,
+          primary_assignee: { id: 'user-1', full_name: 'Ada Lovelace' },
+        },
+      ],
+      meta: { from: 'a', to: 'b' },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(calendarTaskList), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
 
-    await api.tasks.calendar('ws-1', { from: 'a', to: 'b', team_id: 'team-1', assignee_id: 'user-1' });
+    const result = await api.tasks.calendar('ws-1', {
+      from: 'a',
+      to: 'b',
+      team_id: 'team-1',
+      assignee_id: 'user-1',
+    });
 
-    expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/workspaces/ws-1/calendar/tasks?from=a&to=b&team_id=team-1&assignee_id=user-1');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/api/v1/workspaces/ws-1/calendar/tasks?from=a&to=b&team_id=team-1&assignee_id=user-1',
+      expect.objectContaining({ credentials: 'include' })
+    );
+    expect(result).toEqual(calendarTaskList);
   });
 });
