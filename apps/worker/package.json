@@ -8,7 +8,7 @@
     "lint": "eslint src test --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:integration": "vitest run test/*.integration.test.ts --passWithNoTests",
+    "test:integration": "vitest run test/*.integration.test.ts",
     "build": "tsc",
     "start": "node dist/main.js"
   },
