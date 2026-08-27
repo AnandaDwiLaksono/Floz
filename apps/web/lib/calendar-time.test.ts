@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { api } from './api-client';
 import {
   formatCalendarLabel,
   getCalendarDayKey,
@@ -51,5 +52,14 @@ describe('calendar-time', () => {
     expect(getCalendarDayKey('2026-08-01T23:30:00.000Z', 'Asia/Jakarta')).toBe('2026-08-02');
     expect(formatCalendarLabel('2026-08-01T23:30:00.000Z', 'Asia/Jakarta', { dateStyle: 'short' })).toBe('02/08/2026');
     expect(getTodayInTimezone('Asia/Jakarta')).toBe('2026-08-02');
+  });
+
+  it('builds a calendar endpoint query with bounded range and filters', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ data: [], meta: { from: 'a', to: 'b' } });
+    vi.stubGlobal('fetch', fetchMock as never);
+
+    await api.tasks.calendar('ws-1', { from: 'a', to: 'b', team_id: 'team-1', assignee_id: 'user-1' });
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/workspaces/ws-1/calendar/tasks?from=a&to=b&team_id=team-1&assignee_id=user-1');
   });
 });
