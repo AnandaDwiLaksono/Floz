@@ -326,16 +326,22 @@ describe('API', () => {
     expect(reclaimed).toHaveLength(1);
     expect(reclaimed[0].attempt_count).toBe(2);
     expect(await markOutboxDispatched(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-a', now: new Date(now.getTime() + 1002) })).toBe(false);
-    expect(await markOutboxRetry(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-a', availableAt: new Date(now.getTime() + 2000) })).toBe(false);
+    expect(await markOutboxRetry(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-a', availableAt: new Date(now.getTime() + 2000), now: new Date(now.getTime() + 1002) })).toBe(false);
 
     const retryAt = new Date(now.getTime() + 3000);
-    expect(await markOutboxRetry(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-b', availableAt: retryAt })).toBe(true);
+    const expiredAt = new Date(now.getTime() + 2002);
+    const beforeExpiredRetry = (await db`SELECT status,available_at,attempt_count,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0];
+    expect(await markOutboxRetry(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-b', availableAt: retryAt, now: expiredAt })).toBe(false);
+    expect((await db`SELECT status,available_at,attempt_count,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0]).toEqual(beforeExpiredRetry);
+    const current = await claimOutboxBatch(db, { dispatcherId: 'dispatcher-c', now: expiredAt, leaseMs: 1000, limit: 10 });
+    expect(current.some((row) => row.id === reclaimed[0].id)).toBe(true);
+    expect(await markOutboxRetry(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-c', availableAt: retryAt, now: expiredAt })).toBe(true);
     const retried = (await db`SELECT status,available_at,attempt_count,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0];
-    expect(retried).toMatchObject({ status: 'FAILED', attempt_count: 2, claimed_by: null, claimed_until: null });
+    expect(retried).toMatchObject({ status: 'FAILED', attempt_count: 3, claimed_by: null, claimed_until: null });
     expect(new Date(retried.available_at).toISOString()).toBe(retryAt.toISOString());
     expect((await claimOutboxBatch(db, { dispatcherId: 'dispatcher-c', now: new Date(retryAt.getTime() - 1), leaseMs: 1000, limit: 10 })).some((row) => row.id === reclaimed[0].id)).toBe(false);
     const later = await claimOutboxBatch(db, { dispatcherId: 'dispatcher-c', now: retryAt, leaseMs: 1000, limit: 10 });
-    expect(later.some((row) => row.id === reclaimed[0].id && row.attempt_count === 3)).toBe(true);
+    expect(later.some((row) => row.id === reclaimed[0].id && row.attempt_count === 4)).toBe(true);
     expect(await markOutboxDispatched(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-c', now: retryAt })).toBe(true);
     expect((await db`SELECT status,dispatched_at,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0]).toMatchObject({ status: 'DISPATCHED', claimed_by: null, claimed_until: null });
     await db.end();

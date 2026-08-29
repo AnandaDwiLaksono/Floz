@@ -25,7 +25,7 @@ export async function markOutboxDispatched(db: Db, input: { id: string; dispatch
   return rows.length > 0;
 }
 
-export async function markOutboxRetry(db: Db, input: { id: string; dispatcherId: string; availableAt: Date }) {
-  const rows = await db<{ id: string }[]>`UPDATE outbox_events SET status='FAILED',available_at=${input.availableAt.toISOString()},claimed_by=NULL,claimed_until=NULL WHERE id=${input.id} AND claimed_by=${input.dispatcherId} AND status IN ('PENDING','FAILED') RETURNING id`;
+export async function markOutboxRetry(db: Db, input: { id: string; dispatcherId: string; availableAt: Date; now: Date }) {
+  const rows = await db<{ id: string }[]>`UPDATE outbox_events SET status='FAILED',available_at=${input.availableAt.toISOString()},claimed_by=NULL,claimed_until=NULL WHERE id=${input.id} AND claimed_by=${input.dispatcherId} AND claimed_until > ${input.now.toISOString()} AND status IN ('PENDING','FAILED') RETURNING id`;
   return rows.length > 0;
 }
