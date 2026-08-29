@@ -3,6 +3,7 @@ import type { Sql, TransactionSql } from 'postgres';
 import { resolveFirstOccurrence, resolveNextOccurrence, resolveNextOccurrenceAfterUpdate, validateExecutableRecurrence } from '@floz/domain';
 import { AuthService } from './auth';
 import { createTaskAssigneesTx, createTaskRecordTx, validateTaskTemplateReferences, writeTaskHistoryTx } from './task-core';
+import { enqueueWakeupIntentTx } from './outbox.service';
 import type { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto } from './recurrence.dto';
 
 type RootSql = Sql;
@@ -55,7 +56,7 @@ export class RecurrenceService {
       await writeTaskHistoryTx(sql, taskRow.id, actorId);
       await sql`UPDATE task_history SET event_type='RECURRING_GENERATED',metadata=${JSON.stringify({ recurrence_rule_id: created.id, scheduled_for: firstAt.toISOString() })}::jsonb WHERE task_id=${taskRow.id} AND event_type='CREATED'`;
       await sql`INSERT INTO recurrence_idempotency_keys(workspace_id,idempotency_key,request_fingerprint,recurrence_rule_id,first_occurrence_task_id) VALUES(${workspaceId},${idempotencyKey},${fp},${created.id},${taskRow.id})`;
-      if (nextRunAt) await sql`INSERT INTO outbox_events(workspace_id,aggregate_type,aggregate_id,event_type,payload,available_at) VALUES(${workspaceId},'recurrence_rule',${created.id},'RECURRENCE_WAKEUP',${JSON.stringify({ recurrence_rule_id: created.id })}::jsonb,${nextRunAt.toISOString()})`;
+      if (nextRunAt) await enqueueWakeupIntentTx(sql, { workspaceId, aggregateId: created.id, payload: { recurrence_rule_id: created.id }, availableAt: nextRunAt });
       return { ...rule(await this.getRule(sql, workspaceId, created.id)), first_occurrence: await this.getTask(sql, workspaceId, taskRow.id) };
     });
   }

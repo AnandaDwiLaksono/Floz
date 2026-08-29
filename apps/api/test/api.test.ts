@@ -9,6 +9,7 @@ import { createDatabase } from '@floz/database';
 import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/auth';
 import { createTaskAssigneesTx, createTaskRecordTx, validateTaskTemplateReferences, writeTaskHistoryTx } from '../src/task-core';
+import { claimOutboxBatch, markOutboxDispatched, markOutboxRetry } from '../src/outbox.service';
 
 const databaseUrl = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/floz';
 process.env.DATABASE_URL = databaseUrl;
@@ -307,6 +308,36 @@ describe('API', () => {
     expect(stopped.body.data).toMatchObject({ is_active: false, next_run_at: null });
     expect(await db`SELECT id FROM outbox_events WHERE aggregate_id=${created.body.data.id} AND event_type='RECURRENCE_WAKEUP' AND status='PENDING'`).toEqual([]);
     expect((await db`SELECT id FROM tasks WHERE recurrence_rule_id=${created.body.data.id}`)).toHaveLength(1);
+    await db.end();
+  });
+
+  it('claims, retries, reclaims, and ownership-guards outbox events', async () => {
+    const f = await fixture(app!);
+    const { sql: db } = createDatabase(databaseUrl);
+    const now = new Date('2026-08-30T00:00:00.000Z');
+    const ids = await db<{ id: string }[]>`INSERT INTO outbox_events(workspace_id,aggregate_type,aggregate_id,event_type,payload,status,available_at) VALUES (${f.workspaceId},'recurrence_rule',${randomUUID()},'RECURRENCE_WAKEUP','{}','PENDING',${now.toISOString()}),(${f.workspaceId},'recurrence_rule',${randomUUID()},'RECURRENCE_WAKEUP','{}','FAILED',${now.toISOString()}),(${f.workspaceId},'recurrence_rule',${randomUUID()},'RECURRENCE_WAKEUP','{}','PENDING',${new Date(now.getTime() + 60_000).toISOString()}),(${f.workspaceId},'recurrence_rule',${randomUUID()},'RECURRENCE_WAKEUP','{}','DISPATCHED',${now.toISOString()}) RETURNING id`;
+
+    const first = await claimOutboxBatch(db, { dispatcherId: 'dispatcher-a', now, leaseMs: 1000, limit: 10 });
+    expect(first.map((row) => row.id).sort()).toEqual(ids.slice(0, 2).map((row) => row.id).sort());
+    expect(first.every((row) => row.attempt_count === 1)).toBe(true);
+    expect(await claimOutboxBatch(db, { dispatcherId: 'dispatcher-b', now, leaseMs: 1000, limit: 10 })).toEqual([]);
+
+    const reclaimed = await claimOutboxBatch(db, { dispatcherId: 'dispatcher-b', now: new Date(now.getTime() + 1001), leaseMs: 1000, limit: 1 });
+    expect(reclaimed).toHaveLength(1);
+    expect(reclaimed[0].attempt_count).toBe(2);
+    expect(await markOutboxDispatched(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-a', now: new Date(now.getTime() + 1002) })).toBe(false);
+    expect(await markOutboxRetry(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-a', availableAt: new Date(now.getTime() + 2000) })).toBe(false);
+
+    const retryAt = new Date(now.getTime() + 3000);
+    expect(await markOutboxRetry(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-b', availableAt: retryAt })).toBe(true);
+    const retried = (await db`SELECT status,available_at,attempt_count,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0];
+    expect(retried).toMatchObject({ status: 'FAILED', attempt_count: 2, claimed_by: null, claimed_until: null });
+    expect(new Date(retried.available_at).toISOString()).toBe(retryAt.toISOString());
+    expect((await claimOutboxBatch(db, { dispatcherId: 'dispatcher-c', now: new Date(retryAt.getTime() - 1), leaseMs: 1000, limit: 10 })).some((row) => row.id === reclaimed[0].id)).toBe(false);
+    const later = await claimOutboxBatch(db, { dispatcherId: 'dispatcher-c', now: retryAt, leaseMs: 1000, limit: 10 });
+    expect(later.some((row) => row.id === reclaimed[0].id && row.attempt_count === 3)).toBe(true);
+    expect(await markOutboxDispatched(db, { id: reclaimed[0].id, dispatcherId: 'dispatcher-c', now: retryAt })).toBe(true);
+    expect((await db`SELECT status,dispatched_at,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0]).toMatchObject({ status: 'DISPATCHED', claimed_by: null, claimed_until: null });
     await db.end();
   });
 
