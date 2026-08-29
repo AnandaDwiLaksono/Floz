@@ -1,7 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { Worker } from 'bullmq';
 import { parseWorkerEnv } from '@floz/config';
+import { claimOutboxBatch, createDatabase, markOutboxDispatched, markOutboxRetry } from '@floz/database';
 import { createLogger } from '@floz/observability';
+import { dispatchOutboxBatch } from './outbox-dispatcher.js';
 import { createRecurrenceQueue, createRedisConnection, QUEUES } from './queues.js';
 
 type Closeable = { close(): Promise<unknown> };
@@ -16,6 +19,7 @@ export type WorkerRuntimeDeps = {
   createConnection?: (env: WorkerEnv) => Connection;
   createQueue?: (connection: Connection) => Closeable;
   createWorker?: (connection: Connection, concurrency: number) => Closeable;
+  startDispatcher?: (queue: Closeable) => () => void;
 };
 
 export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
@@ -28,12 +32,22 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
     ((value: Connection, concurrency: number) =>
       new Worker(QUEUES.recurrenceWakeup, async () => undefined, { connection: value as never, concurrency }))
   )(connection, env.WORKER_CONCURRENCY);
+  const stopDispatcher = (deps.startDispatcher ?? ((value: Closeable) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) return () => undefined;
+    const { sql } = createDatabase(databaseUrl);
+    const dispatch = () => void dispatchOutboxBatch({ db: sql, queue: value as never, dispatcherId: randomUUID(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry }).catch((error: unknown) => logger.error(error, 'outbox dispatch failed'));
+    dispatch();
+    const timer = setInterval(dispatch, 1000);
+    return () => { clearInterval(timer); void sql.end(); };
+  }))(queue);
   let stopping: Promise<void> | undefined;
   const stop = () => {
     if (!stopping) {
       stopping = (async () => {
         process.off('SIGINT', onSignal);
         process.off('SIGTERM', onSignal);
+        stopDispatcher();
         await worker.close();
         await queue.close();
         await (connection.quit?.() ?? connection.close?.());

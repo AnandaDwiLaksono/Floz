@@ -4,7 +4,7 @@ import { Queue } from 'bullmq';
 export const QUEUES = { recurrenceWakeup: 'recurrence-wakeup' } as const;
 
 export function buildWakeupJobId(input: { recurrenceRuleId: string; scheduledFor: string }): string {
-  return `recurrence:${input.recurrenceRuleId}:${input.scheduledFor}`;
+  return `recurrence-${input.recurrenceRuleId}-${input.scheduledFor.replaceAll(':', '_')}`;
 }
 
 export function createRedisConnection(config: { REDIS_URL: string; REDIS_TLS: boolean }): Redis {

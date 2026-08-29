@@ -6,7 +6,7 @@ import { startWorkerRuntime } from '../src/main.js';
 describe('recurrence worker runtime', () => {
   it('builds deterministic wake-up job IDs', () => {
     expect(buildWakeupJobId({ recurrenceRuleId: 'rule-1', scheduledFor: '2026-08-30T12:00:00.000Z' })).toBe(
-      'recurrence:rule-1:2026-08-30T12:00:00.000Z'
+      'recurrence-rule-1-2026-08-30T12_00_00.000Z'
     );
   });
 

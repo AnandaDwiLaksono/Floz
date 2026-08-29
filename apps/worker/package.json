@@ -8,15 +8,17 @@
     "lint": "eslint src test --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:integration": "vitest run test/*.integration.test.ts",
+    "test:integration": "vitest run test/outbox.integration.test.ts test/outbox-db.integration.test.ts",
     "build": "tsc",
     "start": "node dist/main.js"
   },
   "dependencies": {
     "@floz/config": "workspace:*",
+    "@floz/database": "workspace:*",
     "@floz/observability": "workspace:*",
     "bullmq": "^5",
-    "ioredis": "^5"
+    "ioredis": "^5",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
