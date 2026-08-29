@@ -11,12 +11,13 @@ Phase 6 Recurring Tasks + Worker Foundation implementation in progress.
 - Task 5 completed: canonical Task validation, creation, assignee, and history transaction helpers extracted and review-clean.
 - Task 6 completed: recurrence routes, DTO contracts, runtime validation, auth wiring, and unsupported CUSTOM validation added and review-clean.
 - Task 7 completed: recurrence create/idempotency/CRUD, first occurrence, prospective updates, stop semantics, and wake-up intents added and review-clean.
+- Task 8 completed: transactional outbox enqueue, atomic lease claim/reclaim, ownership-safe dispatch/retry state transitions, and PostgreSQL tests added and review-clean.
 
 ## Current blocker
 None.
 
 ## Next actions
-- Implement reusable transactional-outbox insert, claim, dispatch-state, and retry primitives.
+- Implement BullMQ queue wiring, deterministic job IDs, bounded worker runtime, and graceful shutdown.
 - Continue sequentially through Phase 6 plan. Stop after Phase 6.
 
 ## Phases/features that must not be started
