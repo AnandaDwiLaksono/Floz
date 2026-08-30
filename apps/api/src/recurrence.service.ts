@@ -78,7 +78,7 @@ export class RecurrenceService {
   async update(workspaceId: string, id: string, input: UpdateRecurrenceRuleDto) {
     return this.sql.begin(async (sql: TransactionSql) => {
       const current = await this.getRule(sql, workspaceId, id);
-       if (input.assignee_ids) await this.validateAssignees(sql, workspaceId, input.assignee_ids);
+       if (input.assignee_ids || input.primary_assignee_id) await this.validateAssignees(sql, workspaceId, [...(input.assignee_ids ?? []), ...(input.primary_assignee_id ? [input.primary_assignee_id] : [])]);
        if (input.team_id && !(await sql`SELECT id FROM teams WHERE id=${input.team_id} AND workspace_id=${workspaceId}`)[0]) throw new BadRequestException('TEAM_SCOPE_MISMATCH');
        if (input.workflow_id && !(await sql`SELECT id FROM workflows WHERE id=${input.workflow_id} AND workspace_id=${workspaceId}`)[0]) throw new BadRequestException('WORKFLOW_SCOPE_MISMATCH');
        const latest = (await sql<{ scheduled_for: Date }[]>`SELECT scheduled_for FROM recurrence_occurrences WHERE recurrence_rule_id=${id} ORDER BY scheduled_for DESC LIMIT 1`)[0]?.scheduled_for ?? current.start_at;

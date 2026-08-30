@@ -304,6 +304,7 @@ describe('API', () => {
     await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ end_at: '2026-09-01T09:00:00.000Z', occurrence_limit: 2 }).expect(400);
     await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ end_at: '2026-08-26T09:00:00.000Z' }).expect(400);
     await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ workflow_id: otherWorkflowId }).expect(400).expect(({ body }) => expect(body.message).toBe('WORKFLOW_SCOPE_MISMATCH'));
+    await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ primary_assignee_id: f.outsiderId }).expect(400).expect(({ body }) => expect(body.message).toBe('CROSS_WORKSPACE_REFERENCE'));
     const beforePatch = await db`SELECT scheduled_for,task_id FROM recurrence_occurrences WHERE recurrence_rule_id=${created.body.data.id} ORDER BY scheduled_for`;
     const patched = await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ frequency: 'WEEKLY', interval_value: 2, start_at: '2026-08-28T09:00:00.000Z' }).expect(200);
     expect(new Date(patched.body.data.next_run_at).getTime()).toBeGreaterThan(Date.now());
