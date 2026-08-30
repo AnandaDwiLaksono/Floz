@@ -2,11 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase, createAssignmentNotifications, createDueSoonNotifications, createOverdueNotifications } from '../src/index.js';
 
-describe('notification core integration', () => {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) throw new Error('DATABASE_URL is required');
+const databaseUrl = process.env.DATABASE_URL;
 
-  const { db, sql } = createDatabase(databaseUrl);
+describe.skipIf(!databaseUrl)('notification core integration', () => {
+  const { db, sql } = databaseUrl ? createDatabase(databaseUrl) : ({} as any);
 
   let workspaceId: string;
   let userId1: string;
