@@ -2,10 +2,14 @@ import { createHash } from 'node:crypto';
 import { Redis, type RedisOptions } from 'ioredis';
 import { Queue } from 'bullmq';
 
-export const QUEUES = { recurrenceWakeup: 'recurrence-wakeup' } as const;
+export const QUEUES = { recurrenceWakeup: 'recurrence-wakeup', notificationDueSoon: 'notification-due-soon' } as const;
 
 export function buildWakeupJobId(input: { recurrenceRuleId: string; scheduledFor: string }): string {
   return `recurrence-${createHash('sha256').update(JSON.stringify([input.recurrenceRuleId, input.scheduledFor])).digest('hex')}`;
+}
+
+export function buildDueSoonWakeupJobId(taskId: string, dueVersion: number): string {
+  return `due_soon-${createHash('sha256').update(`due_soon:${taskId}:${dueVersion}`).digest('hex')}`;
 }
 
 export function createRedisConnection(config: { REDIS_URL: string; REDIS_TLS: boolean }): Redis {

@@ -2,6 +2,11 @@ import type { Sql, TransactionSql } from 'postgres';
 
 type Db = Sql | TransactionSql;
 export type OutboxEvent = { id: string; workspace_id: string; aggregate_id: string; event_type: string; payload: Record<string, unknown>; available_at: Date; attempt_count: number; claimed_by: string; claimed_until: Date };
+export type InsertOutboxEventInput = { workspaceId?: string | null; aggregateType: string; aggregateId: string; eventType: string; payload: Record<string, unknown>; availableAt?: Date };
+
+export async function insertOutboxEvent(db: Db, input: InsertOutboxEventInput) {
+  return (await db<{ id: string }[]>`INSERT INTO outbox_events(workspace_id,aggregate_type,aggregate_id,event_type,payload,available_at) VALUES(${input.workspaceId ?? null},${input.aggregateType},${input.aggregateId},${input.eventType},${JSON.stringify(input.payload)}::jsonb,${(input.availableAt ?? new Date()).toISOString()}) RETURNING id`)[0];
+}
 
 export async function claimOutboxBatch(db: Db, options: { claimToken: string; now: Date; leaseMs: number; limit: number }): Promise<OutboxEvent[]> {
   return db<OutboxEvent[]>`WITH candidates AS (SELECT id FROM outbox_events WHERE status IN ('PENDING','FAILED') AND available_at <= ${options.now.toISOString()} AND (claimed_until IS NULL OR claimed_until <= ${options.now.toISOString()}) ORDER BY available_at,id LIMIT ${options.limit} FOR UPDATE SKIP LOCKED) UPDATE outbox_events AS event SET claimed_by=${options.claimToken},claimed_until=${new Date(options.now.getTime() + options.leaseMs).toISOString()},attempt_count=event.attempt_count+1 FROM candidates WHERE event.id=candidates.id RETURNING event.id,event.workspace_id,event.aggregate_id,event.event_type,event.payload,event.available_at,event.attempt_count,event.claimed_by,event.claimed_until`;
