@@ -105,9 +105,18 @@ Real integration evidence:
 
 ## Completion status
 
-- Phase 6 implementation is functionally complete.
-- Full final branch gates are not yet all recorded in this report: `./scripts/test-clean-db.ps1`, full `pnpm test`, and full `pnpm build` should be re-run in final verification task before declaring branch ready to merge.
-- Phase 7 has not started.
+- worker/Redis integration: 14/14 PASS
+- real BullMQ/Redis outbox integration: 2/2 PASS
+- API tests: 20/20 PASS
+- Playwright E2E: 6/6 PASS
+- pnpm lint: PASS
+- pnpm typecheck: PASS
+- pnpm test: PASS
+- pnpm build: PASS
+- Phase 6 final commit: `671daa5`
+- merged Phase 6 milestone: `497a743`
+- Phase 6 complete
+- Phase 7 not started
 
 ## Remaining open decisions / limitations
 
