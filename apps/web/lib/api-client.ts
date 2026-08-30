@@ -76,6 +76,19 @@ export interface Task {
   assignees: TaskAssignee[];
 }
 
+export interface RecurringTask {
+  id: string;
+  name: string;
+  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+  interval_value: number;
+  timezone: string;
+  start_at: string;
+  end_at: string | null;
+  occurrence_limit: number | null;
+  next_run_at: string | null;
+  first_occurrence: Task;
+}
+
 export interface TaskHistoryItem {
   id: string;
   task_id: string;
@@ -251,6 +264,28 @@ export const api = {
     },
     get: (workspaceId: string, taskId: string) =>
       apiFetch<{ data: Task }>(`/workspaces/${workspaceId}/tasks/${taskId}`),
+    createRecurring: (workspaceId: string, input: {
+      name: string;
+      frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+      interval_value: number;
+      timezone: string;
+      start_at: string;
+      end_at?: string;
+      occurrence_limit?: number;
+      title: string;
+      description?: string | null;
+      workflow_id?: string;
+      priority?: string;
+      team_id?: string | null;
+      assignee_ids?: string[];
+      primary_assignee_id?: string | null;
+      due_time?: string | null;
+    }, idempotencyKey: string) =>
+      apiFetch<{ data: RecurringTask }>(`/workspaces/${workspaceId}/recurring-tasks`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(input),
+      }),
     create: (
       workspaceId: string,
       body: {
