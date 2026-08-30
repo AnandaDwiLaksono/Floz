@@ -184,6 +184,7 @@ export const tasks = pgTable('tasks', {
   recurrenceRuleId: uuid('recurrence_rule_id').references(() => recurrenceRules.id),
   startAt: timestamp('start_at', { withTimezone: true }),
   dueAt: timestamp('due_at', { withTimezone: true }),
+  dueVersion: integer('due_version').notNull().default(0),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   version: integer('version').notNull().default(1),
   createdAt: now(),
@@ -250,6 +251,47 @@ export const taskHistory = pgTable('task_history', {
   metadata: jsonb('metadata'),
   createdAt: now()
 });
+
+export const notifications = pgTable('notifications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: varchar('type', { length: 50 }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  body: text('body').notNull(),
+  entityType: varchar('entity_type', { length: 50 }).default('TASK'),
+  entityId: uuid('entity_id'),
+  isRead: boolean('is_read').notNull().default(false),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  createdAt: now()
+}, (table) => ({
+  userReadCreated: index('idx_notifications_user_read_created').on(table.userId, table.isRead, table.createdAt),
+  wsUserReadCreatedId: index('idx_notifications_ws_user_read_created_id').on(table.workspaceId, table.userId, table.isRead, table.createdAt, table.id)
+}));
+
+export const notificationDedupLedger = pgTable('notification_dedup_ledger', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  dedupKey: varchar('dedup_key', { length: 255 }).notNull(),
+  notificationId: uuid('notification_id'),
+  createdAt: now()
+}, (table) => ({
+  wsKey: uniqueIndex('idx_notification_dedup_ws_key').on(table.workspaceId, table.dedupKey)
+}));
+
+export const notificationPreferences = pgTable('notification_preferences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  notificationType: varchar('notification_type', { length: 50 }).notNull(),
+  inAppEnabled: boolean('in_app_enabled').notNull().default(true),
+  emailEnabled: boolean('email_enabled').notNull().default(false),
+  pushEnabled: boolean('push_enabled').notNull().default(false),
+  createdAt: now(),
+  updatedAt: updated()
+}, (table) => ({
+  userWsType: uniqueIndex('idx_notification_pref_user_ws_type').on(table.userId, table.workspaceId, table.notificationType)
+}));
 
 export const userRelations = relations(users, ({ many }) => ({ sessions: many(sessions), memberships: many(workspaceMemberships) }));
 export const workspaceRelations = relations(workspaces, ({ many }) => ({ memberships: many(workspaceMemberships), teams: many(teams) }));
