@@ -10,6 +10,7 @@ describe('recurrence generation integration', () => {
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
   const { sql } = createDatabase(databaseUrl);
   const { sql: claimSql } = createDatabase(databaseUrl);
+  const { sql: competingClaimSql } = createDatabase(databaseUrl);
   const ids = {
     user: randomUUID(),
     assignee: randomUUID(),
@@ -51,7 +52,7 @@ describe('recurrence generation integration', () => {
     await sql`INSERT INTO recurrence_occurrences(workspace_id,recurrence_rule_id,scheduled_for,task_id) VALUES(${ids.workspace},${ids.duplicateRule},'2026-08-30T10:00:00.000Z',${historicalTask.id})`;
   });
 
-  afterAll(async () => { await claimSql.end(); await sql.end(); });
+  afterAll(async () => { await competingClaimSql.end(); await claimSql.end(); await sql.end(); });
 
   it('generates canonical occurrence with team and due_time semantics', async () => {
     await expect(generateDueOccurrence({ sql, recurrenceRuleId: ids.rule, now: new Date('2026-08-30T09:00:00.000Z') })).resolves.toBe('generated');
@@ -110,8 +111,13 @@ describe('recurrence generation integration', () => {
     await sql`UPDATE recurrence_rules SET is_active=false`;
     const ruleId = randomUUID();
     await sql`INSERT INTO recurrence_rules(id,workspace_id,name,frequency,interval_value,start_at,timezone,next_run_at,is_active,generated_count,template_snapshot,created_by) VALUES(${ruleId},${ids.workspace},'Concurrent reconciliation','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T12:00:00.000Z',true,1,${JSON.stringify({ title: 'Concurrent reconciliation', workflow_id: ids.workflow })}::jsonb,${ids.user})`;
-    const results = await Promise.all([runReconciliationIteration({ sql, claimSql, now: new Date('2026-08-30T12:00:00.000Z'), batchSize: 1 }), runReconciliationIteration({ sql, claimSql, now: new Date('2026-08-30T12:00:00.000Z'), batchSize: 1 })]);
-    expect(results.reduce((total, result) => total + result, 0)).toBe(1);
+    const held = await claimSql.reserve();
+    await held`SELECT pg_advisory_lock(hashtextextended('floz:recurrence-reconciliation', 0))`;
+    const competing = runReconciliationIteration({ sql, claimSql: competingClaimSql, now: new Date('2026-08-30T12:00:00.000Z'), batchSize: 1 });
+    await expect(competing).resolves.toBe(0);
+    await held`SELECT pg_advisory_unlock(hashtextextended('floz:recurrence-reconciliation', 0))`;
+    held.release();
+    await expect(runReconciliationIteration({ sql, claimSql, now: new Date('2026-08-30T12:00:00.000Z'), batchSize: 1 })).resolves.toBe(1);
     expect((await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM recurrence_occurrences WHERE recurrence_rule_id=${ruleId}`)[0].count).toBe(1);
   });
 
@@ -126,11 +132,11 @@ describe('recurrence generation integration', () => {
     await sql`UPDATE recurrence_rules SET is_active=false WHERE id<>${ids.catchupRule}`;
     await sql`UPDATE recurrence_rules SET is_active=true,next_run_at='2026-08-28T09:00:00.000Z',generated_count=1 WHERE id=${ids.catchupRule}`;
     const now = new Date('2026-08-31T09:00:00.000Z');
-    await expect(runReconciliationIteration({ sql, now, batchSize: 2 })).resolves.toBe(2);
+    await expect(runReconciliationIteration({ sql, claimSql, now, batchSize: 2 })).resolves.toBe(2);
     expect((await sql<{ scheduled_for: string }[]>`SELECT scheduled_for FROM recurrence_occurrences WHERE recurrence_rule_id=${ids.catchupRule} ORDER BY scheduled_for`).map((row) => row.scheduled_for)).toEqual(['2026-08-28 09:00:00+00', '2026-08-29 09:00:00+00']);
-    await expect(runReconciliationIteration({ sql, now, batchSize: 2 })).resolves.toBe(2);
+    await expect(runReconciliationIteration({ sql, claimSql, now, batchSize: 2 })).resolves.toBe(2);
     expect((await sql<{ scheduled_for: string }[]>`SELECT scheduled_for FROM recurrence_occurrences WHERE recurrence_rule_id=${ids.catchupRule} ORDER BY scheduled_for`).map((row) => row.scheduled_for)).toEqual(['2026-08-28 09:00:00+00', '2026-08-29 09:00:00+00', '2026-08-30 09:00:00+00', '2026-08-31 09:00:00+00']);
-    await expect(runReconciliationIteration({ sql, now, batchSize: 2 })).resolves.toBe(0);
+    await expect(runReconciliationIteration({ sql, claimSql, now, batchSize: 2 })).resolves.toBe(0);
   });
 
   it('rejects cross-workspace team references', async () => {
