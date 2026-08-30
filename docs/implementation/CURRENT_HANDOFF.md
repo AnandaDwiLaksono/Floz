@@ -20,13 +20,14 @@ Phase 6 Recurring Tasks + Worker Foundation implementation in progress.
 - Task 13 completed: recurrence list/get/update/stop API filters, pagination, workspace isolation, prospective updates, stop idempotency, and PostgreSQL coverage added and review-clean.
 - Task 14 completed: existing Task Create UI extended with supported recurring controls, workspace timezone default, CUSTOM reserved state, Idempotency-Key client call, status preservation, and accessible modal focus handling; review-clean.
 - Task 15 completed: real-stack recurring Task create, persistence, first occurrence, and refresh E2E passed.
+- Task 16 completed: Phase 6 documentation, report, and status updated.
 
 ## Current blocker
 None.
 
 ## Next actions
-- Finalize Phase 6 documentation, resolved/open decisions, report, and status.
-- Continue sequentially through Phase 6 plan. Stop after Phase 6.
+- Run full Phase 6 verification gates (clean DB, E2E, full workspace lint/typecheck/test/build), inspect diff, and prepare branch.
+- Stop after Phase 6.
 
 ## Phases/features that must not be started
 - Phase 7 and later.

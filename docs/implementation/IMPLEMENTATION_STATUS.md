@@ -15,10 +15,10 @@ Completed
 - Phase 5 Calendar projection, thin route, timezone utility, task handoff, docs, and integration coverage.
 
 In Progress
-- Phase 6 implementation is in progress.
+- Phase 6 final verification and documentation are in progress.
 
 Next
-- Phase 6 implementation is in progress.
+- Run final Phase 6 verification gates and prepare branch for integration.
 
 Blocked
 - None.
