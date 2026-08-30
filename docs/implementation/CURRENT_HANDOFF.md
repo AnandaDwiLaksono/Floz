@@ -17,11 +17,13 @@ Phase 6 Recurring Tasks + Worker Foundation implementation in progress.
 - Task 11 completed: canonical due occurrence generation, wake-up processor, shared Task rules, occurrence deduplication, and recurrence history added and review-clean.
 - Task 12 completed: stale-safe PostgreSQL-concurrent reconciliation and bounded chronological catch-up added and review-clean.
 
+- Task 13 completed: recurrence list/get/update/stop API filters, pagination, workspace isolation, prospective updates, stop idempotency, and PostgreSQL coverage added and review-clean.
+
 ## Current blocker
 None.
 
 ## Next actions
-- Complete recurrence list/get/update/stop API behavior and PostgreSQL coverage.
+- Extend the existing Task Create experience with the minimal supported recurring-task controls.
 - Continue sequentially through Phase 6 plan. Stop after Phase 6.
 
 ## Phases/features that must not be started
