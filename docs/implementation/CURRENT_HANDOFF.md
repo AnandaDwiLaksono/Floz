@@ -13,6 +13,7 @@ Phase 6 Recurring Tasks + Worker Foundation implementation in progress.
 - Task 7 completed: recurrence create/idempotency/CRUD, first occurrence, prospective updates, stop semantics, and wake-up intents added and review-clean.
 - Task 8 completed: transactional outbox enqueue, atomic lease claim/reclaim, ownership-safe dispatch/retry state transitions, and PostgreSQL tests added and review-clean.
 - Task 9 completed: BullMQ worker runtime foundation, Redis configuration, deterministic job ID builder, bounded concurrency, and graceful shutdown added; real BullMQ job-ID enqueue verification deferred to Task 10.
+- Task 10 completed: unique claim tokens, collision-safe hashed BullMQ job IDs, lease ownership/retry/reclaim tests, non-overlapping dispatcher loop, and awaited dispatcher/SQL shutdown added. Worker Redis integration requires Redis at `REDIS_URL`.
 
 ## Current blocker
 None.

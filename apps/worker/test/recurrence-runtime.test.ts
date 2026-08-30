@@ -6,7 +6,13 @@ import { startWorkerRuntime } from '../src/main.js';
 describe('recurrence worker runtime', () => {
   it('builds deterministic wake-up job IDs', () => {
     expect(buildWakeupJobId({ recurrenceRuleId: 'rule-1', scheduledFor: '2026-08-30T12:00:00.000Z' })).toBe(
-      'recurrence-rule-1-2026-08-30T12_00_00.000Z'
+      'recurrence-b6a9c436b2798d4b4b0eed82fa106080265243e22e7d6440e442c447855ce938'
+    );
+  });
+
+  it('keeps distinct wake-up identities distinct', () => {
+    expect(buildWakeupJobId({ recurrenceRuleId: 'a:b', scheduledFor: 'c' })).not.toBe(
+      buildWakeupJobId({ recurrenceRuleId: 'a', scheduledFor: 'b:c' })
     );
   });
 
@@ -23,13 +29,14 @@ describe('recurrence worker runtime', () => {
       env: parseWorkerEnv({ NODE_ENV: 'test' }),
       createConnection: () => ({ close: async () => void closed.push('connection') }),
       createQueue: () => ({ close: async () => void closed.push('queue') }),
-      createWorker: () => ({ close: async () => void closed.push('worker') })
+      createWorker: () => ({ close: async () => void closed.push('worker') }),
+      startDispatcher: () => async () => void closed.push('dispatcher')
     });
 
     await runtime.stop();
     await runtime.stop();
 
-    expect(closed).toEqual(['worker', 'queue', 'connection']);
+    expect(closed).toEqual(['dispatcher', 'worker', 'queue', 'connection']);
   });
 
   it('stops through SIGTERM without Redis', async () => {
@@ -39,13 +46,14 @@ describe('recurrence worker runtime', () => {
       registerSignalHandlers: true,
       createConnection: () => ({ close: async () => void closed.push('connection') }),
       createQueue: () => ({ close: async () => void closed.push('queue') }),
-      createWorker: () => ({ close: async () => void closed.push('worker') })
+      createWorker: () => ({ close: async () => void closed.push('worker') }),
+      startDispatcher: () => async () => void closed.push('dispatcher')
     });
 
     process.emit('SIGTERM');
     await new Promise((resolve) => setImmediate(resolve));
 
-    expect(closed).toEqual(['worker', 'queue', 'connection']);
+    expect(closed).toEqual(['dispatcher', 'worker', 'queue', 'connection']);
     await runtime.stop();
   });
 });

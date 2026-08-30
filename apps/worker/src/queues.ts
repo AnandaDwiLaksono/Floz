@@ -1,10 +1,11 @@
+import { createHash } from 'node:crypto';
 import { Redis, type RedisOptions } from 'ioredis';
 import { Queue } from 'bullmq';
 
 export const QUEUES = { recurrenceWakeup: 'recurrence-wakeup' } as const;
 
 export function buildWakeupJobId(input: { recurrenceRuleId: string; scheduledFor: string }): string {
-  return `recurrence-${input.recurrenceRuleId}-${input.scheduledFor.replaceAll(':', '_')}`;
+  return `recurrence-${createHash('sha256').update(JSON.stringify([input.recurrenceRuleId, input.scheduledFor])).digest('hex')}`;
 }
 
 export function createRedisConnection(config: { REDIS_URL: string; REDIS_TLS: boolean }): Redis {

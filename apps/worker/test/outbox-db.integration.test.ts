@@ -32,7 +32,7 @@ describe('real dispatcher integration', () => {
     const ruleId = randomUUID();
     const scheduledFor = '2026-08-30T12:00:00.000Z';
     const inserted = await sql<{ id: string }[]>`INSERT INTO outbox_events(workspace_id,aggregate_type,aggregate_id,event_type,payload,status,available_at) VALUES(NULL,'recurrence_rule',${ruleId},'RECURRENCE_WAKEUP',${JSON.stringify({ recurrence_rule_id: ruleId, scheduled_for: scheduledFor })}::jsonb,'PENDING',${scheduledFor}) RETURNING id`;
-    const first = await dispatchOutboxBatch({ db: sql, queue, dispatcherId: 'dispatcher-a', now: new Date('2026-08-30T12:00:01.000Z'), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
+    const first = await dispatchOutboxBatch({ db: sql, queue, now: new Date('2026-08-30T12:00:01.000Z'), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(first).toBe(1);
     const row = (await sql`SELECT status,claimed_by,claimed_until,dispatched_at FROM outbox_events WHERE id=${inserted[0].id}`)[0];
     expect(row.status).toBe('DISPATCHED');
@@ -44,7 +44,7 @@ describe('real dispatcher integration', () => {
     expect(job?.data).toEqual({ recurrence_rule_id: ruleId, scheduled_for: scheduledFor });
 
     await sql`UPDATE outbox_events SET status='PENDING',dispatched_at=NULL,claimed_by=NULL,claimed_until=NULL WHERE id=${inserted[0].id}`;
-    const second = await dispatchOutboxBatch({ db: sql, queue, dispatcherId: 'dispatcher-b', now: new Date('2026-08-30T12:00:02.000Z'), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
+    const second = await dispatchOutboxBatch({ db: sql, queue, now: new Date('2026-08-30T12:00:02.000Z'), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(second).toBe(1);
     expect(await queue.getJob(jobId)).not.toBeNull();
     expect(await queue.getJobCounts('waiting')).toMatchObject({ waiting: 1 });

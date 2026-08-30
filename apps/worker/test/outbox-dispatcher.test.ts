@@ -15,11 +15,12 @@ describe('outbox dispatcher', () => {
       claimed_until: new Date('2026-08-30T00:01:00.000Z')
     };
     const order: string[] = [];
-    const queue = { add: vi.fn(async (_name: string, _data: unknown, options: { jobId: string }) => { order.push('enqueue'); expect(options.jobId).toBe('recurrence-rule-1-2026-08-30T12_00_00.000Z'); }) };
+    const queue = { add: vi.fn(async (_name: string, _data: unknown, options: { jobId: string }) => { order.push('enqueue'); expect(options.jobId).toBe('recurrence-b6a9c436b2798d4b4b0eed82fa106080265243e22e7d6440e442c447855ce938'); }) };
     const claim = vi.fn(async () => [row]);
     const dispatched = vi.fn(async () => { order.push('dispatched'); return true; });
 
-    expect(await dispatchOutboxBatch({ db: {}, queue, dispatcherId: 'dispatcher-1', now: new Date('2026-08-30T00:00:01.000Z'), claim, markDispatched: dispatched, markRetry: vi.fn() })).toBe(1);
+    expect(await dispatchOutboxBatch({ db: {}, queue, now: new Date('2026-08-30T00:00:01.000Z'), claim, markDispatched: dispatched, markRetry: vi.fn(), claimToken: 'claim-token-1' })).toBe(1);
+    expect(claim).toHaveBeenCalledWith({}, expect.objectContaining({ claimToken: 'claim-token-1' }));
     expect(order).toEqual(['enqueue', 'dispatched']);
   });
 
@@ -27,7 +28,7 @@ describe('outbox dispatcher', () => {
     const retry = vi.fn(async () => true);
     const row = { id: 'event-1', workspace_id: 'workspace-1', aggregate_id: 'rule-1', event_type: 'RECURRENCE_WAKEUP', payload: { recurrence_rule_id: 'rule-1' }, available_at: new Date(), attempt_count: 2, claimed_by: 'dispatcher-1', claimed_until: new Date(Date.now() + 60_000) };
     const queue = { add: vi.fn(async () => { throw new Error('redis unavailable'); }) };
-    expect(await dispatchOutboxBatch({ db: {}, queue, dispatcherId: 'dispatcher-1', now: new Date(), claim: async () => [row], markDispatched: vi.fn(), markRetry: retry, retryDelayMs: 5000 })).toBe(0);
-    expect(retry).toHaveBeenCalledWith({}, expect.objectContaining({ id: 'event-1', dispatcherId: 'dispatcher-1' }));
+    expect(await dispatchOutboxBatch({ db: {}, queue, now: new Date(), claim: async () => [row], markDispatched: vi.fn(), markRetry: retry, retryDelayMs: 5000, claimToken: 'claim-token-2' })).toBe(0);
+    expect(retry).toHaveBeenCalledWith({}, expect.objectContaining({ id: 'event-1', claimToken: 'claim-token-2' }));
   });
 });

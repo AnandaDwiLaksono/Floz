@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 import { Worker } from 'bullmq';
 import { parseWorkerEnv } from '@floz/config';
 import { claimOutboxBatch, createDatabase, markOutboxDispatched, markOutboxRetry } from '@floz/database';
@@ -9,6 +10,7 @@ import { createRecurrenceQueue, createRedisConnection, QUEUES } from './queues.j
 
 type Closeable = { close(): Promise<unknown> };
 type Connection = { close?(): Promise<unknown>; quit?(): Promise<unknown> };
+type DispatcherStop = () => Promise<void>;
 type WorkerEnv = ReturnType<typeof parseWorkerEnv>;
 type Logger = ReturnType<typeof createLogger>;
 
@@ -19,7 +21,7 @@ export type WorkerRuntimeDeps = {
   createConnection?: (env: WorkerEnv) => Connection;
   createQueue?: (connection: Connection) => Closeable;
   createWorker?: (connection: Connection, concurrency: number) => Closeable;
-  startDispatcher?: (queue: Closeable) => () => void;
+  startDispatcher?: (queue: Closeable) => DispatcherStop;
 };
 
 export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
@@ -34,12 +36,21 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
   )(connection, env.WORKER_CONCURRENCY);
   const stopDispatcher = (deps.startDispatcher ?? ((value: Closeable) => {
     const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) return () => undefined;
+    if (!databaseUrl) return async () => undefined;
     const { sql } = createDatabase(databaseUrl);
-    const dispatch = () => void dispatchOutboxBatch({ db: sql, queue: value as never, dispatcherId: randomUUID(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry }).catch((error: unknown) => logger.error(error, 'outbox dispatch failed'));
-    dispatch();
-    const timer = setInterval(dispatch, 1000);
-    return () => { clearInterval(timer); void sql.end(); };
+    const claimToken = randomUUID();
+    const controller = new AbortController();
+    const active = (async () => {
+      while (!controller.signal.aborted) {
+        await dispatchOutboxBatch({ db: sql, queue: value as never, claimToken, claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry }).catch((error: unknown) => logger.error(error, 'outbox dispatch failed'));
+        await delay(1000, undefined, { signal: controller.signal }).catch(() => undefined);
+      }
+    })();
+    return async () => {
+      controller.abort();
+      await active;
+      await sql.end();
+    };
   }))(queue);
   let stopping: Promise<void> | undefined;
   const stop = () => {
@@ -47,7 +58,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
       stopping = (async () => {
         process.off('SIGINT', onSignal);
         process.off('SIGTERM', onSignal);
-        stopDispatcher();
+        await stopDispatcher();
         await worker.close();
         await queue.close();
         await (connection.quit?.() ?? connection.close?.());
