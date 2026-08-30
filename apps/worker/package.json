@@ -15,6 +15,7 @@
   "dependencies": {
     "@floz/config": "workspace:*",
     "@floz/database": "workspace:*",
+    "@floz/domain": "workspace:*",
     "@floz/observability": "workspace:*",
     "bullmq": "^5",
     "ioredis": "^5",

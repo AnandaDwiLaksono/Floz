@@ -196,6 +196,9 @@ importers:
       '@floz/database':
         specifier: workspace:*
         version: link:../../database
+      '@floz/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@floz/observability':
         specifier: workspace:*
         version: link:../../packages/observability

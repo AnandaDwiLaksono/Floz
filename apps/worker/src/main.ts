@@ -6,6 +6,7 @@ import { parseWorkerEnv } from '@floz/config';
 import { claimOutboxBatch, createDatabase, markOutboxDispatched, markOutboxRetry } from '@floz/database';
 import { createLogger } from '@floz/observability';
 import { dispatchOutboxBatch } from './outbox-dispatcher.js';
+import { createRecurrenceWorker } from './recurrence-worker.js';
 import { createRecurrenceQueue, createRedisConnection, QUEUES } from './queues.js';
 
 type Closeable = { close(): Promise<unknown> };
@@ -31,8 +32,15 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
   const queue = (deps.createQueue ?? ((value: Connection) => createRecurrenceQueue(value as never)))(connection);
   const worker = (
     deps.createWorker ??
-    ((value: Connection, concurrency: number) =>
-      new Worker(QUEUES.recurrenceWakeup, async () => undefined, { connection: value as never, concurrency }))
+    ((value: Connection, concurrency: number) => {
+      const databaseUrl = process.env.DATABASE_URL;
+      if (!databaseUrl) throw new Error('DATABASE_URL is required');
+      const { sql } = createDatabase(databaseUrl);
+      const bullWorker = new Worker(QUEUES.recurrenceWakeup, createRecurrenceWorker({ sql }), { connection: value as never, concurrency });
+      const close = bullWorker.close.bind(bullWorker);
+      bullWorker.close = async () => { await close(); await sql.end(); };
+      return bullWorker;
+    })
   )(connection, env.WORKER_CONCURRENCY);
   const stopDispatcher = (deps.startDispatcher ?? ((value: Closeable) => {
     const databaseUrl = process.env.DATABASE_URL;
