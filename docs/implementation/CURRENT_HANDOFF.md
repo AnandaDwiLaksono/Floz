@@ -24,7 +24,7 @@ Phase 6 Recurring Tasks + Worker Foundation implementation in progress.
 None.
 
 ## Next actions
-- Add real-stack recurring Task creation E2E.
+- Add and verify real-stack recurring Task creation E2E with disposable PostgreSQL, Redis, API, worker, web, and Playwright.
 - Continue sequentially through Phase 6 plan. Stop after Phase 6.
 
 ## Phases/features that must not be started
