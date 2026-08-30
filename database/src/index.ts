@@ -11,3 +11,4 @@ export function createDatabase(url: string) {
 
 export * from './schema.js';
 export * from './outbox.js';
+export * from './task-core.js';

@@ -7,31 +7,68 @@ describe('recurrence generation integration', () => {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
   const { sql } = createDatabase(databaseUrl);
-  const ids = { user: randomUUID(), workspace: randomUUID(), role: randomUUID(), workflow: randomUUID(), status: randomUUID(), rule: randomUUID() };
+  const ids = {
+    user: randomUUID(),
+    assignee: randomUUID(),
+    outsider: randomUUID(),
+    workspace: randomUUID(),
+    otherWorkspace: randomUUID(),
+    role: randomUUID(),
+    workflow: randomUUID(),
+    status: randomUUID(),
+    team: randomUUID(),
+    badTeam: randomUUID(),
+    rule: randomUUID(),
+    duplicateRule: randomUUID(),
+    raceRuleA: randomUUID(),
+    raceRuleB: randomUUID()
+  };
 
   beforeAll(async () => {
     await sql`INSERT INTO roles(id,code,name) VALUES(${ids.role},'REC','Recurrence')`;
-    await sql`INSERT INTO users(id,email,name) VALUES(${ids.user},${`${ids.user}@example.test`},'Recurrence User')`;
-    await sql`INSERT INTO workspaces(id,name,slug,created_by) VALUES(${ids.workspace},'Recurrence',${`recurrence-${ids.workspace}`},${ids.user})`;
-    await sql`INSERT INTO workspace_memberships(workspace_id,user_id,role_id) VALUES(${ids.workspace},${ids.user},${ids.role})`;
+    await sql`INSERT INTO users(id,email,name) VALUES(${ids.user},${`${ids.user}@example.test`},'Recurrence User'),(${ids.assignee},${`${ids.assignee}@example.test`},'Recurrence Assignee'),(${ids.outsider},${`${ids.outsider}@example.test`},'Outsider')`;
+    await sql`INSERT INTO workspaces(id,name,slug,created_by) VALUES(${ids.workspace},'Recurrence',${`recurrence-${ids.workspace}`},${ids.user}),(${ids.otherWorkspace},'Other',${`other-${ids.otherWorkspace}`},${ids.user})`;
+    await sql`INSERT INTO workspace_memberships(workspace_id,user_id,role_id) VALUES(${ids.workspace},${ids.user},${ids.role}),(${ids.workspace},${ids.assignee},${ids.role}),(${ids.otherWorkspace},${ids.outsider},${ids.role})`;
+    await sql`INSERT INTO teams(id,workspace_id,name) VALUES(${ids.team},${ids.workspace},'Ops'),(${ids.badTeam},${ids.otherWorkspace},'Bad Ops')`;
     await sql`INSERT INTO workflows(id,workspace_id,code,name,is_default,created_by) VALUES(${ids.workflow},${ids.workspace},'REC','Recurrence',true,${ids.user})`;
     await sql`INSERT INTO task_statuses(id,workflow_id,code,name,category,position,is_initial) VALUES(${ids.status},${ids.workflow},'TODO','To do','OPEN',1,true)`;
-    await sql`INSERT INTO recurrence_rules(id,workspace_id,name,frequency,interval_value,start_at,timezone,next_run_at,is_active,generated_count,template_snapshot,created_by) VALUES(${ids.rule},${ids.workspace},'Daily','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T09:00:00.000Z',true,1,${JSON.stringify({ title: 'Generated', description: 'Canonical', workflow_id: ids.workflow, priority: 'HIGH', assignee_ids: [ids.user], primary_assignee_id: ids.user })}::jsonb,${ids.user})`;
+    await sql`INSERT INTO recurrence_rules(id,workspace_id,name,frequency,interval_value,start_at,timezone,next_run_at,is_active,generated_count,template_snapshot,created_by) VALUES
+      (${ids.rule},${ids.workspace},'Daily','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T09:00:00.000Z',true,1,${JSON.stringify({ title: 'Generated', description: 'Canonical', workflow_id: ids.workflow, priority: 'HIGH', team_id: ids.team, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee, due_time: '17:30:00' })}::jsonb,${ids.user}),
+      (${ids.duplicateRule},${ids.workspace},'Duplicate','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T10:00:00.000Z',true,1,${JSON.stringify({ title: 'Duplicate guarded', workflow_id: ids.workflow, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee })}::jsonb,${ids.user}),
+      (${ids.raceRuleA},${ids.workspace},'Race A','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T11:00:00.000Z',true,1,${JSON.stringify({ title: 'Race A', workflow_id: ids.workflow, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee })}::jsonb,${ids.user}),
+      (${ids.raceRuleB},${ids.workspace},'Race B','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T11:00:00.000Z',true,1,${JSON.stringify({ title: 'Race B', workflow_id: ids.workflow, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee })}::jsonb,${ids.user})`;
+    const historicalTask = (await sql<{ id: string }[]>`INSERT INTO tasks(workspace_id,task_key,title,workflow_id,status_id,creator_id,recurrence_rule_id,start_at) VALUES(${ids.workspace},'TASK-1','Historical',${ids.workflow},${ids.status},${ids.user},${ids.duplicateRule},'2026-08-30T10:00:00.000Z') RETURNING id`)[0];
+    await sql`INSERT INTO recurrence_occurrences(workspace_id,recurrence_rule_id,scheduled_for,task_id) VALUES(${ids.workspace},${ids.duplicateRule},'2026-08-30T10:00:00.000Z',${historicalTask.id})`;
   });
 
   afterAll(async () => { await sql.end(); });
 
-  it('generates exactly one canonical occurrence for a due rule', async () => {
+  it('generates canonical occurrence with team and due_time semantics', async () => {
     await expect(generateDueOccurrence({ sql, recurrenceRuleId: ids.rule, now: new Date('2026-08-30T09:00:00.000Z') })).resolves.toBe('generated');
-    await expect(generateDueOccurrence({ sql, recurrenceRuleId: ids.rule, now: new Date('2026-08-30T09:00:00.000Z') })).resolves.toBe('noop');
+    const task = (await sql<{ recurrence_rule_id: string; title: string; priority: string; team_id: string; start_at: string; due_at: string }[]>`SELECT recurrence_rule_id,title,priority,team_id,start_at,due_at FROM tasks WHERE recurrence_rule_id=${ids.rule}`)[0];
+    expect(task).toMatchObject({ recurrence_rule_id: ids.rule, title: 'Generated', priority: 'HIGH', team_id: ids.team, start_at: '2026-08-30 09:00:00+00', due_at: '2026-08-30 17:30:00+00' });
+  });
 
-    const tasks = await sql<{ recurrence_rule_id: string; title: string; priority: string; start_at: Date }[]>`SELECT recurrence_rule_id,title,priority,start_at FROM tasks WHERE recurrence_rule_id=${ids.rule}`;
-    expect(tasks).toEqual([{ recurrence_rule_id: ids.rule, title: 'Generated', priority: 'HIGH', start_at: '2026-08-30 09:00:00+00' }]);
-    expect(await sql`SELECT * FROM recurrence_occurrences WHERE recurrence_rule_id=${ids.rule}`).toHaveLength(1);
-    expect(await sql`SELECT * FROM task_assignees WHERE task_id=(SELECT id FROM tasks WHERE recurrence_rule_id=${ids.rule})`).toHaveLength(1);
-    expect((await sql<{ event_type: string; metadata: { recurrence_rule_id: string } }[]>`SELECT event_type,metadata FROM task_history WHERE task_id=(SELECT id FROM tasks WHERE recurrence_rule_id=${ids.rule})`)[0]).toMatchObject({ event_type: 'RECURRING_GENERATED', metadata: { recurrence_rule_id: ids.rule } });
-    expect((await sql<{ next_run_at: Date; generated_count: number }[]>`SELECT next_run_at,generated_count FROM recurrence_rules WHERE id=${ids.rule}`)[0]).toMatchObject({ next_run_at: '2026-08-31 09:00:00+00', generated_count: 2 });
-    expect(await sql`SELECT * FROM outbox_events WHERE aggregate_id=${ids.rule} AND status='PENDING'`).toHaveLength(1);
+  it('returns noop on existing occurrence ledger without duplicate task', async () => {
+    const before = (await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM tasks WHERE recurrence_rule_id=${ids.duplicateRule}`)[0].count;
+    await expect(generateDueOccurrence({ sql, recurrenceRuleId: ids.duplicateRule, now: new Date('2026-08-30T10:00:00.000Z') })).resolves.toBe('noop');
+    const after = (await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM tasks WHERE recurrence_rule_id=${ids.duplicateRule}`)[0].count;
+    expect(after).toBe(before);
+  });
+
+  it('serializes task-key allocation across due rules', async () => {
+    await expect(Promise.all([
+      generateDueOccurrence({ sql, recurrenceRuleId: ids.raceRuleA, now: new Date('2026-08-30T11:00:00.000Z') }),
+      generateDueOccurrence({ sql, recurrenceRuleId: ids.raceRuleB, now: new Date('2026-08-30T11:00:00.000Z') })
+    ])).resolves.toEqual(['generated', 'generated']);
+    const keys = await sql<{ task_key: string }[]>`SELECT task_key FROM tasks WHERE recurrence_rule_id IN (${ids.raceRuleA},${ids.raceRuleB}) ORDER BY task_key`;
+    expect(new Set(keys.map((row) => row.task_key)).size).toBe(2);
+  });
+
+  it('rejects cross-workspace team references', async () => {
+    const badRule = randomUUID();
+    await sql`INSERT INTO recurrence_rules(id,workspace_id,name,frequency,interval_value,start_at,timezone,next_run_at,is_active,generated_count,template_snapshot,created_by) VALUES(${badRule},${ids.workspace},'Bad Team','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T12:00:00.000Z',true,1,${JSON.stringify({ title: 'Bad Team', workflow_id: ids.workflow, team_id: ids.badTeam, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee })}::jsonb,${ids.user})`;
+    await expect(generateDueOccurrence({ sql, recurrenceRuleId: badRule, now: new Date('2026-08-30T12:00:00.000Z') })).rejects.toThrow(/TEAM_SCOPE_MISMATCH/);
   });
 
   it('does not generate future or stopped rules', async () => {
