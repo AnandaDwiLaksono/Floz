@@ -21,12 +21,13 @@ Phase 6 Recurring Tasks + Worker Foundation implementation in progress.
 - Task 14 completed: existing Task Create UI extended with supported recurring controls, workspace timezone default, CUSTOM reserved state, Idempotency-Key client call, status preservation, and accessible modal focus handling; review-clean.
 - Task 15 completed: real-stack recurring Task create, persistence, first occurrence, and refresh E2E passed.
 - Task 16 completed: Phase 6 documentation, report, and status updated.
+- Task 17 completed: Full workspace verification gates passed sequentially (clean DB, E2E, full workspace lint/typecheck/test/build); review-clean.
 
 ## Current blocker
 None.
 
 ## Next actions
-- Run full Phase 6 verification gates (clean DB, E2E, full workspace lint/typecheck/test/build), inspect diff, and prepare branch.
+- Integrate the verified `phase-6-recurring-tasks-worker` branch back into `master`.
 - Stop after Phase 6.
 
 ## Phases/features that must not be started

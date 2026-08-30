@@ -13,12 +13,13 @@ Completed
 - Phase 4 Kanban API projection and web board with workflow, team, assignee, priority, and due-date filters; native drag/drop and accessible status controls; transition and version-conflict handling.
 - Phase 4 production-build E2E harness verified with 1/1 Playwright test passing against disposable PostgreSQL.
 - Phase 5 Calendar projection, thin route, timezone utility, task handoff, docs, and integration coverage.
+- Phase 6 recurring tasks, persistent task template snapshot, ledger unique occurrences, outbox, BullMQ worker runtime, advisory-locked chronological catch-up, edit/stop semantics, and recurring Task Create modal UI.
 
 In Progress
-- Phase 6 final verification and documentation are in progress.
+- None.
 
 Next
-- Run final Phase 6 verification gates and prepare branch for integration.
+- None. Do not proceed to Phase 7 automatically.
 
 Blocked
 - None.
