@@ -25,15 +25,15 @@ export async function generateDueOccurrence(input: GenerateDueOccurrenceInput): 
     const template = rule.template_snapshot;
     try {
       await sql.savepoint(async (taskSql) => {
-        const workflow = await validateTaskTemplateReferences(taskSql, rule.workspace_id, { workflow_id: typeof template.workflow_id === 'string' ? template.workflow_id : undefined, team_id: typeof template.team_id === 'string' ? template.team_id : null });
-        const task = await createTaskRecordTx(taskSql, rule.workspace_id, rule.created_by, { title: typeof template.title === 'string' ? template.title : '', description: typeof template.description === 'string' ? template.description : null, priority: typeof template.priority === 'string' ? template.priority : 'MEDIUM', workflow_id: workflow.workflow_id, status_id: workflow.status_id, team_id: typeof template.team_id === 'string' ? template.team_id : null, recurrence_rule_id: rule.id, start_at: scheduledFor.toISOString(), due_at: dueAt(scheduledFor, template.due_time, rule.timezone) }, workflow);
+        const workflow = await validateTaskTemplateReferences(taskSql, rule.workspace_id, { workflow_id: typeof template.workflow_id === 'string' ? template.workflow_id : undefined, status_id: typeof template.status_id === 'string' ? template.status_id : undefined, team_id: typeof template.team_id === 'string' ? template.team_id : null });
+        const task = await createTaskRecordTx(taskSql, rule.workspace_id, rule.created_by, { title: typeof template.title === 'string' ? template.title : '', description: typeof template.description === 'string' ? template.description : null, priority: typeof template.priority === 'string' ? template.priority : 'MEDIUM', workflow_id: workflow.workflow_id, status_id: typeof template.status_id === 'string' ? template.status_id : workflow.status_id, team_id: typeof template.team_id === 'string' ? template.team_id : null, recurrence_rule_id: rule.id, start_at: scheduledFor.toISOString(), due_at: dueAt(scheduledFor, template.due_time, rule.timezone) }, workflow);
         await createTaskAssigneesTx(taskSql, rule.workspace_id, task.id, rule.created_by, (Array.isArray(template.assignee_ids) ? template.assignee_ids.filter((value): value is string => typeof value === 'string') : []).map((user_id) => ({ user_id, is_primary: user_id === template.primary_assignee_id })));
         await writeTaskHistoryTx(taskSql, task.id, rule.created_by, { recurrence_rule_id: rule.id, scheduled_for: scheduledFor.toISOString() });
         await taskSql`UPDATE task_history SET event_type='RECURRING_GENERATED' WHERE task_id=${task.id} AND event_type='CREATED'`;
         await taskSql`INSERT INTO recurrence_occurrences(workspace_id,recurrence_rule_id,scheduled_for,task_id) VALUES(${rule.workspace_id},${rule.id},${scheduledFor.toISOString()},${task.id})`;
       });
     } catch (error) {
-      if (error && typeof error === 'object' && 'code' in error && error.code === '23505') return 'noop';
+      if (error && typeof error === 'object' && 'code' in error && 'constraint_name' in error && error.code === '23505' && error.constraint_name === 'recurrence_occurrences_recurrence_rule_id_scheduled_for_unique') return 'noop';
       throw error;
     }
     const nextRunAt = resolveNextOccurrence({ frequency: rule.frequency, intervalValue: rule.interval_value, timezone: rule.timezone, startAt: new Date(rule.start_at), endAt: rule.end_at ? new Date(rule.end_at) : null, occurrenceLimit: rule.occurrence_limit, generatedCount: rule.generated_count + 1, anchorDay: rule.anchor_day, latestGeneratedScheduledFor: scheduledFor });
