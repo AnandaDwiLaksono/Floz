@@ -63,16 +63,18 @@ Approved design for Phase 7 implementation planning. Do not proceed to implement
 
 1. **Default `TASK_DUE_SOON` Timing:**
    - Lead time: `due_at - 24 hours`.
+   - Condition: `now < due_at` AND `due_at - 24 hours <= now`.
    - Single due-soon notification per due-date schedule version.
 2. **Short Lead-Time Behavior (Option A):**
    - If a task is created or rescheduled while `now < due_at` and `due_at - now < 24 hours`, `TASK_DUE_SOON` is immediately eligible.
-   - If `due_at <= now`, skip `TASK_DUE_SOON` (handled by `TASK_OVERDUE`).
-3. **Rescheduling Semantics:**
-   - Every change to canonical `due_at` increments `tasks.due_version`.
+   - If `due_at < now`, skip `TASK_DUE_SOON` (handled by `TASK_OVERDUE`).
+3. **Rescheduling Semantics & `due_version`:**
+   - `due_version` increments if and only if `old_due_at IS DISTINCT FROM new_due_at` (including null <-> non-null transitions). Re-applying the exact same due timestamp leaves `due_version` unchanged.
    - Stale delayed jobs for prior due dates re-read the Task and become safe no-ops.
    - Moving deadline closer (<24h) triggers immediate wake-up; moving it farther schedules delayed wake-up for new `due_at - 24h`.
+   - Scheduling wake-up does NOT acquire notification dedup ledger; dedup identity is acquired only when `createDueSoonNotifications()` runs.
 4. **Overdue Handling:**
-   - Derived business state: `now > due_at` and `status` is not terminal (`completed`, `cancelled`) and task is not soft-deleted.
+   - Derived business state: `due_at < now` (strictly `now > due_at`) and task is not in a terminal state (validated against canonical workflow terminal semantics) and task is not soft-deleted.
    - Deduplicated via `overdue:{workspaceId}:{taskId}:{recipientUserId}:{dueVersion}`.
 
 ---
@@ -155,14 +157,24 @@ Extend `tasks` table with:
 
 ### 5. Atomic Dedup Acquisition CTE
 ```sql
+-- $1: dedup_ledger_id (uuid)
+-- $2: workspace_id (uuid)
+-- $3: dedup_key (varchar)
+-- $4: pregenerated_notification_id (uuid)
+-- $5: user_id (uuid)
+-- $6: type (varchar)
+-- $7: title (varchar)
+-- $8: body (text)
+-- $9: entity_type (varchar)
+-- $10: entity_id (uuid)
 WITH inserted_dedup AS (
-  INSERT INTO notification_dedup_ledger (id, workspace_id, dedup_key, created_at)
-  VALUES ($1, $2, $3, NOW())
+  INSERT INTO notification_dedup_ledger (id, workspace_id, dedup_key, notification_id, created_at)
+  VALUES ($1, $2, $3, $4, NOW())
   ON CONFLICT (workspace_id, dedup_key) DO NOTHING
-  RETURNING id
+  RETURNING notification_id
 )
 INSERT INTO notifications (id, workspace_id, user_id, type, title, body, entity_type, entity_id, is_read, created_at)
-SELECT $4, $2, $5, $6, $7, $8, $9, $10, false, NOW()
+SELECT notification_id, $2, $5, $6, $7, $8, $9, $10, false, NOW()
 FROM inserted_dedup;
 ```
 Ensures that if dedup conflict occurs, exactly zero notification rows are created.
@@ -272,7 +284,7 @@ Ensures that if dedup conflict occurs, exactly zero notification rows are create
 2. **Periodic Worker Reconciliation:**
    - Session-pinned PostgreSQL advisory lock prevents concurrent worker overlap.
    - Scans missed due-soon reminders (`due_at > now AND due_at - 24h <= now`).
-   - Scans overdue tasks (`due_at <= now` on active non-terminal tasks).
+    - Scans overdue tasks (`due_at < now` on active non-terminal tasks).
    - Invokes shared idempotent primitives in bounded chronological batches.
 
 ---
