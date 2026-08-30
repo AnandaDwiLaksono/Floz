@@ -13,12 +13,13 @@ Completed
 - Phase 4 Kanban API projection and web board with workflow, team, assignee, priority, and due-date filters; native drag/drop and accessible status controls; transition and version-conflict handling.
 - Phase 4 production-build E2E harness verified with 1/1 Playwright test passing against disposable PostgreSQL.
 - Phase 5 Calendar projection, thin route, timezone utility, task handoff, docs, and integration coverage.
+- Phase 6 recurring tasks, persistent task template snapshot, ledger unique occurrences, outbox, BullMQ worker runtime, advisory-locked chronological catch-up, edit/stop semantics, and recurring Task Create modal UI.
 
 In Progress
 - None.
 
 Next
-- Phase 6 planning only after Phase 5 final gates.
+- None. Do not proceed to Phase 7 automatically.
 
 Blocked
 - None.
@@ -27,7 +28,7 @@ Open Decisions
 - See `docs/decisions/OPEN_DECISIONS.md`.
 
 Known Limitations
-- Calendar, queue, recurrence, notifications, approvals, comments, attachments, audit, KPI, and remaining product UI are out of scope.
+- Recurrence, worker activation, queue/outbox, notifications, approvals, comments, attachments, audit, KPI, and remaining product UI beyond Phase 6 are out of scope.
 - Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported and are excluded from projection.
 - Better Auth `baseURL` is set in test env for deterministic API integration tests.
 - Web production builds now pass; previous React Hook dependency warnings were cleared.

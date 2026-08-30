@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { api, Task, Team, WorkspaceMember, Workflow, ApiError } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
@@ -48,6 +48,9 @@ export default function TasksPage() {
 
   // Ephemeral UI State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const createDialogRef = useRef<HTMLDivElement>(null);
+  const createTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasCreateOpen = useRef(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [availableTransitions, setAvailableTransitions] = useState<{ to_status_id: string; code: string; name: string }[]>([]);
@@ -62,6 +65,12 @@ export default function TasksPage() {
   const [createStartAt, setCreateStartAt] = useState('');
   const [createDueAt, setCreateDueAt] = useState('');
   const [createStatusId, setCreateStatusId] = useState('');
+  const [createRecurring, setCreateRecurring] = useState(false);
+  const [createFrequency, setCreateFrequency] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
+  const [createInterval, setCreateInterval] = useState('1');
+  const [createTimezone, setCreateTimezone] = useState('');
+  const [createEndDate, setCreateEndDate] = useState('');
+  const [createOccurrenceLimit, setCreateOccurrenceLimit] = useState('');
   const [createValidationError, setCreateValidationError] = useState<string | null>(null);
 
   // Form State - Edit
@@ -165,18 +174,58 @@ export default function TasksPage() {
   }, [workspaceId]);
 
   useEffect(() => {
+    if (!createTimezone && workspaceTimezone) {
+      setCreateTimezone(workspaceTimezone);
+    }
+  }, [createTimezone, workspaceTimezone]);
+
+  useEffect(() => {
     if (create === '1') {
       setCreateValidationError(null);
       setIsCreateOpen(true);
       setCreateStartAt(prefillStart);
       setCreateDueAt(prefillDue);
+      setCreateTimezone(workspaceTimezone);
     }
-  }, [create, prefillStart, prefillDue]);
+  }, [create, prefillStart, prefillDue, workspaceTimezone]);
 
   useEffect(() => {
     if (!selectedTaskId) return;
     void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data));
   }, [workspaceId, selectedTaskId, handleOpenDetail]);
+
+  useEffect(() => {
+    if (!isCreateOpen) {
+      if (wasCreateOpen.current) createTriggerRef.current?.focus();
+      wasCreateOpen.current = false;
+      return;
+    }
+    wasCreateOpen.current = true;
+    const dialog = createDialogRef.current;
+    const focusable = dialog?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    focusable?.[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsCreateOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !focusable?.length) return;
+      const items = Array.from(focusable);
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    dialog?.addEventListener('keydown', onKeyDown);
+    return () => dialog?.removeEventListener('keydown', onKeyDown);
+  }, [isCreateOpen]);
 
   const handleRefreshDetail = async (id: string) => {
     try {
@@ -198,16 +247,46 @@ export default function TasksPage() {
     setCreateValidationError(null);
     try {
       const assignees = createAssigneeId ? [{ user_id: createAssigneeId, is_primary: true }] : [];
-      await api.tasks.create(workspaceId, {
-        title: createTitle,
-        description: createDescription || null,
-        priority: createPriority,
-        team_id: createTeamId || null,
-        assignees,
-        start_at: createStartAt ? workspaceTimezone ? getWorkspaceDateTime(createStartAt, workspaceTimezone) : new Date(createStartAt).toISOString() : null,
-        due_at: createDueAt ? workspaceTimezone ? getWorkspaceDateTime(createDueAt, workspaceTimezone) : new Date(createDueAt).toISOString() : null,
-        status_id: createStatusId || undefined,
-      });
+      if (createRecurring) {
+        const interval = Number(createInterval);
+        const occurrenceLimit = createOccurrenceLimit ? Number(createOccurrenceLimit) : undefined;
+        if (!createStartAt || !createTimezone || !Number.isInteger(interval) || interval < 1) {
+          throw new Error('Recurring tasks require a start, timezone, and positive integer interval.');
+        }
+        if (occurrenceLimit !== undefined && (!Number.isInteger(occurrenceLimit) || occurrenceLimit < 1)) {
+          throw new Error('Occurrence count must be a positive integer.');
+        }
+        if (createEndDate && occurrenceLimit !== undefined) {
+          throw new Error('Choose an end date or occurrence count, not both.');
+        }
+        await api.tasks.createRecurring(workspaceId, {
+          name: createTitle,
+          title: createTitle,
+          description: createDescription || null,
+          priority: createPriority,
+          status_id: createStatusId || undefined,
+          team_id: createTeamId || null,
+          assignee_ids: createAssigneeId ? [createAssigneeId] : [],
+          primary_assignee_id: createAssigneeId || null,
+          frequency: createFrequency,
+          interval_value: interval,
+          timezone: createTimezone,
+          start_at: getWorkspaceDateTime(createStartAt, createTimezone),
+          ...(createEndDate ? { end_at: getWorkspaceDateTime(`${createEndDate}T23:59`, createTimezone) } : {}),
+          ...(occurrenceLimit !== undefined ? { occurrence_limit: occurrenceLimit } : {}),
+        }, crypto.randomUUID());
+      } else {
+        await api.tasks.create(workspaceId, {
+          title: createTitle,
+          description: createDescription || null,
+          priority: createPriority,
+          team_id: createTeamId || null,
+          assignees,
+          start_at: createStartAt ? workspaceTimezone ? getWorkspaceDateTime(createStartAt, workspaceTimezone) : new Date(createStartAt).toISOString() : null,
+          due_at: createDueAt ? workspaceTimezone ? getWorkspaceDateTime(createDueAt, workspaceTimezone) : new Date(createDueAt).toISOString() : null,
+          status_id: createStatusId || undefined,
+        });
+      }
       setIsCreateOpen(false);
       // Reset
       setCreateTitle('');
@@ -216,9 +295,15 @@ export default function TasksPage() {
       setCreateTeamId('');
       setCreateAssigneeId('');
       setCreateStartAt('');
-      setCreateDueAt('');
-      setCreateStatusId('');
-      fetchTasks();
+       setCreateDueAt('');
+       setCreateStatusId('');
+       setCreateRecurring(false);
+       setCreateFrequency('DAILY');
+       setCreateInterval('1');
+       setCreateTimezone(workspaceTimezone);
+       setCreateEndDate('');
+       setCreateOccurrenceLimit('');
+       fetchTasks();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create task';
       setCreateValidationError(msg);
@@ -321,6 +406,7 @@ export default function TasksPage() {
           <p className="text-sm text-gray-500">Manage, organize, and execute workspace items.</p>
         </div>
         <button
+          ref={createTriggerRef}
           onClick={() => {
             setCreateValidationError(null);
             setIsCreateOpen(true);
@@ -518,7 +604,7 @@ export default function TasksPage() {
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/50" onClick={() => setIsCreateOpen(false)} />
-          <div role="dialog" aria-modal="true" aria-labelledby="create-task-title" className="relative w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
+          <div ref={createDialogRef} role="dialog" aria-modal="true" aria-labelledby="create-task-title" className="relative w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
             <h3 id="create-task-title" className="text-lg font-bold mb-4">Create Task</h3>
             <form onSubmit={handleCreate} className="space-y-4">
               {createValidationError && (
@@ -612,6 +698,49 @@ export default function TasksPage() {
                   />
                 </div>
               </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="enable_recurring"
+                  type="checkbox"
+                  checked={createRecurring}
+                  onChange={(e) => setCreateRecurring(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="enable_recurring" className="text-sm font-semibold text-gray-700 dark:text-gray-300">Enable recurring</label>
+              </div>
+              {createRecurring && (
+                <div className="space-y-4 border rounded-md p-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="recurrence_frequency" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Frequency</label>
+                      <select id="recurrence_frequency" value={createFrequency} onChange={(e) => setCreateFrequency(e.target.value as 'DAILY' | 'WEEKLY' | 'MONTHLY')} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800">
+                        <option value="DAILY">Daily</option>
+                        <option value="WEEKLY">Weekly</option>
+                        <option value="MONTHLY">Monthly</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="recurrence_interval" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Interval</label>
+                      <input id="recurrence_interval" type="number" min="1" step="1" required value={createInterval} onChange={(e) => setCreateInterval(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800" />
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="recurrence_timezone" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Recurrence timezone</label>
+                    <input id="recurrence_timezone" type="text" required value={createTimezone} onChange={(e) => setCreateTimezone(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800" />
+                  </div>
+                  <p className="text-sm text-gray-500">Start uses the task start date. CUSTOM recurrence is not supported.</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="recurrence_end_date" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">End date</label>
+                      <input id="recurrence_end_date" type="date" disabled={Boolean(createOccurrenceLimit)} value={createEndDate} onChange={(e) => setCreateEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 disabled:opacity-50" />
+                    </div>
+                    <div>
+                      <label htmlFor="recurrence_occurrence_limit" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Occurrence count</label>
+                      <input id="recurrence_occurrence_limit" type="number" min="1" step="1" disabled={Boolean(createEndDate)} value={createOccurrenceLimit} onChange={(e) => setCreateOccurrenceLimit(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 disabled:opacity-50" />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="primary_assignee" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">

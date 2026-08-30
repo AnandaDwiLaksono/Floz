@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const nodeEnv = z.enum(['development', 'test', 'production']).default('development');
+const envBoolean = z.enum(['true', 'false']).default('false').transform((value) => value === 'true');
 
 export const apiEnvSchema = z.object({
   NODE_ENV: nodeEnv,
@@ -10,7 +11,12 @@ export const apiEnvSchema = z.object({
 
 export const workerEnvSchema = z.object({
   NODE_ENV: nodeEnv,
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info')
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  REDIS_URL: z.string().url().default('redis://localhost:6379'),
+  REDIS_TLS: envBoolean,
+  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
+  RECURRENCE_RECONCILIATION_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
+  RECURRENCE_RECONCILIATION_BATCH_SIZE: z.coerce.number().int().positive().default(50)
 });
 
 export const webEnvSchema = z.object({

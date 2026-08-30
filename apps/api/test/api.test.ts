@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { Test } from '@nestjs/testing';
-import { type INestApplication } from '@nestjs/common';
+import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { createDatabase } from '@floz/database';
 import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/auth';
+import { createTaskAssigneesTx, createTaskRecordTx, validateTaskTemplateReferences, writeTaskHistoryTx } from '../src/task-core';
+import { claimOutboxBatch, markOutboxDispatched, markOutboxRetry } from '../src/outbox.service';
 
 const databaseUrl = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/floz';
 process.env.DATABASE_URL = databaseUrl;
@@ -20,6 +22,7 @@ async function createApp() {
   const app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.init();
   return app;
 }
@@ -61,6 +64,10 @@ async function fixture(app: INestApplication): Promise<Fixture> {
 }
 
 describe('API', () => {
+  it('exports canonical transactional task creation helpers', () => {
+    expect([validateTaskTemplateReferences, createTaskRecordTx, createTaskAssigneesTx, writeTaskHistoryTx].every((helper) => typeof helper === 'function')).toBe(true);
+  });
+
   let app: INestApplication | undefined;
 
   beforeAll(async () => { await resetDatabase(); });
@@ -248,13 +255,124 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/calendar/tasks`).set('Cookie', f.memberCookie).query({ ...query, assignee_id: 'not-a-uuid' }).expect(400).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
   });
 
+  it('implements recurrence API persistence and orchestration', async () => {
+    const f = await fixture(app!);
+    const { sql: db } = createDatabase(databaseUrl);
+    const team = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Ops', manager_user_id: f.memberId }).expect(201)).body.data;
+    const otherTeam = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/teams`).set('Cookie', f.outsiderCookie).send({ name: 'Alien' }).expect(201)).body.data;
+    const otherWorkflowId = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/tasks`).set('Cookie', f.outsiderCookie).send({ title: 'Alien workflow' }).expect(201)).body.data.workflow_id;
+    const base = `/api/v1/workspaces/${f.workspaceId}`;
+    const create = `${base}/recurring-tasks`;
+    const valid = { name: 'Daily inspection', frequency: 'DAILY', interval_value: 1, timezone: 'Asia/Jakarta', start_at: '2026-08-27T09:00:00.000Z', title: 'Inspect pump', workflow_id: f.workflowId, team_id: team.id, assignee_ids: [f.memberId], primary_assignee_id: f.memberId };
+    await request(app!.getHttpServer()).post(create).send(valid).expect(401);
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).send(valid).expect(400).expect(({ body }) => expect(body.message).toBe('IDEMPOTENCY_KEY_REQUIRED'));
+    for (const body of [{ ...valid, frequency: 'CUSTOM' }, { ...valid, interval_value: 0 }, { ...valid, occurrence_limit: 0 }, { ...valid, end_at: '2026-09-01T09:00:00.000Z', occurrence_limit: 2 }, { ...valid, timezone: 'UTC' }, { ...valid, workflow_id: 'not-a-uuid' }]) await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', randomUUID()).send(body).expect(400);
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', randomUUID()).send({ ...valid, team_id: otherTeam.id }).expect(400).expect(({ body }) => expect(body.message).toBe('TEAM_SCOPE_MISMATCH'));
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', randomUUID()).send({ ...valid, assignee_ids: [f.outsiderId], primary_assignee_id: f.outsiderId }).expect(400).expect(({ body }) => expect(body.message).toBe('CROSS_WORKSPACE_REFERENCE'));
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', randomUUID()).send({ ...valid, end_at: '2026-08-26T09:00:00.000Z' }).expect(400).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
+    const created = await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-1').send(valid).expect(201);
+    expect(created.body.data.first_occurrence.recurrence_rule_id).toBe(created.body.data.id);
+    expect(created.body.data.next_run_at > created.body.data.first_occurrence.start_at).toBe(true);
+    const history = await db`SELECT event_type, metadata FROM task_history WHERE task_id=${created.body.data.first_occurrence.id} ORDER BY created_at, id`;
+    expect(history).toEqual([{ event_type: 'RECURRING_GENERATED', metadata: { recurrence_rule_id: created.body.data.id, scheduled_for: created.body.data.first_occurrence.start_at } }]);
+    const occurrence = await db`SELECT recurrence_rule_id, task_id, scheduled_for FROM recurrence_occurrences WHERE task_id=${created.body.data.first_occurrence.id}`;
+    expect(occurrence[0]).toMatchObject({ recurrence_rule_id: created.body.data.id, task_id: created.body.data.first_occurrence.id });
+    const outbox = await db`SELECT status, event_type, available_at FROM outbox_events WHERE aggregate_id=${created.body.data.id}`;
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({ status: 'PENDING', event_type: 'RECURRENCE_WAKEUP' });
+    const replay = await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-1').send(valid).expect(201);
+    expect(replay.body).toEqual(created.body);
+    await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-1').send({ ...valid, title: 'Changed' }).expect(409).expect(({ body }) => expect(body.message).toBe('IDEMPOTENCY_REUSE'));
+    const limitOne = await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-2').send({ ...valid, name: 'One-shot', occurrence_limit: 1 }).expect(201);
+    expect(limitOne.body.data.next_run_at).toBeNull();
+    expect((await db`SELECT id FROM outbox_events WHERE aggregate_id=${limitOne.body.data.id}`)).toEqual([]);
+    const endBoundary = await request(app!.getHttpServer()).post(create).set('Cookie', f.memberCookie).set('Idempotency-Key', 'rk-3').send({ ...valid, name: 'Ends once', end_at: valid.start_at }).expect(201);
+    expect(endBoundary.body.data.next_run_at).toBeNull();
+    const rules = await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ active: true, team_id: team.id, assignee_id: f.memberId, limit: 10 }).expect(200);
+    expect(rules.body.data.map((r: { id: string }) => r.id)).toContain(created.body.data.id);
+    const firstPage = await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ limit: 2 }).expect(200);
+    const secondPage = await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ limit: 2, cursor: firstPage.body.meta.pagination.next_cursor }).expect(200);
+    expect(firstPage.body.meta.pagination).toMatchObject({ limit: 2, has_more: true });
+    expect(firstPage.body.meta.pagination.next_cursor).toEqual(expect.any(String));
+    expect(secondPage.body.data.map((r: { id: string }) => r.id)).not.toEqual(expect.arrayContaining(firstPage.body.data.map((r: { id: string }) => r.id)));
+    expect(secondPage.body.meta.pagination).toEqual({ limit: 2, next_cursor: null, has_more: false });
+    await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ team_id: otherTeam.id }).expect(400).expect(({ body }) => expect(body.message).toBe('TEAM_SCOPE_MISMATCH'));
+    await request(app!.getHttpServer()).get(`${base}/recurrence-rules`).set('Cookie', f.memberCookie).query({ assignee_id: f.outsiderId }).expect(400).expect(({ body }) => expect(body.message).toBe('CROSS_WORKSPACE_REFERENCE'));
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.otherWorkspaceId}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.outsiderCookie).expect(404);
+    await request(app!.getHttpServer()).get(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data.id).toBe(created.body.data.id));
+    await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ frequency: 'CUSTOM' }).expect(400);
+    await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ end_at: '2026-09-01T09:00:00.000Z', occurrence_limit: 2 }).expect(400);
+    await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ end_at: '2026-08-26T09:00:00.000Z' }).expect(400);
+    await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ workflow_id: otherWorkflowId }).expect(400).expect(({ body }) => expect(body.message).toBe('WORKFLOW_SCOPE_MISMATCH'));
+    await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ primary_assignee_id: f.outsiderId }).expect(400).expect(({ body }) => expect(body.message).toBe('CROSS_WORKSPACE_REFERENCE'));
+    const beforePatch = await db`SELECT scheduled_for,task_id FROM recurrence_occurrences WHERE recurrence_rule_id=${created.body.data.id} ORDER BY scheduled_for`;
+    const patched = await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ frequency: 'WEEKLY', interval_value: 2, start_at: '2026-08-28T09:00:00.000Z' }).expect(200);
+    expect(new Date(patched.body.data.next_run_at).getTime()).toBeGreaterThan(Date.now());
+    expect(await db`SELECT scheduled_for,task_id FROM recurrence_occurrences WHERE recurrence_rule_id=${created.body.data.id} ORDER BY scheduled_for`).toEqual(beforePatch);
+    const patchedWakeups = await db`SELECT status,available_at FROM outbox_events WHERE aggregate_id=${created.body.data.id} AND event_type='RECURRENCE_WAKEUP'`;
+    expect(patchedWakeups).toHaveLength(1);
+    expect(patchedWakeups[0].status).toBe('PENDING');
+    expect(new Date(patchedWakeups[0].available_at).toISOString()).toBe(patched.body.data.next_run_at);
+    expect((await db`SELECT count(*)::int AS count FROM recurrence_occurrences WHERE recurrence_rule_id=${created.body.data.id}`)[0].count).toBe(1);
+    const noFuture = await request(app!.getHttpServer()).patch(`${base}/recurrence-rules/${created.body.data.id}`).set('Cookie', f.memberCookie).send({ end_at: created.body.data.first_occurrence.start_at }).expect(200);
+    expect(noFuture.body.data.next_run_at).toBeNull();
+    expect(await db`SELECT id FROM outbox_events WHERE aggregate_id=${created.body.data.id} AND event_type='RECURRENCE_WAKEUP' AND status='PENDING'`).toEqual([]);
+    await db`INSERT INTO outbox_events(workspace_id,aggregate_type,aggregate_id,event_type,payload,available_at) VALUES(${f.workspaceId},'recurrence_rule',${created.body.data.id},'RECURRENCE_WAKEUP','{}',NOW()+INTERVAL '1 day')`;
+    const stopped = await request(app!.getHttpServer()).post(`${base}/recurrence-rules/${created.body.data.id}/stop`).set('Cookie', f.memberCookie).expect(200);
+    expect(stopped.body.data).toMatchObject({ is_active: false, next_run_at: null });
+    const stoppedAgain = await request(app!.getHttpServer()).post(`${base}/recurrence-rules/${created.body.data.id}/stop`).set('Cookie', f.memberCookie).expect(200);
+    expect(stoppedAgain.body.data).toMatchObject({ is_active: false, next_run_at: null });
+    expect(await db`SELECT id FROM outbox_events WHERE aggregate_id=${created.body.data.id} AND event_type='RECURRENCE_WAKEUP' AND status='PENDING'`).toEqual([]);
+    expect((await db`SELECT id FROM tasks WHERE recurrence_rule_id=${created.body.data.id}`)).toHaveLength(1);
+    await db.end();
+  });
+
+  it('claims, retries, reclaims, and ownership-guards outbox events', async () => {
+    const f = await fixture(app!);
+    const { sql: db } = createDatabase(databaseUrl);
+    const now = new Date('2026-08-30T00:00:00.000Z');
+    const ids = await db<{ id: string }[]>`INSERT INTO outbox_events(workspace_id,aggregate_type,aggregate_id,event_type,payload,status,available_at) VALUES (${f.workspaceId},'recurrence_rule',${randomUUID()},'RECURRENCE_WAKEUP','{}','PENDING',${now.toISOString()}),(${f.workspaceId},'recurrence_rule',${randomUUID()},'RECURRENCE_WAKEUP','{}','FAILED',${now.toISOString()}),(${f.workspaceId},'recurrence_rule',${randomUUID()},'RECURRENCE_WAKEUP','{}','PENDING',${new Date(now.getTime() + 60_000).toISOString()}),(${f.workspaceId},'recurrence_rule',${randomUUID()},'RECURRENCE_WAKEUP','{}','DISPATCHED',${now.toISOString()}) RETURNING id`;
+
+    const first = await claimOutboxBatch(db, { claimToken: 'dispatcher-a', now, leaseMs: 1000, limit: 10 });
+    expect(first.map((row) => row.id).sort()).toEqual(ids.slice(0, 2).map((row) => row.id).sort());
+    expect(first.every((row) => row.attempt_count === 1)).toBe(true);
+    expect(await claimOutboxBatch(db, { claimToken: 'dispatcher-b', now, leaseMs: 1000, limit: 10 })).toEqual([]);
+
+    const reclaimed = await claimOutboxBatch(db, { claimToken: 'dispatcher-b', now: new Date(now.getTime() + 1001), leaseMs: 1000, limit: 1 });
+    expect(reclaimed).toHaveLength(1);
+    expect(reclaimed[0].attempt_count).toBe(2);
+    expect(await markOutboxDispatched(db, { id: reclaimed[0].id, claimToken: 'dispatcher-a', now: new Date(now.getTime() + 1002) })).toBe(false);
+    expect(await markOutboxRetry(db, { id: reclaimed[0].id, claimToken: 'dispatcher-a', availableAt: new Date(now.getTime() + 2000), now: new Date(now.getTime() + 1002) })).toBe(false);
+
+    const retryAt = new Date(now.getTime() + 3000);
+    const expiredAt = new Date(now.getTime() + 2002);
+    const beforeExpiredRetry = (await db`SELECT status,available_at,attempt_count,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0];
+    expect(await markOutboxRetry(db, { id: reclaimed[0].id, claimToken: 'dispatcher-b', availableAt: retryAt, now: expiredAt })).toBe(false);
+    expect((await db`SELECT status,available_at,attempt_count,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0]).toEqual(beforeExpiredRetry);
+    const current = await claimOutboxBatch(db, { claimToken: 'dispatcher-c', now: expiredAt, leaseMs: 1000, limit: 10 });
+    expect(current.some((row) => row.id === reclaimed[0].id)).toBe(true);
+    expect(await markOutboxRetry(db, { id: reclaimed[0].id, claimToken: 'dispatcher-c', availableAt: retryAt, now: expiredAt })).toBe(true);
+    const retried = (await db`SELECT status,available_at,attempt_count,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0];
+    expect(retried).toMatchObject({ status: 'FAILED', attempt_count: 3, claimed_by: null, claimed_until: null });
+    expect(new Date(retried.available_at).toISOString()).toBe(retryAt.toISOString());
+    expect((await claimOutboxBatch(db, { claimToken: 'dispatcher-c', now: new Date(retryAt.getTime() - 1), leaseMs: 1000, limit: 10 })).some((row) => row.id === reclaimed[0].id)).toBe(false);
+    const later = await claimOutboxBatch(db, { claimToken: 'dispatcher-c', now: retryAt, leaseMs: 1000, limit: 10 });
+    expect(later.some((row) => row.id === reclaimed[0].id && row.attempt_count === 4)).toBe(true);
+    expect(await markOutboxDispatched(db, { id: reclaimed[0].id, claimToken: 'dispatcher-c', now: retryAt })).toBe(true);
+    expect((await db`SELECT status,dispatched_at,claimed_by,claimed_until FROM outbox_events WHERE id=${reclaimed[0].id}`)[0]).toMatchObject({ status: 'DISPATCHED', claimed_by: null, claimed_until: null });
+    await db.end();
+  });
+
   it('supports task workflow, assignment, transition, filtering, and history APIs', async () => {
     const f = await fixture(app!);
     const workflows = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/workflows`).set('Cookie', f.memberCookie).expect(200);
     expect(workflows.body.data[0].statuses[0].is_initial).toBe(true);
     const created = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).send({ title: 'Fix pump', assignees: [{ user_id: f.memberId, is_primary: true }] }).expect(201);
-    expect(created.body.data.title).toBe('Fix pump');
-    expect(created.body.data.assignees).toEqual([{ user_id: f.memberId, is_primary: true, full_name: 'Member' }]);
+    expect(created.body.data).toMatchObject({ title: 'Fix pump', task_key: 'TASK-1', assignees: [{ user_id: f.memberId, is_primary: true, full_name: 'Member' }] });
+    const { sql: historyDb } = createDatabase(databaseUrl);
+    const history = await historyDb`SELECT event_type, actor_user_id, metadata FROM task_history WHERE task_id=${created.body.data.id} ORDER BY created_at, id`;
+    expect(history).toEqual([{ event_type: 'CREATED', actor_user_id: f.memberId, metadata: {} }]);
+    await historyDb.end();
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).query({ q: 'Fix', sort: '-created_at', limit: 10 }).expect(200).expect(({ body }) => expect(body.meta.pagination.has_more).toBe(false));
     const transitions = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/tasks/${created.body.data.id}/available-transitions`).set('Cookie', f.memberCookie).expect(200);
     expect(transitions.body.data.length).toBeGreaterThan(0);
