@@ -16,6 +16,8 @@ type TaskRow = { id: string; workspace_id: string; task_key: string; title: stri
 function iso(value: Date | string | null) { return value === null ? null : new Date(value).toISOString(); }
 function stable(value: unknown): unknown { if (Array.isArray(value)) return value.map(stable); if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, stable(v)])); return value; }
 function fingerprint(input: CreateRecurringTaskDto) { return JSON.stringify(stable(input)); }
+function encodeCursor(row: RuleRow) { return Buffer.from(JSON.stringify({ created_at: iso(row.created_at), id: row.id })).toString('base64url'); }
+function decodeCursor(value: string) { try { const cursor = JSON.parse(Buffer.from(value, 'base64url').toString()) as { created_at?: string; id?: string }; if (!cursor.created_at || Number.isNaN(new Date(cursor.created_at).getTime()) || !cursor.id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursor.id)) throw new Error(); return cursor as { created_at: string; id: string }; } catch { throw new BadRequestException('VALIDATION_ERROR'); } }
 function rule(row: RuleRow) { return { ...row, start_at: iso(row.start_at), end_at: iso(row.end_at), next_run_at: iso(row.next_run_at), created_at: iso(row.created_at), updated_at: iso(row.updated_at) }; }
 function task(row: TaskRow, assignees: { user_id: string; is_primary: boolean; full_name: string }[]) { const { status_code, status_name, status_category, ...rest } = row; return { ...rest, start_at: iso(row.start_at), due_at: iso(row.due_at), completed_at: iso(row.completed_at), created_at: iso(row.created_at), updated_at: iso(row.updated_at), status: { id: row.status_id, code: status_code, name: status_name, category: status_category }, assignees }; }
 function rethrowRecurrenceValidation(error: unknown): never {
@@ -63,21 +65,28 @@ export class RecurrenceService {
   async list(workspaceId: string, query: RecurrenceRuleQueryDto) {
     const activeValue = query.active as boolean | string | undefined;
     const active = activeValue === 'true' ? true : activeValue === 'false' ? false : activeValue;
-    const limit = query.limit === undefined ? 50 : Number(query.limit);
+    const limit = Math.min(Math.max(query.limit === undefined ? 50 : Number(query.limit), 1), 100);
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     if (query.team_id && !(await this.sql`SELECT id FROM teams WHERE id=${query.team_id} AND workspace_id=${workspaceId}`)[0]) throw new BadRequestException('TEAM_SCOPE_MISMATCH');
     if (query.assignee_id) await this.validateAssignees(this.sql, workspaceId, [query.assignee_id]);
-    const rows = await this.sql<RuleRow[]>`SELECT * FROM recurrence_rules WHERE workspace_id=${workspaceId}${active === undefined ? this.sql`` : this.sql` AND is_active=${active}`}${query.team_id ? this.sql` AND template_snapshot->>'team_id'=${query.team_id}` : this.sql``}${query.assignee_id ? this.sql` AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(template_snapshot->'assignee_ids') assignee_id WHERE assignee_id=${query.assignee_id})` : this.sql``} ORDER BY created_at DESC LIMIT ${limit}`;
-    return { data: rows.map(rule), meta: { pagination: { limit, next_cursor: null, has_more: false } } };
+    const rows = await this.sql<RuleRow[]>`SELECT * FROM recurrence_rules WHERE workspace_id=${workspaceId}${active === undefined ? this.sql`` : this.sql` AND is_active=${active}`}${query.team_id ? this.sql` AND template_snapshot->>'team_id'=${query.team_id}` : this.sql``}${query.assignee_id ? this.sql` AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(template_snapshot->'assignee_ids') assignee_id WHERE assignee_id=${query.assignee_id})` : this.sql``}${cursor ? this.sql` AND (created_at,id) < (${cursor.created_at},${cursor.id})` : this.sql``} ORDER BY created_at DESC,id DESC LIMIT ${limit + 1}`;
+    const hasMore = rows.length > limit;
+    const page = rows.slice(0, limit);
+    return { data: page.map(rule), meta: { pagination: { limit, next_cursor: hasMore && page.length ? encodeCursor(page[page.length - 1]) : null, has_more: hasMore } } };
   }
   async get(workspaceId: string, id: string) { return rule(await this.getRule(this.sql, workspaceId, id)); }
   async update(workspaceId: string, id: string, input: UpdateRecurrenceRuleDto) {
     return this.sql.begin(async (sql: TransactionSql) => {
       const current = await this.getRule(sql, workspaceId, id);
-      if (input.assignee_ids) await this.validateAssignees(sql, workspaceId, input.assignee_ids);
-      if (input.team_id && !(await sql`SELECT id FROM teams WHERE id=${input.team_id} AND workspace_id=${workspaceId}`)[0]) throw new BadRequestException('TEAM_SCOPE_MISMATCH');
-      const latest = (await sql<{ scheduled_for: Date }[]>`SELECT scheduled_for FROM recurrence_occurrences WHERE recurrence_rule_id=${id} ORDER BY scheduled_for DESC LIMIT 1`)[0]?.scheduled_for ?? current.start_at;
-      const changed = input.frequency || input.interval_value || input.timezone || input.start_at || input.end_at !== undefined || input.occurrence_limit !== undefined;
-       const nextRunAt = changed ? resolveNextOccurrenceAfterUpdate({ ...this.schedule(current), frequency: (input.frequency ?? current.frequency) as 'DAILY' | 'WEEKLY' | 'MONTHLY', intervalValue: input.interval_value ?? current.interval_value, timezone: input.timezone ?? current.timezone, startAt: new Date(input.start_at ?? current.start_at), endAt: input.end_at === undefined ? current.end_at : input.end_at ? new Date(input.end_at) : null, occurrenceLimit: input.occurrence_limit === undefined ? current.occurrence_limit : input.occurrence_limit, latestGeneratedScheduledFor: new Date(latest), effectiveChangeTime: new Date() }) : current.next_run_at;
+       if (input.assignee_ids) await this.validateAssignees(sql, workspaceId, input.assignee_ids);
+       if (input.team_id && !(await sql`SELECT id FROM teams WHERE id=${input.team_id} AND workspace_id=${workspaceId}`)[0]) throw new BadRequestException('TEAM_SCOPE_MISMATCH');
+       if (input.workflow_id && !(await sql`SELECT id FROM workflows WHERE id=${input.workflow_id} AND workspace_id=${workspaceId}`)[0]) throw new BadRequestException('WORKFLOW_SCOPE_MISMATCH');
+       const latest = (await sql<{ scheduled_for: Date }[]>`SELECT scheduled_for FROM recurrence_occurrences WHERE recurrence_rule_id=${id} ORDER BY scheduled_for DESC LIMIT 1`)[0]?.scheduled_for ?? current.start_at;
+       const changed = input.frequency || input.interval_value || input.timezone || input.start_at || input.end_at !== undefined || input.occurrence_limit !== undefined;
+       const schedule = { ...this.schedule(current), frequency: (input.frequency ?? current.frequency) as 'DAILY' | 'WEEKLY' | 'MONTHLY', intervalValue: input.interval_value ?? current.interval_value, timezone: input.timezone ?? current.timezone, startAt: new Date(input.start_at ?? current.start_at), endAt: input.end_at === undefined ? current.end_at : input.end_at ? new Date(input.end_at) : null, occurrenceLimit: input.occurrence_limit === undefined ? current.occurrence_limit : input.occurrence_limit };
+       const latestGeneratedScheduledFor = new Date(latest);
+       try { validateExecutableRecurrence(schedule); if (schedule.endAt && schedule.endAt < latestGeneratedScheduledFor) throw new Error('VALIDATION_ERROR'); } catch (error) { rethrowRecurrenceValidation(error); }
+       const nextRunAt = changed ? resolveNextOccurrenceAfterUpdate({ ...schedule, latestGeneratedScheduledFor, effectiveChangeTime: new Date() }) : current.next_run_at;
        await sql`DELETE FROM outbox_events WHERE aggregate_id=${id} AND aggregate_type='recurrence_rule' AND event_type='RECURRENCE_WAKEUP' AND status='PENDING'`;
        await sql`UPDATE recurrence_rules SET name=COALESCE(${input.name ?? null},name),frequency=COALESCE(${input.frequency ?? null},frequency),interval_value=COALESCE(${input.interval_value ?? null},interval_value),timezone=COALESCE(${input.timezone ?? null},timezone),start_at=COALESCE(${input.start_at ?? null},start_at),end_at=CASE WHEN ${input.end_at === undefined} THEN end_at ELSE ${input.end_at ? input.end_at : null} END,occurrence_limit=CASE WHEN ${input.occurrence_limit === undefined} THEN occurrence_limit ELSE ${input.occurrence_limit ?? null} END,next_run_at=${nextRunAt ? nextRunAt.toISOString() : null},template_snapshot=template_snapshot || ${JSON.stringify(input)}::jsonb,updated_at=NOW() WHERE id=${id} AND workspace_id=${workspaceId}`;
        if (nextRunAt) await sql`INSERT INTO outbox_events(workspace_id,aggregate_type,aggregate_id,event_type,payload,available_at) VALUES(${workspaceId},'recurrence_rule',${id},'RECURRENCE_WAKEUP',${JSON.stringify({ recurrence_rule_id: id })}::jsonb,${nextRunAt.toISOString()})`;
