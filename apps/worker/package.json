@@ -8,7 +8,7 @@
     "lint": "eslint src test --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:integration": "vitest run test/outbox.integration.test.ts test/outbox-db.integration.test.ts",
+    "test:integration": "vitest run test/*.integration.test.ts",
     "build": "tsc",
     "start": "node dist/main.js"
   },

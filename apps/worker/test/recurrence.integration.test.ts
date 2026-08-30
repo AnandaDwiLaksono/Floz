@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase } from '@floz/database';
 import { generateDueOccurrence } from '../src/generate-due-occurrence.js';
+import { runReconciliationIteration } from '../src/reconciliation.js';
+import { createRecurrenceWorker } from '../src/recurrence-worker.js';
 
 describe('recurrence generation integration', () => {
   const databaseUrl = process.env.DATABASE_URL;
@@ -22,7 +24,10 @@ describe('recurrence generation integration', () => {
     rule: randomUUID(),
     duplicateRule: randomUUID(),
     raceRuleA: randomUUID(),
-    raceRuleB: randomUUID()
+    raceRuleB: randomUUID(),
+    staleStopRule: randomUUID(),
+    staleFutureRule: randomUUID(),
+    catchupRule: randomUUID()
   };
 
   beforeAll(async () => {
@@ -37,7 +42,10 @@ describe('recurrence generation integration', () => {
       (${ids.rule},${ids.workspace},'Daily','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T09:00:00.000Z',true,1,${JSON.stringify({ title: 'Generated', description: 'Canonical', workflow_id: ids.workflow, priority: 'HIGH', team_id: ids.team, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee, due_time: '17:30:00' })}::jsonb,${ids.user}),
       (${ids.duplicateRule},${ids.workspace},'Duplicate','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T10:00:00.000Z',true,1,${JSON.stringify({ title: 'Duplicate guarded', workflow_id: ids.workflow, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee })}::jsonb,${ids.user}),
       (${ids.raceRuleA},${ids.workspace},'Race A','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T11:00:00.000Z',true,1,${JSON.stringify({ title: 'Race A', workflow_id: ids.workflow, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee })}::jsonb,${ids.user}),
-      (${ids.raceRuleB},${ids.workspace},'Race B','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T11:00:00.000Z',true,1,${JSON.stringify({ title: 'Race B', workflow_id: ids.workflow, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee })}::jsonb,${ids.user})`;
+      (${ids.raceRuleB},${ids.workspace},'Race B','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T11:00:00.000Z',true,1,${JSON.stringify({ title: 'Race B', workflow_id: ids.workflow, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee })}::jsonb,${ids.user}),
+      (${ids.staleStopRule},${ids.workspace},'Stopped','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T12:00:00.000Z',false,1,${JSON.stringify({ title: 'Stopped', workflow_id: ids.workflow })}::jsonb,${ids.user}),
+      (${ids.staleFutureRule},${ids.workspace},'Future','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-09-10T12:00:00.000Z',true,1,${JSON.stringify({ title: 'Future', workflow_id: ids.workflow })}::jsonb,${ids.user}),
+      (${ids.catchupRule},${ids.workspace},'Catchup','DAILY',1,'2026-08-27T09:00:00.000Z','UTC','2026-08-28T09:00:00.000Z',true,1,${JSON.stringify({ title: 'Catchup', workflow_id: ids.workflow })}::jsonb,${ids.user})`;
     const historicalTask = (await sql<{ id: string }[]>`INSERT INTO tasks(workspace_id,task_key,title,workflow_id,status_id,creator_id,recurrence_rule_id,start_at) VALUES(${ids.workspace},'TASK-1','Historical',${ids.workflow},${ids.status},${ids.user},${ids.duplicateRule},'2026-08-30T10:00:00.000Z') RETURNING id`)[0];
     await sql`INSERT INTO recurrence_occurrences(workspace_id,recurrence_rule_id,scheduled_for,task_id) VALUES(${ids.workspace},${ids.duplicateRule},'2026-08-30T10:00:00.000Z',${historicalTask.id})`;
   });
@@ -79,6 +87,30 @@ describe('recurrence generation integration', () => {
     ])).resolves.toEqual(['generated', 'generated']);
     const keys = await sql<{ task_key: string }[]>`SELECT task_key FROM tasks WHERE recurrence_rule_id IN (${ids.raceRuleA},${ids.raceRuleB}) ORDER BY task_key`;
     expect(new Set(keys.map((row) => row.task_key)).size).toBe(2);
+  });
+
+  it('concurrent worker attempts create one occurrence', async () => {
+    const ruleId = randomUUID();
+    await sql`INSERT INTO recurrence_rules(id,workspace_id,name,frequency,interval_value,start_at,timezone,next_run_at,is_active,generated_count,template_snapshot,created_by) VALUES(${ruleId},${ids.workspace},'Same rule race','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T11:30:00.000Z',true,1,${JSON.stringify({ title: 'Same rule race', workflow_id: ids.workflow })}::jsonb,${ids.user})`;
+    await Promise.all([generateDueOccurrence({ sql, recurrenceRuleId: ruleId, now: new Date('2026-08-30T11:30:00.000Z') }), generateDueOccurrence({ sql, recurrenceRuleId: ruleId, now: new Date('2026-08-30T11:30:00.000Z') })]);
+    expect((await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM recurrence_occurrences WHERE recurrence_rule_id=${ruleId}`)[0].count).toBe(1);
+  });
+
+  it('worker ignores stopped and future-rescheduled stale wake-ups', async () => {
+    const process = createRecurrenceWorker({ sql, now: () => new Date('2026-08-30T12:00:00.000Z') });
+    await expect(process({ data: { recurrence_rule_id: ids.staleStopRule } } as never)).resolves.toBe('noop');
+    await expect(process({ data: { recurrence_rule_id: ids.staleFutureRule }, name: 'wake', id: 'stale' } as never)).resolves.toBe('noop');
+    expect((await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM tasks WHERE recurrence_rule_id IN (${ids.staleStopRule},${ids.staleFutureRule})`)[0].count).toBe(0);
+  });
+
+  it('reconciliation catches up chronologically in bounded passes without duplicates', async () => {
+    await sql`UPDATE recurrence_rules SET is_active=false WHERE id<>${ids.catchupRule} AND next_run_at<='2026-08-31T09:00:00.000Z'`;
+    const now = new Date('2026-08-31T09:00:00.000Z');
+    await expect(runReconciliationIteration({ sql, now, batchSize: 2 })).resolves.toBe(2);
+    expect((await sql<{ scheduled_for: string }[]>`SELECT scheduled_for FROM recurrence_occurrences WHERE recurrence_rule_id=${ids.catchupRule} ORDER BY scheduled_for`).map((row) => row.scheduled_for)).toEqual(['2026-08-28 09:00:00+00', '2026-08-29 09:00:00+00']);
+    await expect(runReconciliationIteration({ sql, now, batchSize: 2 })).resolves.toBe(2);
+    expect((await sql<{ scheduled_for: string }[]>`SELECT scheduled_for FROM recurrence_occurrences WHERE recurrence_rule_id=${ids.catchupRule} ORDER BY scheduled_for`).map((row) => row.scheduled_for)).toEqual(['2026-08-28 09:00:00+00', '2026-08-29 09:00:00+00', '2026-08-30 09:00:00+00', '2026-08-31 09:00:00+00']);
+    await expect(runReconciliationIteration({ sql, now, batchSize: 2 })).resolves.toBe(0);
   });
 
   it('rejects cross-workspace team references', async () => {
