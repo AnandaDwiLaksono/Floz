@@ -15,12 +15,13 @@ Phase 6 Recurring Tasks + Worker Foundation implementation in progress.
 - Task 9 completed: BullMQ worker runtime foundation, Redis configuration, deterministic job ID builder, bounded concurrency, and graceful shutdown added.
 - Task 10 completed: lease-safe outbox dispatcher, collision-safe hashed BullMQ job IDs, retry/reclaim/concurrency handling, and real PostgreSQL + Redis/BullMQ integration passed. BullMQ rejects colon-containing custom IDs; SHA-256-safe IDs are now used.
 - Task 11 completed: canonical due occurrence generation, wake-up processor, shared Task rules, occurrence deduplication, and recurrence history added and review-clean.
+- Task 12 completed: stale-safe PostgreSQL-concurrent reconciliation and bounded chronological catch-up added and review-clean.
 
 ## Current blocker
 None.
 
 ## Next actions
-- Implement PostgreSQL-concurrent stale-safe reconciliation and bounded chronological catch-up using `generateDueOccurrence()`.
+- Complete recurrence list/get/update/stop API behavior and PostgreSQL coverage.
 - Continue sequentially through Phase 6 plan. Stop after Phase 6.
 
 ## Phases/features that must not be started
