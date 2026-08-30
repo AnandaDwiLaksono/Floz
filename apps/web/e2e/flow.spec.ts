@@ -53,6 +53,42 @@ test.describe('Floz Kanban', () => {
     await expect(page.getByText('Kanban Task')).toBeVisible();
   });
 
+  test('recurring create persists its rule and first task through refresh', async ({ page }) => {
+    const { sql } = createDatabase(databaseUrl);
+    const admin = await auth.api.signUpEmail({ body: { email: 'recurring@example.com', password: 'password123', name: 'Recurring Admin' } });
+    const workspaceId = 'a8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    const adminRoleId = String((await sql`SELECT id FROM roles WHERE code='ADMIN'`)[0].id);
+    await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'Recurring Work','recurring-work','Asia/Jakarta',${String(admin.user.id)},true)`;
+    await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${String(admin.user.id)},${adminRoleId},'ACTIVE')`;
+
+    await page.goto('/login');
+    await page.fill('#email', 'recurring@example.com');
+    await page.fill('#password', 'password123');
+    await page.click('button[type="submit"]');
+    await page.getByRole('button', { name: 'New Task' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Create Task' });
+    await dialog.locator('#title').fill('Recurring browser task');
+    await dialog.locator('#start_at').fill('2026-09-01T09:00');
+    await dialog.locator('#enable_recurring').check();
+    await expect(dialog.getByText('CUSTOM recurrence is not supported.')).toBeVisible();
+    await dialog.locator('#recurrence_frequency').selectOption('WEEKLY');
+    await dialog.locator('#recurrence_interval').fill('2');
+    await dialog.locator('#recurrence_timezone').fill('Asia/Jakarta');
+    await dialog.locator('#recurrence_occurrence_limit').fill('3');
+    await expect(dialog.locator('#recurrence_end_date')).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Create' }).click();
+
+    await expect(dialog).toBeHidden();
+    await expect(page.getByText('Recurring browser task')).toBeVisible();
+    const rule = (await sql`SELECT id,frequency,interval_value,timezone,occurrence_limit FROM recurrence_rules WHERE workspace_id=${workspaceId}`)[0];
+    expect(rule).toMatchObject({ frequency: 'WEEKLY', interval_value: 2, timezone: 'Asia/Jakarta', occurrence_limit: 3 });
+    const occurrence = (await sql`SELECT o.task_id,t.title FROM recurrence_occurrences o JOIN tasks t ON t.id=o.task_id WHERE o.recurrence_rule_id=${rule.id}`)[0];
+    expect(occurrence).toMatchObject({ title: 'Recurring browser task' });
+    await page.reload();
+    await expect(page.getByText('Recurring browser task')).toBeVisible();
+    await sql.end();
+  });
+
   test('calendar create handoff opens task form with prefilled schedule fields', async ({ page }) => {
     const { sql } = createDatabase(databaseUrl);
     const admin = await auth.api.signUpEmail({ body: { email: 'admin2@example.com', password: 'password123', name: 'Admin User' } });
