@@ -8,6 +8,7 @@ import { createLogger } from '@floz/observability';
 import { dispatchOutboxBatch } from './outbox-dispatcher.js';
 import { createRecurrenceWorker } from './recurrence-worker.js';
 import { createRecurrenceQueue, createRedisConnection, QUEUES } from './queues.js';
+import { startReconciliationLoop } from './reconciliation.js';
 
 type Closeable = { close(): Promise<unknown> };
 type Connection = { close?(): Promise<unknown>; quit?(): Promise<unknown> };
@@ -23,6 +24,7 @@ export type WorkerRuntimeDeps = {
   createQueue?: (connection: Connection) => Closeable;
   createWorker?: (connection: Connection, concurrency: number) => Closeable;
   startDispatcher?: (queue: Closeable) => DispatcherStop;
+  startReconciliation?: () => DispatcherStop;
 };
 
 export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
@@ -60,12 +62,21 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
       await sql.end();
     };
   }))(queue);
+  const stopReconciliation = (deps.startReconciliation ?? (() => {
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) return async () => undefined;
+    const { sql } = createDatabase(databaseUrl);
+    const { sql: claimSql } = createDatabase(databaseUrl);
+    const stopLoop = startReconciliationLoop({ sql, claimSql, intervalMs: env.RECURRENCE_RECONCILIATION_INTERVAL_MS, batchSize: env.RECURRENCE_RECONCILIATION_BATCH_SIZE, onError: (error) => logger.error(error, 'recurrence reconciliation failed') });
+    return async () => { await stopLoop(); await sql.end(); await claimSql.end(); };
+  }))();
   let stopping: Promise<void> | undefined;
   const stop = () => {
     if (!stopping) {
       stopping = (async () => {
         process.off('SIGINT', onSignal);
         process.off('SIGTERM', onSignal);
+        await stopReconciliation();
         await stopDispatcher();
         await worker.close();
         await queue.close();

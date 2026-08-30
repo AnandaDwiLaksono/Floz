@@ -14,7 +14,9 @@ export const workerEnvSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
   REDIS_TLS: envBoolean,
-  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5)
+  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
+  RECURRENCE_RECONCILIATION_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
+  RECURRENCE_RECONCILIATION_BATCH_SIZE: z.coerce.number().int().positive().default(50)
 });
 
 export const webEnvSchema = z.object({

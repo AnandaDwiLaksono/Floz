@@ -16,8 +16,8 @@ describe('recurrence worker runtime', () => {
     );
   });
 
-  it('defaults concurrency and rejects invalid values', () => {
-    expect(parseWorkerEnv({ NODE_ENV: 'test' }).WORKER_CONCURRENCY).toBe(5);
+  it('defaults concurrency and reconciliation settings and rejects invalid values', () => {
+    expect(parseWorkerEnv({ NODE_ENV: 'test' })).toMatchObject({ WORKER_CONCURRENCY: 5, RECURRENCE_RECONCILIATION_INTERVAL_MS: 30000, RECURRENCE_RECONCILIATION_BATCH_SIZE: 50 });
     expect(() => parseWorkerEnv({ WORKER_CONCURRENCY: '0' })).toThrow();
     expect(() => parseWorkerEnv({ WORKER_CONCURRENCY: '1.5' })).toThrow();
     expect(parseWorkerEnv({ REDIS_TLS: 'false' }).REDIS_TLS).toBe(false);
@@ -30,13 +30,14 @@ describe('recurrence worker runtime', () => {
       createConnection: () => ({ close: async () => void closed.push('connection') }),
       createQueue: () => ({ close: async () => void closed.push('queue') }),
       createWorker: () => ({ close: async () => void closed.push('worker') }),
-      startDispatcher: () => async () => void closed.push('dispatcher')
+      startDispatcher: () => async () => void closed.push('dispatcher'),
+      startReconciliation: () => async () => void closed.push('reconciliation')
     });
 
     await runtime.stop();
     await runtime.stop();
 
-    expect(closed).toEqual(['dispatcher', 'worker', 'queue', 'connection']);
+    expect(closed).toEqual(['reconciliation', 'dispatcher', 'worker', 'queue', 'connection']);
   });
 
   it('stops through SIGTERM without Redis', async () => {
@@ -47,13 +48,14 @@ describe('recurrence worker runtime', () => {
       createConnection: () => ({ close: async () => void closed.push('connection') }),
       createQueue: () => ({ close: async () => void closed.push('queue') }),
       createWorker: () => ({ close: async () => void closed.push('worker') }),
-      startDispatcher: () => async () => void closed.push('dispatcher')
+      startDispatcher: () => async () => void closed.push('dispatcher'),
+      startReconciliation: () => async () => void closed.push('reconciliation')
     });
 
     process.emit('SIGTERM');
     await new Promise((resolve) => setImmediate(resolve));
 
-    expect(closed).toEqual(['dispatcher', 'worker', 'queue', 'connection']);
+    expect(closed).toEqual(['reconciliation', 'dispatcher', 'worker', 'queue', 'connection']);
     await runtime.stop();
   });
 });
