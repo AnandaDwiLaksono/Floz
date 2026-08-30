@@ -275,6 +275,7 @@ export const api = {
       title: string;
       description?: string | null;
       workflow_id?: string;
+      status_id?: string;
       priority?: string;
       team_id?: string | null;
       assignee_ids?: string[];

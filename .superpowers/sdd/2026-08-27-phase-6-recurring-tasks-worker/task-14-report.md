@@ -22,3 +22,13 @@ Scope:
 
 Concerns:
 - Existing lint configuration must be corrected separately for App Router-only web layout.
+
+Follow-up fix:
+- Included selected `status_id` in recurring request input and payload, preserving existing create semantics.
+- Added minimal create-dialog focus management: initial focus, Escape close, Tab wrap, and trigger focus restoration.
+
+Follow-up verification:
+- `pnpm --filter @floz/web test -- api-client.test.ts`: 3 passed.
+- `pnpm --filter @floz/web typecheck`: passed.
+- `pnpm --filter @floz/web build`: passed.
+- `pnpm --filter @floz/web lint`: still blocked by existing App Router configuration (`Pages directory cannot be found at .`).

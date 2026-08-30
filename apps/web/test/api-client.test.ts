@@ -31,6 +31,7 @@ describe('apiFetch client', () => {
       timezone: 'Asia/Jakarta',
       start_at: '2026-08-31T02:00:00.000Z',
       title: 'Daily report',
+      status_id: 'status-1',
     };
 
     await api.tasks.createRecurring('workspace-1', input, 'attempt-1');

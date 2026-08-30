@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { api, Task, Team, WorkspaceMember, Workflow, ApiError } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
@@ -48,6 +48,9 @@ export default function TasksPage() {
 
   // Ephemeral UI State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const createDialogRef = useRef<HTMLDivElement>(null);
+  const createTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasCreateOpen = useRef(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [availableTransitions, setAvailableTransitions] = useState<{ to_status_id: string; code: string; name: string }[]>([]);
@@ -191,6 +194,39 @@ export default function TasksPage() {
     void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data));
   }, [workspaceId, selectedTaskId, handleOpenDetail]);
 
+  useEffect(() => {
+    if (!isCreateOpen) {
+      if (wasCreateOpen.current) createTriggerRef.current?.focus();
+      wasCreateOpen.current = false;
+      return;
+    }
+    wasCreateOpen.current = true;
+    const dialog = createDialogRef.current;
+    const focusable = dialog?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    focusable?.[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsCreateOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !focusable?.length) return;
+      const items = Array.from(focusable);
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    dialog?.addEventListener('keydown', onKeyDown);
+    return () => dialog?.removeEventListener('keydown', onKeyDown);
+  }, [isCreateOpen]);
+
   const handleRefreshDetail = async (id: string) => {
     try {
       const res = await api.tasks.get(workspaceId, id);
@@ -228,6 +264,7 @@ export default function TasksPage() {
           title: createTitle,
           description: createDescription || null,
           priority: createPriority,
+          status_id: createStatusId || undefined,
           team_id: createTeamId || null,
           assignee_ids: createAssigneeId ? [createAssigneeId] : [],
           primary_assignee_id: createAssigneeId || null,
@@ -369,6 +406,7 @@ export default function TasksPage() {
           <p className="text-sm text-gray-500">Manage, organize, and execute workspace items.</p>
         </div>
         <button
+          ref={createTriggerRef}
           onClick={() => {
             setCreateValidationError(null);
             setIsCreateOpen(true);
@@ -566,7 +604,7 @@ export default function TasksPage() {
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/50" onClick={() => setIsCreateOpen(false)} />
-          <div role="dialog" aria-modal="true" aria-labelledby="create-task-title" className="relative w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
+          <div ref={createDialogRef} role="dialog" aria-modal="true" aria-labelledby="create-task-title" className="relative w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
             <h3 id="create-task-title" className="text-lg font-bold mb-4">Create Task</h3>
             <form onSubmit={handleCreate} className="space-y-4">
               {createValidationError && (
