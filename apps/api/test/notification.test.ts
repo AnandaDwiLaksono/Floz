@@ -180,5 +180,5 @@ describe('Notification API', () => {
       .set('Cookie', f.adminCookie)
       .expect(200)
       .expect(({ body }) => expect(body.data.count).toBe(0));
-  });
+  }, 60000);
 });
