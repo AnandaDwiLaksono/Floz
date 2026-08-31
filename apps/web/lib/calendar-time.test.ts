@@ -110,7 +110,7 @@ describe('calendar-time', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3001/api/v1/workspaces/ws-1/calendar/tasks?from=a&to=b&team_id=team-1&assignee_id=user-1',
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/workspaces/ws-1/calendar/tasks?from=a&to=b&team_id=team-1&assignee_id=user-1`,
       expect.objectContaining({ credentials: 'include' })
     );
     expect(result).toEqual(calendarTaskList);

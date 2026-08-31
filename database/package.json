@@ -5,7 +5,7 @@
   "scripts": {
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --pool=forks --poolOptions.forks.singleFork --passWithNoTests",
     "build": "tsc",
     "generate": "drizzle-kit generate --config=drizzle.config.ts",
     "migrate": "drizzle-kit migrate --config=drizzle.config.ts",

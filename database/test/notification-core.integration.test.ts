@@ -21,19 +21,18 @@ describe.skipIf(!databaseUrl)('notification core integration', () => {
     userId2 = randomUUID();
     workspaceId = randomUUID();
 
-    const role = (await sql<{ id: string }[]>`SELECT id FROM roles WHERE code='ADMIN' LIMIT 1`)[0];
-    roleId = role?.id ?? randomUUID();
-    if (!role) {
-      await sql`INSERT INTO roles(id, code, name) VALUES (${roleId}, 'ADMIN', 'Admin') ON CONFLICT DO NOTHING`;
-    }
+    await sql`INSERT INTO roles(id, code, name) VALUES (${randomUUID()}, 'ADMIN', 'Admin') ON CONFLICT (code) DO NOTHING`;
+    roleId = (await sql<{ id: string }[]>`SELECT id FROM roles WHERE code='ADMIN' LIMIT 1`)[0]?.id;
+    if (!roleId) throw new Error('ADMIN role unavailable');
 
     await sql`INSERT INTO users(id, email, name) VALUES (${userId1}, ${`u1-${userId1}@test.com`}, 'User 1'), (${userId2}, ${`u2-${userId2}@test.com`}, 'User 2')`;
     await sql`INSERT INTO workspaces(id, name, slug, created_by) VALUES (${workspaceId}, 'Test WS', ${`ws-${workspaceId}`}, ${userId1})`;
     await sql`INSERT INTO workspace_memberships(workspace_id, user_id, role_id, status) VALUES (${workspaceId}, ${userId1}, ${roleId}, 'ACTIVE'), (${workspaceId}, ${userId2}, ${roleId}, 'ACTIVE')`;
-    
+
     // Automatically seeded by trigger
     const defaultWorkflow = (await sql<{ id: string }[]>`SELECT id FROM workflows WHERE workspace_id=${workspaceId} LIMIT 1`)[0];
-    workflowId = defaultWorkflow.id;
+    workflowId = defaultWorkflow?.id;
+    if (!workflowId) throw new Error('Default workflow unavailable');
     const statuses = await sql<{ id: string; code: string; is_terminal: boolean }[]>`SELECT id, code, is_terminal FROM task_statuses WHERE workflow_id=${workflowId}`;
     activeStatusId = statuses.find((s) => !s.is_terminal)!.id;
     terminalStatusId = statuses.find((s) => s.is_terminal)!.id;
@@ -41,16 +40,21 @@ describe.skipIf(!databaseUrl)('notification core integration', () => {
 
   afterAll(async () => {
     // Clean up
-    await sql`DELETE FROM notifications WHERE workspace_id=${workspaceId}`;
-    await sql`DELETE FROM notification_dedup_ledger WHERE workspace_id=${workspaceId}`;
-    await sql`DELETE FROM task_assignees WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id=${workspaceId})`;
-    await sql`DELETE FROM tasks WHERE workspace_id=${workspaceId}`;
-    await sql`DELETE FROM workflow_transitions WHERE workflow_id=${workflowId}`;
-    await sql`DELETE FROM task_statuses WHERE workflow_id=${workflowId}`;
-    await sql`DELETE FROM workflows WHERE workspace_id=${workspaceId}`;
-    await sql`DELETE FROM workspace_memberships WHERE workspace_id=${workspaceId}`;
-    await sql`DELETE FROM workspaces WHERE id=${workspaceId}`;
-    await sql`DELETE FROM users WHERE id IN (${userId1}, ${userId2})`;
+    if (workspaceId) {
+      await sql`DELETE FROM notification_dedup_ledger WHERE workspace_id=${workspaceId}`;
+      await sql`DELETE FROM notifications WHERE workspace_id=${workspaceId}`;
+      await sql`DELETE FROM task_assignees WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id=${workspaceId})`;
+      await sql`DELETE FROM task_history WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id=${workspaceId})`;
+      await sql`DELETE FROM tasks WHERE workspace_id=${workspaceId}`;
+    }
+    if (workflowId) await sql`DELETE FROM workflow_transitions WHERE workflow_id=${workflowId}`;
+    if (workflowId) await sql`DELETE FROM task_statuses WHERE workflow_id=${workflowId}`;
+    if (workflowId) await sql`DELETE FROM workflows WHERE id=${workflowId}`;
+    if (workspaceId) {
+      await sql`DELETE FROM workspace_memberships WHERE workspace_id=${workspaceId}`;
+      await sql`DELETE FROM workspaces WHERE id=${workspaceId}`;
+    }
+    if (userId1 && userId2) await sql`DELETE FROM users WHERE id IN (${userId1}, ${userId2})`;
     await sql.end();
   });
 
