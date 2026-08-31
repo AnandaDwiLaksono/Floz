@@ -372,4 +372,36 @@ export const api = {
       return apiFetch<CalendarTaskList>(`/workspaces/${workspaceId}/calendar/tasks?${searchParams.toString()}`);
     }
   },
+  notifications: {
+    unreadCount: (workspaceId: string) =>
+      apiFetch<{ data: { count: number } }>(`/workspaces/${workspaceId}/notifications/unread-count`),
+    list: (
+      workspaceId: string,
+      params: { read?: boolean; limit?: number; cursor?: string } = {}
+    ) => {
+      const searchParams = new URLSearchParams();
+      if (params.read !== undefined) searchParams.set('read', String(params.read));
+      if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+      if (params.cursor) searchParams.set('cursor', params.cursor);
+      const query = searchParams.toString();
+      return apiFetch<PaginatedList<import('../components/notification-item').NotificationResource>>(
+        `/workspaces/${workspaceId}/notifications${query ? `?${query}` : ''}`
+      );
+    },
+    markRead: (workspaceId: string, notificationId: string, isRead = true) =>
+      apiFetch<{ data: import('../components/notification-item').NotificationResource }>(
+        `/workspaces/${workspaceId}/notifications/${notificationId}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ is_read: isRead }),
+        }
+      ),
+    markAllRead: (workspaceId: string) =>
+      apiFetch<{ data: { updated_count: number } }>(
+        `/workspaces/${workspaceId}/notifications/mark-all-read`,
+        {
+          method: 'POST',
+        }
+      ),
+  },
 };

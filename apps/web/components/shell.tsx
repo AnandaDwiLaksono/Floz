@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth-context';
+import { useUnreadCount, useNotifications } from '../lib/hooks/use-notifications';
 import {
   CheckSquare,
   Building,
@@ -23,14 +24,44 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
+  const [filterRead, setFilterRead] = useState<boolean | null>(null);
   const bellButtonRef = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
+  const router = useRouter();
 
-  // ponytail: Mock state for UI placement, API integration pending
-  const unreadCount = 3; 
-  const mockNotifications: NotificationResource[] = [
-    { id: '1', type: 'TASK_ASSIGNED', title: 'Task assigned', body: 'You were assigned to Setup DB', entity_type: 'task', entity_id: '1', is_read: false, read_at: null, created_at: new Date().toISOString() }
-  ];
+  // ponytail: Fetch real notifications & count
+  const {
+    unreadCount,
+    setUnreadCount,
+  } = useUnreadCount(activeWorkspace?.id);
+
+  const {
+    notifications,
+    loading: loadingNotifications,
+    hasMore,
+    error: notificationsError,
+    loadMore,
+    markRead,
+    markAllRead,
+    fetchNotifications,
+  } = useNotifications(activeWorkspace?.id, filterRead, setUnreadCount);
+
+  const handleSelect = useCallback(
+    (notification: NotificationResource) => {
+      // Optimistic mark read
+      markRead(notification.id);
+
+      // Close notification popover
+      setNotificationCenterOpen(false);
+
+      // Navigate to context route or fallback
+      const route =
+        notification.context?.route ||
+        `/workspaces/${activeWorkspace?.id}/tasks?selected_task_id=${notification.entity_id}`;
+      router.push(route);
+    },
+    [activeWorkspace?.id, markRead, router]
+  );
 
   // ponytail: handle escape to close notification center and return focus
   React.useEffect(() => {
@@ -196,13 +227,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
               {notificationCenterOpen && (
                 <div className="absolute right-0 mt-2 z-50">
                   <NotificationCenter
-                    notifications={mockNotifications}
-                    loading={false}
-                    hasMore={false}
+                    notifications={notifications}
+                    loading={loadingNotifications}
+                    hasMore={hasMore}
                     unreadCount={unreadCount}
-                    onSelect={() => {}}
-                    onMarkAllRead={() => {}}
-                    onLoadMore={() => {}}
+                    onSelect={handleSelect}
+                    onMarkAllRead={markAllRead}
+                    onLoadMore={loadMore}
+                    filterRead={filterRead}
+                    onFilterReadChange={setFilterRead}
+                    error={notificationsError}
+                    onRetry={fetchNotifications}
                   />
                 </div>
               )}

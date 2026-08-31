@@ -10,6 +10,8 @@ interface NotificationCenterProps {
   onSelect: (notification: NotificationResource) => void;
   onMarkAllRead: () => void;
   onLoadMore: () => void;
+  filterRead?: boolean | null;
+  onFilterReadChange?: (filter: boolean | null) => void;
   error?: string | null;
   onRetry?: () => void;
 }
@@ -22,10 +24,21 @@ export function NotificationCenter({
   onSelect,
   onMarkAllRead,
   onLoadMore,
+  filterRead: externalFilterRead,
+  onFilterReadChange,
   error,
   onRetry,
 }: NotificationCenterProps) {
-  const [filterRead, setFilterRead] = useState<boolean | null>(null);
+  const [internalFilterRead, setInternalFilterRead] = useState<boolean | null>(null);
+
+  const filterRead = externalFilterRead !== undefined ? externalFilterRead : internalFilterRead;
+  const setFilterRead = (val: boolean | null) => {
+    if (onFilterReadChange) {
+      onFilterReadChange(val);
+    } else {
+      setInternalFilterRead(val);
+    }
+  };
 
   const filtered = notifications.filter((n) => {
     if (filterRead === null) return true;
