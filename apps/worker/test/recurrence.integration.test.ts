@@ -33,7 +33,8 @@ describe('recurrence generation integration', () => {
   };
 
   beforeAll(async () => {
-    await sql`INSERT INTO roles(id,code,name) VALUES(${ids.role},'REC','Recurrence')`;
+    const roleCode = `REC_${randomUUID().substring(0, 8)}`;
+    await sql`INSERT INTO roles(id,code,name) VALUES(${ids.role},${roleCode},'Recurrence') ON CONFLICT DO NOTHING`;
     await sql`INSERT INTO users(id,email,name) VALUES(${ids.user},${`${ids.user}@example.test`},'Recurrence User'),(${ids.assignee},${`${ids.assignee}@example.test`},'Recurrence Assignee'),(${ids.outsider},${`${ids.outsider}@example.test`},'Outsider')`;
     await sql`INSERT INTO workspaces(id,name,slug,created_by) VALUES(${ids.workspace},'Recurrence',${`recurrence-${ids.workspace}`},${ids.user}),(${ids.otherWorkspace},'Other',${`other-${ids.otherWorkspace}`},${ids.user})`;
     await sql`INSERT INTO workspace_memberships(workspace_id,user_id,role_id) VALUES(${ids.workspace},${ids.user},${ids.role}),(${ids.workspace},${ids.assignee},${ids.role}),(${ids.otherWorkspace},${ids.outsider},${ids.role})`;
