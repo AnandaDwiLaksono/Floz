@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../lib/auth-context';
@@ -23,6 +23,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
+  const bellButtonRef = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
 
   // ponytail: Mock state for UI placement, API integration pending
@@ -31,11 +32,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     { id: '1', type: 'TASK_ASSIGNED', title: 'Task assigned', body: 'You were assigned to Setup DB', entity_type: 'task', entity_id: '1', is_read: false, read_at: null, created_at: new Date().toISOString() }
   ];
 
-  // ponytail: handle escape to close notification center
+  // ponytail: handle escape to close notification center and return focus
   React.useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && notificationCenterOpen) {
         setNotificationCenterOpen(false);
+        bellButtonRef.current?.focus();
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -178,6 +180,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {/* Notification Bell */}
             <div className="relative">
               <button
+                ref={bellButtonRef}
                 onClick={() => setNotificationCenterOpen(!notificationCenterOpen)}
                 aria-label={`Notifications, ${unreadCount} unread`}
                 className="relative p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"

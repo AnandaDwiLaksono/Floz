@@ -18,11 +18,35 @@ interface NotificationItemProps {
   onSelect: (notification: NotificationResource) => void;
 }
 
+// ponytail: Native Intl.RelativeTimeFormat helper
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.round((date.getTime() - now.getTime()) / 1000);
+
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
+  const cutoffs = [
+    { unit: 'year', seconds: 31536000 },
+    { unit: 'month', seconds: 2592000 },
+    { unit: 'day', seconds: 86400 },
+    { unit: 'hour', seconds: 3600 },
+    { unit: 'minute', seconds: 60 },
+  ] as const;
+
+  for (const { unit, seconds } of cutoffs) {
+    if (Math.abs(diffInSeconds) >= seconds || unit === 'minute') {
+      const delta = Math.round(diffInSeconds / seconds);
+      return rtf.format(delta, unit);
+    }
+  }
+
+  return 'just now';
+}
+
 export function NotificationItem({ notification, onSelect }: NotificationItemProps) {
   const Icon = notification.type === 'TASK_ASSIGNED' ? User : Clock;
-
-  // ponytail: Use standard Date logic instead of date-fns for simpler relative time to avoid extra dependencies if not already heavily used.
-  const dateStr = new Date(notification.created_at).toLocaleDateString();
+  const relativeTime = formatRelativeTime(notification.created_at);
 
   return (
     <button
@@ -43,7 +67,7 @@ export function NotificationItem({ notification, onSelect }: NotificationItemPro
           {notification.body}
         </p>
         <time dateTime={notification.created_at} className="text-xs text-gray-400 mt-1 block">
-          {dateStr}
+          {relativeTime}
         </time>
       </div>
     </button>

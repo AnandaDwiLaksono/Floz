@@ -84,9 +84,16 @@ export function NotificationCenter({
         )}
 
         {loading && notifications.length === 0 && (
-          <div className="p-4 flex flex-col items-center justify-center space-y-2 text-gray-400">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-xs">Loading notifications...</span>
+          <div className="p-3 space-y-3 animate-pulse" aria-label="Loading notifications">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex gap-3 items-center">
+                <div className="h-5 w-5 rounded-full bg-gray-200 dark:bg-gray-700 flex-shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 w-2/3 bg-gray-200 dark:bg-gray-700 rounded" />
+                  <div className="h-2.5 w-4/5 bg-gray-100 dark:bg-gray-800 rounded" />
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
