@@ -6,7 +6,7 @@ import { parseWorkerEnv } from '@floz/config';
 import { claimOutboxBatch, createDatabase, markOutboxDispatched, markOutboxRetry } from '@floz/database';
 import { createLogger } from '@floz/observability';
 import { dispatchOutboxBatch } from './outbox-dispatcher.js';
-import { createRecurrenceWorker } from './recurrence-worker.js';
+import { createRecurrenceWorker, createNotificationDueSoonWorker } from './recurrence-worker.js';
 import { createRecurrenceQueue, createRedisConnection, QUEUES } from './queues.js';
 import { startReconciliationLoop } from './reconciliation.js';
 
@@ -39,8 +39,10 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
       if (!databaseUrl) throw new Error('DATABASE_URL is required');
       const { sql } = createDatabase(databaseUrl);
       const bullWorker = new Worker(QUEUES.recurrenceWakeup, createRecurrenceWorker({ sql }), { connection: value as never, concurrency });
+      const dueSoonWorker = new Worker(QUEUES.notificationDueSoon, createNotificationDueSoonWorker({ sql }), { connection: value as never, concurrency });
       const close = bullWorker.close.bind(bullWorker);
-      bullWorker.close = async () => { await close(); await sql.end(); };
+      const closeDueSoon = dueSoonWorker.close.bind(dueSoonWorker);
+      bullWorker.close = async () => { await close(); await closeDueSoon(); await sql.end(); };
       return bullWorker;
     })
   )(connection, env.WORKER_CONCURRENCY);
@@ -62,12 +64,12 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
       await sql.end();
     };
   }))(queue);
-  const stopReconciliation = (deps.startReconciliation ?? (() => {
+    const stopReconciliation = (deps.startReconciliation ?? (() => {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) return async () => undefined;
     const { sql } = createDatabase(databaseUrl);
     const { sql: claimSql } = createDatabase(databaseUrl);
-    const stopLoop = startReconciliationLoop({ sql, claimSql, intervalMs: env.RECURRENCE_RECONCILIATION_INTERVAL_MS, batchSize: env.RECURRENCE_RECONCILIATION_BATCH_SIZE, onError: (error) => logger.error(error, 'recurrence reconciliation failed') });
+    const stopLoop = startReconciliationLoop({ sql, claimSql, intervalMs: env.RECURRENCE_RECONCILIATION_INTERVAL_MS, batchSize: env.RECURRENCE_RECONCILIATION_BATCH_SIZE, onError: (error) => logger.error(error, 'recurrence reconciliation failed'), databaseUrl });
     return async () => { await stopLoop(); await sql.end(); await claimSql.end(); };
   }))();
   let stopping: Promise<void> | undefined;
