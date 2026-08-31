@@ -42,7 +42,7 @@ test.describe('Floz Kanban', () => {
     await expect(page.getByRole('heading', { name: /In progress/ })).toBeVisible();
     await page.getByRole('button', { name: /Kanban Task/ }).click();
     await expect(page.getByText('Change Status')).toBeVisible();
-    await expect(page.locator('span').filter({ hasText: 'In progress' }).first()).toBeVisible();
+    await expect(page.locator('span').filter({ hasText: /In progress/i }).first()).toBeVisible();
     await page.goto(`/workspaces/${workspaceId}/kanban`);
     await expect(page.getByLabel('Change status for Kanban Task')).toBeVisible();
     const stale = createDatabase(databaseUrl);
@@ -201,5 +201,53 @@ test.describe('Floz Kanban', () => {
     await page.goto(`/workspaces/${workspaceId}/calendar?view=day&date=2026-08-18`);
     await expect(page.getByRole('heading', { name: 'Calendar' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create task on 2026-08-18' })).toBeVisible();
+  });
+
+  test('notification badge updates, opens popover, clicks item to mark read and navigate', async ({ page }) => {
+    const { sql } = createDatabase(databaseUrl);
+    const admin = await auth.api.signUpEmail({ body: { email: 'notif_admin@example.com', password: 'password123', name: 'Notif Admin' } });
+    const workspaceId = 'a8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    const taskId = 'b9ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    const adminRoleId = String((await sql`SELECT id FROM roles WHERE code='ADMIN'`)[0].id);
+    await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'Notif WS','notif-ws','Asia/Jakarta',${String(admin.user.id)},true)`;
+    await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${String(admin.user.id)},${adminRoleId},'ACTIVE')`;
+    
+    const defaultWorkflow = (await sql<{ id: string }[]>`SELECT id FROM workflows WHERE workspace_id=${workspaceId} LIMIT 1`)[0];
+    const status = (await sql<{ id: string }[]>`SELECT id FROM task_statuses WHERE workflow_id=${defaultWorkflow.id} LIMIT 1`)[0];
+    await sql`
+      INSERT INTO tasks (id, workspace_id, task_key, title, workflow_id, status_id, creator_id)
+      VALUES (${taskId}, ${workspaceId}, 'NOTIF-1', 'Notif Task', ${defaultWorkflow.id}, ${status.id}, ${String(admin.user.id)})
+    `;
+
+    // Seed notifications directly
+    await sql`
+      INSERT INTO notifications (workspace_id, user_id, type, title, body, is_read, entity_type, entity_id)
+      VALUES (${workspaceId}, ${String(admin.user.id)}, 'TASK_ASSIGNED', 'New assigned task E2E', 'You have been assigned to test notifications', false, 'TASK', ${taskId})
+    `;
+    await sql.end();
+
+    await page.goto('/login');
+    await page.fill('#email', 'notif_admin@example.com');
+    await page.fill('#password', 'password123');
+    await page.click('button[type="submit"]');
+
+    // 1. Unread count badge is visible
+    const bellBtn = page.getByRole('button', { name: /Notifications, 1 unread/i });
+    await expect(bellBtn).toBeVisible();
+    await expect(bellBtn.locator('span')).toHaveText('1');
+
+    // 2. Open popover
+    await bellBtn.click();
+    await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
+    await expect(page.getByText('New assigned task E2E')).toBeVisible();
+
+    // 3. Mark read and navigate on item click
+    await page.getByRole('button', { name: 'New assigned task E2E' }).click();
+    await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks\\?selected_task_id=${taskId}`));
+
+    // 4. Badge is gone (0 unread)
+    const bellBtnAfter = page.getByRole('button', { name: /Notifications, 0 unread/i });
+    await expect(bellBtnAfter).toBeVisible();
+    await expect(bellBtnAfter.locator('span')).toBeHidden();
   });
 });

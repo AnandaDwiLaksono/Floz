@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { IsBoolean, IsOptional } from 'class-validator';
 
 export class ListNotificationsQueryDto {
   read?: string;
@@ -7,7 +8,13 @@ export class ListNotificationsQueryDto {
 }
 
 export class PatchNotificationDto {
-  isRead!: boolean;
+  @IsOptional()
+  @IsBoolean()
+  is_read?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isRead?: boolean;
 }
 
 export function validateListNotificationsQuery(query: ListNotificationsQueryDto): { read?: boolean; limit: number; cursor?: string } {
@@ -39,7 +46,8 @@ export function validateListNotificationsQuery(query: ListNotificationsQueryDto)
 }
 
 export function validatePatchNotification(body: PatchNotificationDto): { isRead: true } {
-  if (body?.isRead !== true) {
+  const isRead = body?.is_read ?? body?.isRead;
+  if (isRead !== true) {
     throw new BadRequestException('VALIDATION_ERROR');
   }
   return { isRead: true };
