@@ -13,13 +13,34 @@ import {
   ChevronDown,
   Layers,
   Calendar,
+  Bell,
 } from 'lucide-react';
+import { NotificationCenter } from './notification-center';
+import { NotificationResource } from './notification-item';
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { user, activeWorkspace, setActiveWorkspace, logout, loading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
+  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
   const pathname = usePathname();
+
+  // ponytail: Mock state for UI placement, API integration pending
+  const unreadCount = 3; 
+  const mockNotifications: NotificationResource[] = [
+    { id: '1', type: 'TASK_ASSIGNED', title: 'Task assigned', body: 'You were assigned to Setup DB', entity_type: 'task', entity_id: '1', is_read: false, read_at: null, created_at: new Date().toISOString() }
+  ];
+
+  // ponytail: handle escape to close notification center
+  React.useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && notificationCenterOpen) {
+        setNotificationCenterOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [notificationCenterOpen]);
 
   if (pathname === '/login') {
     return <>{children}</>;
@@ -153,6 +174,36 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 Role: {activeWorkspace.role}
               </span>
             )}
+
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setNotificationCenterOpen(!notificationCenterOpen)}
+                aria-label={`Notifications, ${unreadCount} unread`}
+                className="relative p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationCenterOpen && (
+                <div className="absolute right-0 mt-2 z-50">
+                  <NotificationCenter
+                    notifications={mockNotifications}
+                    loading={false}
+                    hasMore={false}
+                    unreadCount={unreadCount}
+                    onSelect={() => {}}
+                    onMarkAllRead={() => {}}
+                    onLoadMore={() => {}}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
