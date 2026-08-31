@@ -19,7 +19,7 @@ describe('notification outbox handlers and wake-up scheduling', () => {
     const createAssignmentNotifications = vi.fn(async () => {});
     const txMock = {};
     const dbMock = {
-      transaction: vi.fn(async (callback: (tx: any) => Promise<any>) => {
+      transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => {
         return callback(txMock);
       })
     };
@@ -28,8 +28,8 @@ describe('notification outbox handlers and wake-up scheduling', () => {
     const markDispatched = vi.fn(async () => true);
 
     const count = await dispatchOutboxBatch({
-      db: dbMock as any,
-      queue: queue as any,
+      db: dbMock as unknown as import('postgres').Sql,
+      queue: queue as unknown as import('bullmq').Queue,
       claim,
       markDispatched,
       markRetry: vi.fn(),
@@ -63,9 +63,9 @@ describe('notification outbox handlers and wake-up scheduling', () => {
     const markDispatched = vi.fn(async () => true);
 
     const count = await dispatchOutboxBatch({
-      db: {} as any,
-      queue: queue as any,
-      notificationQueue: notificationQueue as any,
+      db: {} as unknown as import('postgres').Sql,
+      queue: queue as unknown as import('bullmq').Queue,
+      notificationQueue: notificationQueue as unknown as import('bullmq').Queue,
       now,
       claim,
       markDispatched,
@@ -102,9 +102,9 @@ describe('notification outbox handlers and wake-up scheduling', () => {
     const markDispatched = vi.fn(async () => true);
 
     const count = await dispatchOutboxBatch({
-      db: {} as any,
-      queue: queue as any,
-      notificationQueue: notificationQueue as any,
+      db: {} as unknown as import('postgres').Sql,
+      queue: queue as unknown as import('bullmq').Queue,
+      notificationQueue: notificationQueue as unknown as import('bullmq').Queue,
       now,
       claim,
       markDispatched,
@@ -151,9 +151,9 @@ describe('notification outbox handlers and wake-up scheduling', () => {
     const markDispatched = vi.fn(async () => true);
 
     const count = await dispatchOutboxBatch({
-      db: {} as any,
-      queue: queue as any,
-      notificationQueue: notificationQueue as any,
+      db: {} as unknown as import('postgres').Sql,
+      queue: queue as unknown as import('bullmq').Queue,
+      notificationQueue: notificationQueue as unknown as import('bullmq').Queue,
       now,
       claim,
       markDispatched,

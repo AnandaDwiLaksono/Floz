@@ -21,7 +21,7 @@ export async function dispatchOutboxBatch(input: {
   claim: Claim;
   markDispatched: MarkDispatched;
   markRetry: MarkRetry;
-  createAssignmentNotifications?: (tx: Db, payload: any) => Promise<void>;
+  createAssignmentNotifications?: (tx: Db, payload: Record<string, unknown>) => Promise<void>;
 }) {
   const now = input.now ?? new Date();
   const claimToken = input.claimToken ?? randomUUID();
@@ -62,10 +62,9 @@ export async function dispatchOutboxBatch(input: {
         await input.queue.add('wake', row.payload, { jobId: buildWakeupJobId({ recurrenceRuleId, scheduledFor }) });
       }
       
-      if (await input.markDispatched(input.db, { id: row.id, claimToken, now: new Date() })) dispatched++;
+      if (await input.markDispatched(input.db, { id: row.id, claimToken, now })) dispatched++;
     } catch {
-      const retryNow = new Date();
-      await input.markRetry(input.db, { id: row.id, claimToken, now: retryNow, availableAt: new Date(retryNow.getTime() + (input.retryDelayMs ?? 5000)) });
+      await input.markRetry(input.db, { id: row.id, claimToken, now, availableAt: new Date(now.getTime() + (input.retryDelayMs ?? 5000)) });
     }
   }
   return dispatched;

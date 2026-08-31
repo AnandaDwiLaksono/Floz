@@ -39,7 +39,8 @@ export async function runReconciliationIteration(input: { sql: Sql; claimSql: Sq
             await createDueSoonNotifications(tx, {
               workspaceId: task.workspace_id,
               taskId: task.id,
-              expectedDueVersion: task.due_version
+              expectedDueVersion: task.due_version,
+              now: input.now
             });
           });
         }
@@ -62,7 +63,8 @@ export async function runReconciliationIteration(input: { sql: Sql; claimSql: Sq
             await createOverdueNotifications(tx, {
               workspaceId: task.workspace_id,
               taskId: task.id,
-              expectedDueVersion: task.due_version
+              expectedDueVersion: task.due_version,
+              now: input.now
             });
           });
         }

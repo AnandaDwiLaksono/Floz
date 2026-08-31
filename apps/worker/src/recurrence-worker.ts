@@ -14,7 +14,7 @@ export function createRecurrenceWorker(input: { sql: Sql; now?: () => Date }) {
   };
 }
 
-export function createNotificationDueSoonWorker(input: { sql: Sql; databaseUrl?: string }) {
+export function createNotificationDueSoonWorker(input: { sql: Sql; databaseUrl?: string; now?: () => Date }) {
   const databaseUrl = input.databaseUrl ?? process.env.DATABASE_URL;
   return async (job: Job<DueSoonWakeupJob>) => {
     const { workspaceId, taskId, dueVersion } = job.data ?? {};
@@ -26,7 +26,8 @@ export function createNotificationDueSoonWorker(input: { sql: Sql; databaseUrl?:
         await createDueSoonNotifications(tx, {
           workspaceId,
           taskId,
-          expectedDueVersion: dueVersion
+          expectedDueVersion: dueVersion,
+          now: (input.now ?? (() => new Date()))()
         });
       });
     } finally {

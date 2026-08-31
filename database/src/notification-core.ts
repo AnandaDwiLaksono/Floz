@@ -4,11 +4,10 @@ import type { PgTransaction } from 'drizzle-orm/pg-core';
 import type { PostgresJsQueryResultHKT } from 'drizzle-orm/postgres-js';
 import type { ExtractTablesWithRelations } from 'drizzle-orm';
 import { tasks, taskStatuses, taskAssignees } from './schema.js';
-import { and, eq, isNull, ne, lt, gt } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
-// Note: Using standard PgTransaction type instead of specific PostgresJs type 
-// to make it easier to test and match standard Drizzle patterns
-type Tx = any; // PgTransaction<PostgresJsQueryResultHKT, Record<string, never>, ExtractTablesWithRelations<Record<string, never>>>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Tx = PgTransaction<PostgresJsQueryResultHKT, any, ExtractTablesWithRelations<any>>;
 
 export async function createAssignmentNotifications(
   tx: Tx,
@@ -23,7 +22,7 @@ export async function createAssignmentNotifications(
     .from(tasks)
     .where(and(eq(tasks.id, params.taskId), eq(tasks.workspaceId, params.workspaceId)))
     .limit(1)
-    .then((res: any[]) => res[0]);
+    .then((res) => res[0]);
 
   if (!task || task.deletedAt !== null) return;
 
@@ -32,7 +31,7 @@ export async function createAssignmentNotifications(
     .from(taskAssignees)
     .where(eq(taskAssignees.taskId, params.taskId));
   
-  const activeUserIds = assignees.map((a: any) => a.userId).filter((id: string) => params.addedAssigneeIds.includes(id));
+  const activeUserIds = assignees.map((a) => a.userId).filter((id: string) => params.addedAssigneeIds.includes(id));
 
   for (const userId of activeUserIds) {
     const notificationId = randomUUID();
@@ -58,7 +57,7 @@ export async function createAssignmentNotifications(
 
 export async function createDueSoonNotifications(
   tx: Tx,
-  params: { workspaceId: string; taskId: string; expectedDueVersion: number }
+  params: { workspaceId: string; taskId: string; expectedDueVersion: number; now?: Date }
 ) {
   const taskData = await tx.select({
     id: tasks.id,
@@ -73,13 +72,13 @@ export async function createDueSoonNotifications(
   .leftJoin(taskStatuses, eq(tasks.statusId, taskStatuses.id))
   .where(and(eq(tasks.id, params.taskId), eq(tasks.workspaceId, params.workspaceId)))
   .limit(1)
-  .then((res: any[]) => res[0]);
+  .then((res) => res[0]);
 
   if (!taskData || taskData.deletedAt !== null || taskData.dueAt === null || taskData.dueVersion !== params.expectedDueVersion) return;
   if (taskData.isTerminal || taskData.category === 'COMPLETED' || taskData.category === 'CANCELLED') return;
   
-  // now < dueAt
-  if (new Date() >= new Date(taskData.dueAt as Date)) return;
+  const now = params.now ?? new Date();
+  if (now >= new Date(taskData.dueAt as Date)) return;
 
   const assignees = await tx.select({ userId: taskAssignees.userId })
     .from(taskAssignees)
@@ -110,7 +109,7 @@ export async function createDueSoonNotifications(
 
 export async function createOverdueNotifications(
   tx: Tx,
-  params: { workspaceId: string; taskId: string; expectedDueVersion: number }
+  params: { workspaceId: string; taskId: string; expectedDueVersion: number; now?: Date }
 ) {
   const taskData = await tx.select({
     id: tasks.id,
@@ -125,13 +124,13 @@ export async function createOverdueNotifications(
   .leftJoin(taskStatuses, eq(tasks.statusId, taskStatuses.id))
   .where(and(eq(tasks.id, params.taskId), eq(tasks.workspaceId, params.workspaceId)))
   .limit(1)
-  .then((res: any[]) => res[0]);
+  .then((res) => res[0]);
 
   if (!taskData || taskData.deletedAt !== null || taskData.dueAt === null || taskData.dueVersion !== params.expectedDueVersion) return;
   if (taskData.isTerminal || taskData.category === 'COMPLETED' || taskData.category === 'CANCELLED') return;
   
-  // now > dueAt
-  if (new Date() <= new Date(taskData.dueAt as Date)) return;
+  const now = params.now ?? new Date();
+  if (now <= new Date(taskData.dueAt as Date)) return;
 
   const assignees = await tx.select({ userId: taskAssignees.userId })
     .from(taskAssignees)

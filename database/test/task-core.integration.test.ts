@@ -19,11 +19,9 @@ describe.skipIf(!databaseUrl)('task core outbox & due versioning integration', (
     userId2 = randomUUID();
     workspaceId = randomUUID();
 
+    await sql`INSERT INTO roles(id, code, name) VALUES (${randomUUID()}, 'ADMIN', 'Admin'), (${randomUUID()}, 'MEMBER', 'Member') ON CONFLICT DO NOTHING`;
     const role = (await sql<{ id: string }[]>`SELECT id FROM roles WHERE code='ADMIN' LIMIT 1`)[0];
-    roleId = role?.id ?? randomUUID();
-    if (!role) {
-      await sql`INSERT INTO roles(id, code, name) VALUES (${roleId}, 'ADMIN', 'Admin') ON CONFLICT DO NOTHING`;
-    }
+    roleId = role.id;
 
     await sql`INSERT INTO users(id, email, name) VALUES (${userId1}, ${`u1-${userId1}@test.com`}, 'User 1'), (${userId2}, ${`u2-${userId2}@test.com`}, 'User 2')`;
     await sql`INSERT INTO workspaces(id, name, slug, created_by) VALUES (${workspaceId}, 'Test WS', ${`ws-${workspaceId}`}, ${userId1})`;
@@ -36,9 +34,12 @@ describe.skipIf(!databaseUrl)('task core outbox & due versioning integration', (
   });
 
   afterAll(async () => {
+    if (!workflowId) return;
     await sql`DELETE FROM outbox_events WHERE workspace_id=${workspaceId}`;
     await sql`DELETE FROM task_assignees WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id=${workspaceId})`;
+    await sql`DELETE FROM task_history WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id=${workspaceId})`;
     await sql`DELETE FROM tasks WHERE workspace_id=${workspaceId}`;
+    await sql`DELETE FROM workflow_transitions WHERE workflow_id=${workflowId}`;
     await sql`DELETE FROM task_statuses WHERE workflow_id=${workflowId}`;
     await sql`DELETE FROM workflows WHERE workspace_id=${workspaceId}`;
     await sql`DELETE FROM workspace_memberships WHERE workspace_id=${workspaceId}`;

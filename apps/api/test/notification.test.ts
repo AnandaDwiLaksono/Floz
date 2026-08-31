@@ -95,7 +95,6 @@ describe('Notification API', () => {
     `;
     
     const unreadAdminId1 = notifs[0].id;
-    const unreadAdminId2 = notifs[1].id;
 
     await sql.end();
 

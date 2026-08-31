@@ -6,6 +6,7 @@ import { createNotificationDueSoonWorker } from '../src/recurrence-worker.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeIntegration = databaseUrl ? describe : describe.skip;
+const reconciliationNow = new Date('2026-08-30T12:00:00.000Z');
 
 describeIntegration('notification worker and reconciliation integration', () => {
   if (!databaseUrl) return;
@@ -27,7 +28,9 @@ describeIntegration('notification worker and reconciliation integration', () => 
   };
 
   beforeAll(async () => {
-    await sql`INSERT INTO roles(id,code,name) VALUES(${ids.role},'NOTIF','Notification Role')`;
+    await sql`TRUNCATE team_memberships, teams, workspace_memberships, workspaces, roles, sessions, accounts, users, verifications, task_history, task_assignees, tasks, workflow_transitions, task_statuses, workflows, outbox_events, recurrence_idempotency_keys, recurrence_occurrences, recurrence_rules, notification_dedup_ledger, notifications, notification_preferences RESTART IDENTITY CASCADE`;
+    const roleCode = `NOTIF_${randomUUID().substring(0, 8)}`;
+    await sql`INSERT INTO roles(id,code,name) VALUES(${ids.role},${roleCode},'Notification Role') ON CONFLICT DO NOTHING`;
     await sql`INSERT INTO users(id,email,name) VALUES(${ids.user},${`${ids.user}@notif.test`},'Notif User'),(${ids.assignee},${`${ids.assignee}@notif.test`},'Notif Assignee')`;
     await sql`INSERT INTO workspaces(id,name,slug,created_by) VALUES(${ids.workspace},'Notif Workspace',${`notif-${ids.workspace}`},${ids.user})`;
     await sql`INSERT INTO workspace_memberships(workspace_id,user_id,role_id) VALUES(${ids.workspace},${ids.user},${ids.role}),(${ids.workspace},${ids.assignee},${ids.role})`;
@@ -36,9 +39,8 @@ describeIntegration('notification worker and reconciliation integration', () => 
       (${ids.openStatus},${ids.workflow},'TODO','To do','OPEN',1,true,false),
       (${ids.completedStatus},${ids.workflow},'DONE','Done','COMPLETED',2,false,true)`;
 
-    const now = new Date('2026-08-30T12:00:00.000Z');
-    const dueSoonAt = new Date('2026-08-30T18:00:00.000Z'); // 6 hours in future (< 24h)
-    const overdueAt = new Date('2026-08-30T06:00:00.000Z'); // 6 hours in past
+    const dueSoonAt = new Date(reconciliationNow.getTime() + 6 * 3600 * 1000);
+    const overdueAt = new Date(reconciliationNow.getTime() - 6 * 3600 * 1000);
 
     // 1. Task due soon
     await sql`INSERT INTO tasks(id,workspace_id,task_key,title,workflow_id,status_id,creator_id,due_at,due_version)
@@ -62,12 +64,13 @@ describeIntegration('notification worker and reconciliation integration', () => 
   });
 
   afterAll(async () => {
+    await sql`TRUNCATE team_memberships, teams, workspace_memberships, workspaces, roles, sessions, accounts, users, verifications, task_history, task_assignees, tasks, workflow_transitions, task_statuses, workflows, outbox_events, recurrence_idempotency_keys, recurrence_occurrences, recurrence_rules, notification_dedup_ledger, notifications, notification_preferences RESTART IDENTITY CASCADE`;
     await claimSql.end();
     await sql.end();
   });
 
   it('worker processes notification-due-soon job and dedups', async () => {
-    const workerHandler = createNotificationDueSoonWorker({ sql, databaseUrl });
+    const workerHandler = createNotificationDueSoonWorker({ sql, databaseUrl, now: () => reconciliationNow });
     const job = {
       data: {
         workspaceId: ids.workspace,
@@ -96,7 +99,7 @@ describeIntegration('notification worker and reconciliation integration', () => 
   });
 
   it('reconciliation generates due soon and overdue notifications with ledger entries', async () => {
-    const now = new Date('2026-08-30T12:00:00.000Z');
+    const now = reconciliationNow;
     await runReconciliationIteration({
       sql,
       claimSql,

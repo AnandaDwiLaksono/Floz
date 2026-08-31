@@ -47,7 +47,7 @@ export class NotificationController {
     let validatedQuery;
     try {
       validatedQuery = validateListNotificationsQuery(query);
-    } catch (e) {
+    } catch {
       throw new BadRequestException('VALIDATION_ERROR');
     }
     return this.notifications.listNotifications(workspaceId, ctx.user.id, validatedQuery);
@@ -72,7 +72,7 @@ export class NotificationController {
     const ctx = await this.member(req, workspaceId);
     try {
       validatePatchNotification(body);
-    } catch (e) {
+    } catch {
       throw new BadRequestException('VALIDATION_ERROR');
     }
     return this.notifications.markRead(workspaceId, ctx.user.id, notificationId);

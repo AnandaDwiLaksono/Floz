@@ -39,7 +39,7 @@ test.describe('Floz Kanban', () => {
     await page.getByLabel('Priority').selectOption('HIGH');
     await expect(page.getByText('Kanban Task')).toBeVisible();
     await page.getByLabel('Change status for Kanban Task').selectOption({ label: 'In progress' });
-    await expect(page.getByRole('heading', { name: /In progress/ })).toBeVisible();
+    await expect(page.locator('section').filter({ hasText: 'In progress' }).getByText('1', { exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: /Kanban Task/ }).click();
     await expect(page.getByText('Change Status')).toBeVisible();
     await expect(page.locator('span').filter({ hasText: /In progress/i }).first()).toBeVisible();
