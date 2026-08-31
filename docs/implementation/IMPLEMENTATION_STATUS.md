@@ -14,12 +14,13 @@ Completed
 - Phase 4 production-build E2E harness verified with 1/1 Playwright test passing against disposable PostgreSQL.
 - Phase 5 Calendar projection, thin route, timezone utility, task handoff, docs, and integration coverage.
 - Phase 6 recurring tasks, persistent task template snapshot, ledger unique occurrences, outbox, BullMQ worker runtime, advisory-locked chronological catch-up, edit/stop semantics, and recurring Task Create modal UI.
+- Phase 7 P0 in-app notifications and reminders with assignment, due-soon, overdue, durable schedule-aware deduplication, outbox/worker/reconciliation recovery, workspace/user-isolated APIs, accessible Notification Center, polling refresh, and real-stack E2E coverage.
 
 In Progress
 - None.
 
 Next
-- None. Do not proceed to Phase 7 automatically.
+- None. Do not proceed to Phase 8 automatically.
 
 Blocked
 - None.
@@ -28,7 +29,7 @@ Open Decisions
 - See `docs/decisions/OPEN_DECISIONS.md`.
 
 Known Limitations
-- Recurrence, worker activation, queue/outbox, notifications, approvals, comments, attachments, audit, KPI, and remaining product UI beyond Phase 6 are out of scope.
+- Approval notifications, comments, mentions, attachments, audit, KPI, notification preferences UI, push, email delivery, and remaining product UI beyond Phase 7 are out of scope.
 - Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported and are excluded from projection.
 - Better Auth `baseURL` is set in test env for deterministic API integration tests.
 - Web production builds now pass; previous React Hook dependency warnings were cleared.

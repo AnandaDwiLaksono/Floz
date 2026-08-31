@@ -1,35 +1,22 @@
 ## Current phase
-Phase 6 Recurring Tasks + Worker Foundation implementation in progress.
+Phase 7 Notifications & Reminders complete.
 
 ## Completed work
-- Phase 5 Calendar integrated into `master`.
-- Phase 6 design approved in `docs/superpowers/specs/2026-08-27-phase-6-recurring-tasks-worker-design.md`.
-- Task 1 completed: stale Phase 5/Phase 6 docs aligned.
-- Task 2 completed: worker BullMQ/Redis manifest dependencies and exact `test:integration` script added.
-- Task 3 completed: recurrence rules, occurrence ledger, outbox, task relationship, and API idempotency schema/migration added; database validation passed.
-- Task 4 completed: pure recurrence calculator, anchor semantics, end-condition handling, monthly fallback, DST-safe local interval math, and domain tests added.
-- Task 5 completed: canonical Task validation, creation, assignee, and history transaction helpers extracted and review-clean.
-- Task 6 completed: recurrence routes, DTO contracts, runtime validation, auth wiring, and unsupported CUSTOM validation added and review-clean.
-- Task 7 completed: recurrence create/idempotency/CRUD, first occurrence, prospective updates, stop semantics, and wake-up intents added and review-clean.
-- Task 8 completed: transactional outbox enqueue, atomic lease claim/reclaim, ownership-safe dispatch/retry state transitions, and PostgreSQL tests added and review-clean.
-- Task 9 completed: BullMQ worker runtime foundation, Redis configuration, deterministic job ID builder, bounded concurrency, and graceful shutdown added.
-- Task 10 completed: lease-safe outbox dispatcher, collision-safe hashed BullMQ job IDs, retry/reclaim/concurrency handling, and real PostgreSQL + Redis/BullMQ integration passed. BullMQ rejects colon-containing custom IDs; SHA-256-safe IDs are now used.
-- Task 11 completed: canonical due occurrence generation, wake-up processor, shared Task rules, occurrence deduplication, and recurrence history added and review-clean.
-- Task 12 completed: stale-safe PostgreSQL-concurrent reconciliation and bounded chronological catch-up added and review-clean.
-
-- Task 13 completed: recurrence list/get/update/stop API filters, pagination, workspace isolation, prospective updates, stop idempotency, and PostgreSQL coverage added and review-clean.
-- Task 14 completed: existing Task Create UI extended with supported recurring controls, workspace timezone default, CUSTOM reserved state, Idempotency-Key client call, status preservation, and accessible modal focus handling; review-clean.
-- Task 15 completed: real-stack recurring Task create, persistence, first occurrence, and refresh E2E passed.
-- Task 16 completed: Phase 6 documentation, report, and status updated.
-- Task 17 completed: Full workspace verification gates passed sequentially (clean DB, E2E, full workspace lint/typecheck/test/build); review-clean.
+- Phase 6 Recurring Tasks + Worker Foundation accepted complete.
+- Phase 7 delivered P0 in-app `TASK_ASSIGNED`, `TASK_DUE_SOON`, and `TASK_OVERDUE` notifications.
+- Added `notifications`, durable notification deduplication ledger, dormant notification preferences schema, and Task `due_version` schedule revision.
+- Added transactional assignment/due-date outbox intents, SHA-256-safe BullMQ due wake-ups, canonical worker re-reads, and advisory-locked reconciliation.
+- Added notification list/unread count/read/mark-all-read API endpoints with workspace and user isolation.
+- Added global Bell, accessible Notification Center, polling/focus refresh, relative timestamps, deep links, and real-stack browser coverage.
+- Resolved shared-DB fixture pollution and deterministic root test orchestration. See `PHASE_7_REPORT.md`.
+- Final gates passed: clean DB, E2E 7/7, worker integration 16/16, lint, typecheck, root tests twice, and build.
 
 ## Current blocker
 None.
 
 ## Next actions
-- Integrate the verified `phase-6-recurring-tasks-worker` branch back into `master`.
-- Stop after Phase 6.
+- Stop after Phase 7. Await explicit Phase 8 direction.
 
 ## Phases/features that must not be started
-- Phase 7 and later.
-- Notifications, reminders, email delivery, approvals, comments, attachments, KPI, non-task Calendar events.
+- Phase 8 and later.
+- Approval notifications, comments, mentions, attachments, KPI, notification preferences UI, push, email delivery, non-task Calendar events.
