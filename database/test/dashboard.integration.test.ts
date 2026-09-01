@@ -35,6 +35,7 @@ describe('dashboard integration', () => {
       for (const userId of assignees) await sql`INSERT INTO task_assignees(task_id,user_id,assigned_by) VALUES(${id},${userId},${adminId})`;
     };
     await add('MEMBER-DONE', completedStatusId, 'LOW', activeTeamId, [memberId]);
+    await add('MEMBER-SECOND-STATUS', secondActiveStatusId, 'MEDIUM', activeTeamId, [memberId]);
     await add('TEAM-OUTSIDE', activeStatusId, 'URGENT', activeTeamId, [outsiderId]);
     await add('TEAM-UNASSIGNED', activeStatusId, 'HIGH', activeTeamId, []);
     await add('INACTIVE', activeStatusId, 'MEDIUM', inactiveTeamId, [memberId]);
@@ -67,16 +68,16 @@ describe('dashboard integration', () => {
 
   it('includes completed assigned work in member scope', async () => {
     const result = await getMemberDashboard(db, input(memberId));
-    expect(result.kpis.denominators.due).toBe(3);
+    expect(result.kpis.denominators.due).toBe(4);
     expect(result.status_breakdown.map(({ key, position, id, count }) => ({ key, position, id, count }))).toEqual([
-      { key: 'OPEN', position: activeStatusPosition, id: activeStatusId, count: 2 },
+      ...[{ key: 'OPEN', position: activeStatusPosition, id: activeStatusId, count: 2 }, { key: 'IN_PROGRESS', position: activeStatusPosition, id: secondActiveStatusId, count: 1 }].sort((a, b) => a.id.localeCompare(b.id)),
       { key: 'COMPLETED', position: 999, id: completedStatusId, count: 1 }
     ]);
   });
 
   it('projects only active managed teams while retaining distinct assignee IDs and null unassigned bucket', async () => {
     const result = await getManagerDashboard(db, input(managerId));
-    expect(result.workload_by_team).toEqual([{ key: 'Active', count: 4 }]);
+    expect(result.workload_by_team).toEqual([{ key: 'Active', count: 5 }]);
     expect(result.workload_by_assignee).toEqual(expect.arrayContaining([
       { userId: outsiderId, name: 'Outside', count: 2 },
       { userId: duplicateId, name: 'Outside', count: 1 },
@@ -84,7 +85,7 @@ describe('dashboard integration', () => {
       { userId: null, name: null, count: 1 }
     ]));
     expect(result.unassigned).toBe(1);
-    expect(result.priority_breakdown.map((row) => row.key)).toEqual(['URGENT', 'HIGH', 'LOW']);
+    expect(result.priority_breakdown.map((row) => row.key)).toEqual(['URGENT', 'HIGH', 'MEDIUM', 'LOW']);
     expect(result).not.toHaveProperty('pending_approvals');
   });
 
@@ -92,6 +93,6 @@ describe('dashboard integration', () => {
     const result = await getManagerDashboard(db, input(adminId));
     expect(result.workload_by_team).toEqual(expect.arrayContaining([{ key: 'UNASSIGNED', count: 1 }, { key: 'Unmanaged', count: 1 }]));
     expect(result.workload_by_team).not.toEqual(expect.arrayContaining([{ key: 'Inactive', count: expect.any(Number) }]));
-    expect(result.kpis.denominators.due).toBe(8);
+    expect(result.kpis.denominators.due).toBe(9);
   });
 });
