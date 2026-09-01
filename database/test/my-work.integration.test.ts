@@ -56,6 +56,7 @@ describe.skipIf(!databaseUrl)('my work integration', () => {
       await insertTask('TODAY-B', '2026-09-01T10:00:00Z');
       await insertTask('TODAY-A', '2026-09-01T10:00:00Z');
       await insertTask('OVERDUE', '2026-08-31T23:59:59Z');
+      await insertTask('PRIOR-DAY', '2026-08-31T16:59:59Z');
       await insertTask('EQUAL', '2026-09-01T12:00:00Z');
       await insertTask('TOMORROW', '2026-09-01T17:00:00Z');
       await insertTask('UPCOMING-END', '2026-09-08T16:59:59Z');
@@ -79,23 +80,24 @@ describe.skipIf(!databaseUrl)('my work integration', () => {
   });
 
   it('projects assigned active tasks into timezone-aware, ordered buckets and counts', async () => {
-    const result = await getMyWorkSummary(db, { workspaceId, userId, date: '2026-09-01', timezone: 'Asia/Jakarta', now: new Date('2026-09-01T12:00:00Z') });
+    const result = await getMyWorkSummary(db, { workspaceId, userId, date: '2026-09-01', timezone: 'Asia/Jakarta' });
 
     expect(result.today.map((task) => task.taskKey)).toEqual(['OVERDUE', 'TODAY-A', 'TODAY-B', 'EQUAL']);
     expect(result.upcoming.map((task) => task.taskKey)).toEqual(['TOMORROW', 'UPCOMING-END']);
-    expect(result.overdue.map((task) => task.taskKey)).toEqual(['OVERDUE', 'TODAY-A', 'TODAY-B']);
-    expect(result.counts).toEqual({ today: 4, upcoming: 2, overdue: 3 });
+    expect(result.overdue.map((task) => task.taskKey)).toEqual(['PRIOR-DAY']);
+    expect(result.counts).toEqual({ today: 4, upcoming: 2, overdue: 1 });
+    expect(result.today.filter((task) => result.overdue.some((overdue) => overdue.id === task.id))).toEqual([]);
   });
 
   it('excludes cancelled status even when fixture marks it non-terminal', async () => {
-    const result = await getMyWorkSummary(db, { workspaceId, userId, date: '2026-09-01', timezone: 'Asia/Jakarta', now: new Date('2026-09-01T12:00:00Z') });
+    const result = await getMyWorkSummary(db, { workspaceId, userId, date: '2026-09-01', timezone: 'Asia/Jakarta' });
 
     expect(result.today.map((task) => task.taskKey)).not.toContain('CANCELLED');
     expect(result.overdue.map((task) => task.taskKey)).not.toContain('CANCELLED');
   });
 
   it('uses independent local-midnight conversion across DST boundaries', async () => {
-    const result = await getMyWorkSummary(db, { workspaceId, userId, date: '2027-03-14', timezone: 'America/New_York', now: new Date('2027-03-14T12:00:00Z') });
+    const result = await getMyWorkSummary(db, { workspaceId, userId, date: '2027-03-14', timezone: 'America/New_York' });
 
     expect(result.today.map((task) => task.taskKey)).toEqual([]);
     expect(result.upcoming.map((task) => task.taskKey)).toEqual(['DST-MIDNIGHT', 'DST-EARLY']);

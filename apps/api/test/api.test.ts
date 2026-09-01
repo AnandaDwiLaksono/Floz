@@ -397,6 +397,24 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(`${path}/reports/kpis`).set('Cookie', f.memberCookie).query({ from: 'bad', to: '2026-09-01T00:00:00.000Z' }).expect(400);
   });
 
+  it('validates manager dashboard team filters without expanding scope', async () => {
+    const f = await fixture(app!);
+    const { sql } = createDatabase(databaseUrl);
+    await sql`UPDATE workspace_memberships SET role_id=(SELECT id FROM roles WHERE code='MANAGER') WHERE workspace_id=${f.workspaceId} AND user_id=${f.memberId}`;
+    const managed = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Managed', manager_user_id: f.memberId }).expect(201)).body.data.id;
+    const unmanaged = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Unmanaged', manager_user_id: f.adminId }).expect(201)).body.data.id;
+    const foreign = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/teams`).set('Cookie', f.outsiderCookie).send({ name: 'Foreign' }).expect(201)).body.data.id;
+    const query = { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' };
+    const path = `/api/v1/workspaces/${f.workspaceId}/dashboard/manager`;
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ ...query, team_id: managed }).expect(200);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ ...query, team_id: unmanaged }).expect(403);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ ...query, team_id: foreign }).expect(400);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.adminCookie).query({ ...query, team_id: unmanaged }).expect(200);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.adminCookie).query({ ...query, team_id: foreign }).expect(400);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.adminCookie).query({ ...query, team_id: 'invalid' }).expect(400);
+    await sql.end();
+  });
+
   it('supports task workflow, assignment, transition, filtering, and history APIs', async () => {
     const f = await fixture(app!);
     const workflows = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/workflows`).set('Cookie', f.memberCookie).expect(200);

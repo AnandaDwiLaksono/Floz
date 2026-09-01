@@ -3,11 +3,11 @@ import type { DatabaseClient } from './index.js';
 import { buildOperationalActivePredicate } from './reporting-core.js';
 import { taskAssignees, taskStatuses, tasks } from './schema.js';
 
-export type MyWorkSummaryInput = { workspaceId: string; userId: string; date: string; timezone: string; now: Date };
+export type MyWorkSummaryInput = { workspaceId: string; userId: string; date: string; timezone: string };
 type MyWorkTask = { id: string; taskKey: string; title: string; dueAt: Date; priority: string };
 export type MyWorkSummary = { today: MyWorkTask[]; upcoming: MyWorkTask[]; overdue: MyWorkTask[]; counts: { today: number; upcoming: number; overdue: number } };
 
-export async function getMyWorkSummary(db: DatabaseClient, { workspaceId, userId, date, timezone, now }: MyWorkSummaryInput): Promise<MyWorkSummary> {
+export async function getMyWorkSummary(db: DatabaseClient, { workspaceId, userId, date, timezone }: MyWorkSummaryInput): Promise<MyWorkSummary> {
   const dayStart = sql`${date}::date::timestamp AT TIME ZONE ${timezone}`;
   const nextDayStart = sql`(${date}::date + interval '1 day')::timestamp AT TIME ZONE ${timezone}`;
   const upcomingEnd = sql`(${date}::date + interval '8 days')::timestamp AT TIME ZONE ${timezone}`;
@@ -16,7 +16,7 @@ export async function getMyWorkSummary(db: DatabaseClient, { workspaceId, userId
   const [today, upcoming, overdue] = await Promise.all([
     select(and(gte(tasks.dueAt, dayStart), lt(tasks.dueAt, nextDayStart))),
     select(and(gte(tasks.dueAt, nextDayStart), lt(tasks.dueAt, upcomingEnd))),
-    select(lt(tasks.dueAt, now))
+    select(lt(tasks.dueAt, dayStart))
   ]);
   return { today: today as MyWorkTask[], upcoming: upcoming as MyWorkTask[], overdue: overdue as MyWorkTask[], counts: { today: today.length, upcoming: upcoming.length, overdue: overdue.length } };
 }

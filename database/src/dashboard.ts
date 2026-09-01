@@ -3,7 +3,7 @@ import type { DatabaseClient } from './index.js';
 import { getKpis, type Kpis, type ReportingScope } from './kpis.js';
 import { ascPriorityRank } from './reporting-core.js';
 
-export type DashboardInput = Omit<ReportingScope, 'userId' | 'teamIds'> & { userId: string };
+export type DashboardInput = ReportingScope & { userId: string };
 type CountRow = { key: string | null; count: number };
 export type AssigneeCount = { userId: string | null; name: string | null; count: number };
 export type StatusCount = CountRow & { position: number; id: string };
@@ -60,11 +60,13 @@ export async function getMemberDashboard(db: DatabaseClient, input: DashboardInp
 export async function getManagerDashboard(db: DatabaseClient, input: DashboardInput): Promise<Dashboard> {
   const admin = await db.execute(sql`SELECT 1 FROM workspace_memberships JOIN roles ON roles.id = workspace_memberships.role_id WHERE workspace_id = ${input.workspaceId} AND user_id = ${input.userId} AND status = 'ACTIVE' AND roles.code = 'ADMIN'`);
   if (admin.length) {
-    const [kpis, projection] = await Promise.all([getKpis(db, { ...input, userId: undefined }), project(db, input, sql`true`)]);
+    const predicate = input.teamIds ? input.teamIds.length ? sql`tasks.team_id IN ${sql`(${sql.join(input.teamIds.map((id) => sql`${id}`), sql`, `)})`}` : sql`false` : sql`true`;
+    const [kpis, projection] = await Promise.all([getKpis(db, { ...input, userId: undefined }), project(db, input, predicate)]);
     return { kpis, ...projection };
   }
   const teamIds = await db.execute(sql`SELECT id FROM teams WHERE workspace_id = ${input.workspaceId} AND manager_user_id = ${input.userId} AND is_active = true`);
-  const ids = (teamIds as unknown as Array<{ id: string }>).map(({ id }) => id);
+  const managed = (teamIds as unknown as Array<{ id: string }>).map(({ id }) => id);
+  const ids = input.teamIds ?? managed;
   const predicate = ids.length ? sql`tasks.team_id IN ${sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`}` : sql`false`;
   const [kpis, projection] = await Promise.all([getKpis(db, { ...input, teamIds: ids }), project(db, input, predicate)]);
   return { kpis, ...projection };
