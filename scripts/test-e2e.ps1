@@ -27,17 +27,12 @@ function Wait-ForHttp($url, $job, $stdout, $stderr, $label) {
 
 try {
   $dbPort = Get-FreePort
-  $apiPort = Get-FreePort
-  do { $webPort = Get-FreePort } while ($webPort -eq $apiPort)
 
   docker rm -f $name 2>$null | Out-Null
   docker run --name $name -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=floz -p "${dbPort}:5432" -d postgres:16-alpine | Out-Null
 
   $env:DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:$dbPort/floz"
   $env:BETTER_AUTH_SECRET = 'test-secret-at-least-32-characters-long'
-  $env:BETTER_AUTH_URL = "http://127.0.0.1:$apiPort"
-  $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:$apiPort"
-  $env:ALLOWED_ORIGIN = "http://127.0.0.1:$webPort"
 
   for ($i = 0; $i -lt 30; $i++) {
     docker exec $name pg_isready -U postgres -d floz 2>$null | Out-Null
@@ -45,6 +40,12 @@ try {
     Start-Sleep -Seconds 1
   }
   if ($LASTEXITCODE -ne 0) { throw 'Postgres did not become ready' }
+
+  $apiPort = Get-FreePort
+  do { $webPort = Get-FreePort } while ($webPort -eq $apiPort)
+  $env:BETTER_AUTH_URL = "http://127.0.0.1:$apiPort"
+  $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:$apiPort"
+  $env:ALLOWED_ORIGIN = "http://127.0.0.1:$webPort"
 
   pnpm --filter @floz/database migrate
   if ($LASTEXITCODE -ne 0) { throw 'Database migration failed' }
