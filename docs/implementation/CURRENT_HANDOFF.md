@@ -20,3 +20,8 @@ None.
 ## Phases/features that must not be started
 - Phase 8 and later.
 - Approval notifications, comments, mentions, attachments, KPI, notification preferences UI, push, email delivery, non-task Calendar events.
+
+## Phase 8 Task 2 review follow-up
+- Reporting timestamp parsing now rejects non-finite values and invalid calendar dates through exact date validation.
+- Reporting tests cover canonical SQL columns, half-open interval boundaries, timezone-aware Upcoming midnight, and strict overdue equality.
+- Commit: `feat(reporting): harden canonical projection semantics`

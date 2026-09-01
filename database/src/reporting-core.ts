@@ -21,14 +21,30 @@ export function ascPriorityRank(priority: string): number {
   return PRIORITY_RANK[priority as TaskPriority] ?? 5;
 }
 
-const isoTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
+const isoTimestamp = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
+function parseTimestamp(value: string): Date | null {
+  const match = isoTimestamp.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const calendar = new Date(Date.UTC(year, month - 1, day));
+  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) return null;
+  const result = new Date(value);
+  return Number.isFinite(result.getTime()) ? result : null;
+}
 
 export function parseReportingInterval(input: ReportingIntervalInput): ReportingPeriod {
-  if (!input.from || !input.to || !isoTimestamp.test(input.from) || !isoTimestamp.test(input.to)) throw new Error('INVALID_REPORTING_INTERVAL');
-  const from = new Date(input.from);
-  const to = new Date(input.to);
-  if (from >= to) throw new Error('INVALID_REPORTING_INTERVAL');
+  if (!input.from || !input.to) throw new Error('INVALID_REPORTING_INTERVAL');
+  const from = parseTimestamp(input.from);
+  const to = parseTimestamp(input.to);
+  if (!from || !to || from >= to) throw new Error('INVALID_REPORTING_INTERVAL');
   return { from, to };
+}
+
+export function isInReportingInterval(value: Date, period: ReportingPeriod): boolean {
+  return value >= period.from && value < period.to;
 }
 
 function localParts(instant: Date, timezone: string) {
