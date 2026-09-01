@@ -1,10 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { api, apiFetch, ApiError } from '../lib/api-client';
-import { taskRoute } from '../lib/task-route';
+import { notificationRoute, taskRoute } from '../lib/task-route';
 
 describe('taskRoute', () => {
   it('builds the canonical selected task route', () => {
     expect(taskRoute('workspace-1', 'task-1')).toBe('/workspaces/workspace-1/tasks?selected_task_id=task-1');
+  });
+
+  it('preserves notification context routes and falls back to the task route', () => {
+    expect(notificationRoute('workspace-1', 'task-1', '/custom/context')).toBe('/custom/context');
+    expect(notificationRoute('workspace-1', 'task-1')).toBe('/workspaces/workspace-1/tasks?selected_task_id=task-1');
   });
 });
 

@@ -200,6 +200,22 @@ describe('API', () => {
     await sql.end();
   });
 
+  it('rejects malformed task-list ranges and cross-workspace references before SQL', async () => {
+    const f = await fixture(app!);
+    const path = `/api/v1/workspaces/${f.workspaceId}/tasks`;
+    for (const query of [
+      { due_from: '2026-02-30T00:00:00.000Z' },
+      { due_to: '2026-09-01' },
+      { due_from: '2026-09-02T00:00:00.000Z', due_to: '2026-09-01T00:00:00.000Z' },
+      { team_id: 'not-a-uuid' },
+      { assignee_id: 'not-a-uuid' },
+      { status_id: 'not-a-uuid' },
+    ]) await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query(query).expect(400).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ team_id: randomUUID() }).expect(400).expect(({ body }) => expect(body.message).toBe('TEAM_SCOPE_MISMATCH'));
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ assignee_id: f.outsiderId }).expect(400).expect(({ body }) => expect(body.message).toBe('CROSS_WORKSPACE_REFERENCE'));
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ status_id: randomUUID() }).expect(400).expect(({ body }) => expect(body.message).toBe('STATUS_SCOPE_MISMATCH'));
+  });
+
   it('uses opaque cursors without duplication, skips, or workspace leaks', async () => {
     const f = await fixture(app!);
     const path = `/api/v1/workspaces/${f.workspaceId}/tasks`;
