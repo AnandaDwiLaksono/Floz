@@ -42,7 +42,7 @@ test.describe('Floz Kanban', () => {
     await expect(page.locator('section').filter({ hasText: 'In progress' }).getByText('1', { exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: /Kanban Task/ }).click();
     await expect(page.getByText('Change Status')).toBeVisible();
-    await expect(page.getByText('StatusIn progress')).toBeVisible();
+    await expect(page.getByLabel('Task details').getByText('In progress', { exact: true })).toBeVisible();
     await page.goto(`/workspaces/${workspaceId}/kanban`);
     await expect(page.getByLabel('Change status for Kanban Task')).toBeVisible();
     const stale = createDatabase(databaseUrl);
