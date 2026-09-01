@@ -1,32 +1,54 @@
 import { sql, type SQL } from 'drizzle-orm';
 import type { DatabaseClient } from './index.js';
 import { getKpis, type Kpis, type ReportingScope } from './kpis.js';
+import { ascPriorityRank } from './reporting-core.js';
 
 export type DashboardInput = Omit<ReportingScope, 'userId' | 'teamIds'> & { userId: string };
 type CountRow = { key: string | null; count: number };
-export type Dashboard = { kpis: Kpis; workload_by_team: CountRow[]; workload_by_assignee: CountRow[]; unassigned: number; status_breakdown: CountRow[]; priority_breakdown: CountRow[] };
+export type AssigneeCount = { userId: string | null; name: string | null; count: number };
+export type StatusCount = CountRow & { position: number; id: string };
+export type Dashboard = { kpis: Kpis; workload_by_team: CountRow[]; workload_by_assignee: AssigneeCount[]; unassigned: number; status_breakdown: StatusCount[]; priority_breakdown: CountRow[] };
 
 async function project(db: DatabaseClient, scope: ReportingScope, predicate: SQL): Promise<Omit<Dashboard, 'kpis'>> {
-  const rows = await db.execute(sql`
+  const scoped = sql`
     WITH scoped AS (
-      SELECT tasks.id, tasks.team_id, tasks.priority, task_statuses.category, task_statuses.is_terminal = false AS is_active
+      SELECT tasks.id, tasks.team_id, tasks.priority, task_statuses.id AS status_id, task_statuses.category, task_statuses.position, task_statuses.is_terminal = false AS is_active
       FROM tasks JOIN task_statuses ON task_statuses.id = tasks.status_id
       WHERE tasks.workspace_id = ${scope.workspaceId} AND tasks.deleted_at IS NULL AND task_statuses.category <> 'CANCELLED' AND ${predicate}
-    ), assignees AS (SELECT scoped.id, scoped.is_active, task_assignees.user_id FROM scoped LEFT JOIN task_assignees ON task_assignees.task_id = scoped.id)
-    SELECT 'team' AS kind, CASE WHEN scoped.team_id IS NULL THEN 'UNASSIGNED' ELSE teams.name END AS key, count(DISTINCT scoped.id)::int AS count FROM scoped LEFT JOIN teams ON teams.id = scoped.team_id WHERE scoped.is_active AND (scoped.team_id IS NULL OR teams.is_active = true) GROUP BY CASE WHEN scoped.team_id IS NULL THEN 'UNASSIGNED' ELSE teams.name END
-    UNION ALL SELECT 'assignee', coalesce(users.name, 'UNASSIGNED'), count(*)::int FROM assignees LEFT JOIN users ON users.id = assignees.user_id WHERE assignees.is_active GROUP BY users.name
-    UNION ALL SELECT 'status', category, count(*)::int FROM scoped GROUP BY category
-    UNION ALL SELECT 'priority', priority, count(*)::int FROM scoped GROUP BY priority`);
-  const result = { workload_by_team: [] as CountRow[], workload_by_assignee: [] as CountRow[], unassigned: 0, status_breakdown: [] as CountRow[], priority_breakdown: [] as CountRow[] };
-  for (const row of rows as unknown as Array<CountRow & { kind: string }>) {
-    const value = { key: row.key!, count: Number(row.count) };
-    if (row.kind === 'team') result.workload_by_team.push(value);
-    if (row.kind === 'assignee') { result.workload_by_assignee.push(value); if (row.key === 'UNASSIGNED') result.unassigned = value.count; }
-    if (row.kind === 'status') result.status_breakdown.push(value);
-    if (row.kind === 'priority') result.priority_breakdown.push(value);
-  }
-  result.priority_breakdown.sort((a, b) => ({ URGENT: 1, HIGH: 2, MEDIUM: 3, LOW: 4 }[a.key ?? ''] ?? 5) - ({ URGENT: 1, HIGH: 2, MEDIUM: 3, LOW: 4 }[b.key ?? ''] ?? 5));
-  return result;
+    )`;
+  const [teamRows, assigneeRows, statusRows, priorityRows] = await Promise.all([
+    db.execute(sql`${scoped}
+      SELECT key, count(*)::int AS count
+      FROM (
+        SELECT CASE WHEN scoped.team_id IS NULL THEN 'UNASSIGNED' ELSE teams.name END AS key, CASE WHEN scoped.team_id IS NULL THEN 1 ELSE 0 END AS sort_null
+        FROM scoped LEFT JOIN teams ON teams.id = scoped.team_id
+        WHERE scoped.is_active AND (scoped.team_id IS NULL OR teams.is_active = true)
+      ) grouped
+      GROUP BY key, sort_null
+      ORDER BY sort_null, key`),
+    db.execute(sql`${scoped}
+      SELECT task_assignees.user_id AS user_id, users.name AS name, count(DISTINCT scoped.id)::int AS count
+      FROM scoped JOIN task_assignees ON task_assignees.task_id = scoped.id JOIN users ON users.id = task_assignees.user_id
+      WHERE scoped.is_active GROUP BY task_assignees.user_id, users.name
+      UNION ALL
+      SELECT NULL AS user_id, NULL AS name, count(*)::int AS count
+      FROM scoped WHERE scoped.is_active AND NOT EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_id = scoped.id)
+      ORDER BY user_id NULLS LAST, name NULLS LAST`),
+    db.execute(sql`${scoped}
+      SELECT category AS key, position, status_id AS id, count(*)::int AS count
+      FROM scoped GROUP BY category, position, status_id ORDER BY position, status_id`),
+    db.execute(sql`${scoped}
+      SELECT priority AS key, count(*)::int AS count
+      FROM scoped GROUP BY priority`)
+  ]);
+  const workload_by_assignee = (assigneeRows as unknown as Array<{ user_id: string | null; name: string | null; count: number }>).map((row) => ({ userId: row.user_id, name: row.name, count: Number(row.count) }));
+  return {
+    workload_by_team: (teamRows as unknown as CountRow[]).map((row) => ({ key: row.key, count: Number(row.count) })),
+    workload_by_assignee,
+    unassigned: workload_by_assignee.find((row) => row.userId === null)?.count ?? 0,
+    status_breakdown: (statusRows as unknown as Array<{ key: string; position: number; id: string; count: number }>).map((row) => ({ key: row.key, position: Number(row.position), id: row.id, count: Number(row.count) })),
+    priority_breakdown: (priorityRows as unknown as CountRow[]).map((row) => ({ key: row.key, count: Number(row.count) })).sort((a, b) => ascPriorityRank(a.key ?? '') - ascPriorityRank(b.key ?? ''))
+  };
 }
 
 export async function getMemberDashboard(db: DatabaseClient, input: DashboardInput): Promise<Dashboard> {
