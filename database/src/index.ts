@@ -16,3 +16,4 @@ export * from './notification-core.js';
 export * from './reporting-core.js';
 export * from './my-work.js';
 export * from './kpis.js';
+export * from './dashboard.js';
