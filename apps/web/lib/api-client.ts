@@ -146,9 +146,14 @@ export interface CalendarTaskList {
   meta: { from: string; to: string };
 }
 
-export interface ReportingKpis { completion_rate: string; overdue_rate: string; on_time_completion_rate: string; average_completion_time_seconds: string; workload: number; denominators: Record<string, number>; period: { from: string; to: string; evaluationAt: string }; filters: Record<string, string>; }
-export type Dashboard = Record<string, unknown>;
-export interface MyWorkSummary { today: Array<Record<string, unknown>>; upcoming: Array<Record<string, unknown>>; overdue: Array<Record<string, unknown>>; counts: { today: number; upcoming: number; overdue: number }; }
+export interface ReportingKpis { completion_rate: string; overdue_rate: string; on_time_completion_rate: string; average_completion_time_seconds: string; workload: number; denominators: { due: number; completed: number; overdue: number; onTime: number }; period: { from: string; to: string; evaluationAt: string }; filters: { deleted: 'NULL'; category: 'NOT_CANCELLED'; due: 'CURRENT_DUE_AT'; completion: 'CURRENT_COMPLETED_AT' }; }
+export interface DashboardCount { key: string | null; count: number; }
+export interface DashboardStatusCount extends DashboardCount { position: number; id: string; }
+export interface DashboardAssigneeCount { userId: string | null; name: string | null; count: number; }
+export interface MemberDashboard { kpis: ReportingKpis; workload_by_team: DashboardCount[]; workload_by_assignee: DashboardAssigneeCount[]; unassigned: number; status_breakdown: DashboardStatusCount[]; priority_breakdown: DashboardCount[]; }
+export type Dashboard = MemberDashboard;
+export interface MyWorkTask { id: string; taskKey: string; title: string; dueAt: string; priority: string; }
+export interface MyWorkSummary { today: MyWorkTask[]; upcoming: MyWorkTask[]; overdue: MyWorkTask[]; counts: { today: number; upcoming: number; overdue: number }; }
 
 export interface Team {
   id: string;

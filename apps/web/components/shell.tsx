@@ -68,6 +68,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // ponytail: handle escape to close notification center and return focus
   React.useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && mobileMenuOpen) setMobileMenuOpen(false);
       if (e.key === 'Escape' && notificationCenterOpen) {
         setNotificationCenterOpen(false);
         bellButtonRef.current?.focus();
@@ -75,7 +76,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [notificationCenterOpen]);
+  }, [mobileMenuOpen, notificationCenterOpen]);
 
   if (pathname === '/login') {
     return <>{children}</>;
@@ -200,8 +201,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <header className="h-16 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between px-4 md:px-6">
           <div className="flex items-center space-x-4">
             {/* Mobile Menu Button */}
-            <button
-              onClick={() => setMobileMenuOpen(true)}
+<button
+               aria-label="Open navigation"
+               onClick={() => setMobileMenuOpen(true)}
               className="md:hidden p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
             >
               <Menu className="h-6 w-6" />
@@ -257,7 +259,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
-          <div className="fixed inset-0 z-50 flex md:hidden">
+          <div className="fixed inset-0 z-50 flex md:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
             <div
               className="fixed inset-0 bg-black/50"
               onClick={() => setMobileMenuOpen(false)}
@@ -265,7 +267,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="relative flex flex-col w-4/5 max-w-sm bg-white dark:bg-gray-900 p-4 space-y-4">
               <div className="flex items-center justify-between border-b pb-3">
                 <span className="font-bold text-lg">Floz Menu</span>
-                <button onClick={() => setMobileMenuOpen(false)}>
+                <button aria-label="Close navigation" onClick={() => setMobileMenuOpen(false)}>
                   <X className="h-6 w-6 text-gray-500" />
                 </button>
               </div>
