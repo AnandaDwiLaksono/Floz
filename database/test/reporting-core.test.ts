@@ -3,12 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { ascPriorityRank, buildKpiEligiblePredicate, buildOperationalActivePredicate, getMtdPeriod, isInReportingInterval, isOverdue, isUpcoming, parseReportingInterval } from '../src/reporting-core.js';
 
 const dialect = new PgDialect();
-const render = (predicate: ReturnType<typeof buildOperationalActivePredicate>) => dialect.sqlToQuery(predicate).sql;
+const render = (predicate: ReturnType<typeof buildOperationalActivePredicate>) => dialect.sqlToQuery(predicate);
 
 describe('reporting core', () => {
-  it('builds canonical operational-active and KPI predicates on canonical columns', () => {
-    expect(render(buildOperationalActivePredicate())).toContain('"tasks"."deleted_at" is null and "task_statuses"."is_terminal" = $1');
-    expect(render(buildKpiEligiblePredicate())).toContain('"tasks"."deleted_at" is null and "task_statuses"."category" <> $1');
+  it('builds canonical operational-active and KPI predicates with correct bound values', () => {
+    const operational = render(buildOperationalActivePredicate());
+    const eligible = render(buildKpiEligiblePredicate());
+    expect(operational.sql).toContain('"tasks"."deleted_at" is null and "task_statuses"."is_terminal" = $1');
+    expect(operational.params).toEqual([false]);
+    expect(eligible.sql).toContain('"tasks"."deleted_at" is null and "task_statuses"."category" <> $1');
+    expect(eligible.params).toEqual(['CANCELLED']);
   });
 
   it('ranks priorities explicitly', () => {
