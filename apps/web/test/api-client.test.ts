@@ -48,6 +48,20 @@ describe('apiFetch client', () => {
     expect(headers.get('Idempotency-Key')).toBe('attempt-1');
   });
 
+  it('builds Task 6 reporting client routes', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: {} }) } as Response);
+    await api.workspaces.myWork('workspace-1', '2026-08-31');
+    await api.workspaces.dashboardMember('workspace-1');
+    await api.workspaces.dashboardManager('workspace-1', { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z', team_id: 'team-1' });
+    await api.workspaces.kpis('workspace-1', { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z', assignee_id: 'user-1' });
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
+      expect.stringContaining('/api/v1/workspaces/workspace-1/my-work?date=2026-08-31'),
+      expect.stringContaining('/api/v1/workspaces/workspace-1/dashboard/member'),
+      expect.stringContaining('/api/v1/workspaces/workspace-1/dashboard/manager?from=2026-08-01T00%3A00%3A00.000Z&to=2026-09-01T00%3A00%3A00.000Z&team_id=team-1'),
+      expect.stringContaining('/api/v1/workspaces/workspace-1/reports/kpis?from=2026-08-01T00%3A00%3A00.000Z&to=2026-09-01T00%3A00%3A00.000Z&assignee_id=user-1')
+    ]);
+  });
+
   it('maps network errors to ApiError exception details', async () => {
     const mockErrResponse = {
       ok: false,

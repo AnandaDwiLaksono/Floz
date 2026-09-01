@@ -146,6 +146,10 @@ export interface CalendarTaskList {
   meta: { from: string; to: string };
 }
 
+export interface ReportingKpis { completion_rate: string; overdue_rate: string; on_time_completion_rate: string; average_completion_time_seconds: string; workload: number; denominators: Record<string, number>; period: { from: string; to: string; evaluationAt: string }; filters: Record<string, string>; }
+export type Dashboard = Record<string, unknown>;
+export interface MyWorkSummary { today: Array<Record<string, unknown>>; upcoming: Array<Record<string, unknown>>; overdue: Array<Record<string, unknown>>; counts: { today: number; upcoming: number; overdue: number }; }
+
 export interface Team {
   id: string;
   workspace_id: string;
@@ -237,6 +241,10 @@ export const api = {
     me: () => apiFetch<{ data: CurrentUser }>('/me'),
   },
   workspaces: {
+    myWork: (workspaceId: string, date: string) => apiFetch<{ data: MyWorkSummary; meta: { date: string; timezone: string } }>(`/workspaces/${workspaceId}/my-work?date=${encodeURIComponent(date)}`),
+    dashboardMember: (workspaceId: string) => apiFetch<{ data: Dashboard }>(`/workspaces/${workspaceId}/dashboard/member`),
+    dashboardManager: (workspaceId: string, params: { from: string; to: string; team_id?: string }) => apiFetch<{ data: Dashboard }>(`/workspaces/${workspaceId}/dashboard/manager?${new URLSearchParams(params)}`),
+    kpis: (workspaceId: string, params: { from: string; to: string; team_id?: string; assignee_id?: string }) => apiFetch<{ data: ReportingKpis }>(`/workspaces/${workspaceId}/reports/kpis?${new URLSearchParams(params)}`),
     list: () => apiFetch<{ data: WorkspaceMembershipInfo[] }>('/workspaces'),
     get: (workspaceId: string) =>
       apiFetch<{ data: { id: string; name: string; slug: string; timezone: string } }>(

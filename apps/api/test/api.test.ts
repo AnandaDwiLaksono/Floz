@@ -383,6 +383,20 @@ describe('API', () => {
     await db.end();
   });
 
+  it('exposes Task 6 reporting endpoints with canonical envelopes and no fabricated approvals', async () => {
+    const f = await fixture(app!);
+    const path = `/api/v1/workspaces/${f.workspaceId}`;
+    const myWork = await request(app!.getHttpServer()).get(`${path}/my-work`).set('Cookie', f.memberCookie).query({ date: '2026-08-31' }).expect(200);
+    expect(myWork.body.data).toMatchObject({ today: [], upcoming: [], overdue: [], counts: { today: 0, upcoming: 0, overdue: 0 } });
+    expect(myWork.body.meta).toMatchObject({ date: '2026-08-31', timezone: expect.any(String) });
+    const member = await request(app!.getHttpServer()).get(`${path}/dashboard/member`).set('Cookie', f.memberCookie).expect(200);
+    expect(member.body.data).not.toHaveProperty('pending_approvals');
+    expect(member.body.data.kpis).toMatchObject({ completion_rate: expect.any(String), denominators: expect.any(Object) });
+    const report = await request(app!.getHttpServer()).get(`${path}/reports/kpis`).set('Cookie', f.memberCookie).query({ from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' }).expect(200);
+    expect(report.body.data.period).toMatchObject({ from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' });
+    await request(app!.getHttpServer()).get(`${path}/reports/kpis`).set('Cookie', f.memberCookie).query({ from: 'bad', to: '2026-09-01T00:00:00.000Z' }).expect(400);
+  });
+
   it('supports task workflow, assignment, transition, filtering, and history APIs', async () => {
     const f = await fixture(app!);
     const workflows = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/workflows`).set('Cookie', f.memberCookie).expect(200);
