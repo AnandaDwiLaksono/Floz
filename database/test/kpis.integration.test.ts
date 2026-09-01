@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase, getKpis, type ReportingScope } from '../src/index.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/floz';
 
 describe.skipIf(!databaseUrl)('kpis integration', () => {
   const { db, sql } = databaseUrl ? createDatabase(databaseUrl) : ({} as any);
@@ -34,6 +34,8 @@ describe.skipIf(!databaseUrl)('kpis integration', () => {
     await add('LATE', '2026-09-04T00:00:00Z', '2026-09-02T00:00:00Z', '2026-09-05T00:00:00Z', completedStatusId);
     await add('OPEN', '2026-09-06T00:00:00Z', '2026-09-02T00:00:00Z', null);
     await add('FUTURE', '2026-09-20T00:00:00Z', '2026-09-02T00:00:00Z', null);
+    await add('POST-CUTOFF', '2026-09-07T00:00:00Z', '2026-09-01T00:00:00Z', '2026-09-11T00:00:00Z', completedStatusId);
+    await add('CREATED-OUTSIDE', '2026-09-08T00:00:00Z', '2025-01-01T00:00:00Z', null);
     await add('EQUAL', '2026-09-10T00:00:00Z', '2026-09-01T00:00:00Z', '2026-09-10T00:00:00Z', completedStatusId);
     await add('CANCELLED', '2026-09-04T00:00:00Z', '2026-09-01T00:00:00Z', '2026-09-02T00:00:00Z', cancelledStatusId);
   });
@@ -49,26 +51,33 @@ describe.skipIf(!databaseUrl)('kpis integration', () => {
     await sql.end();
   });
 
-  it('computes custom half-open KPIs from current due dates and completion timestamps', async () => {
+  it('computes custom half-open KPIs from due-period eligible tasks only, ignoring created_at for membership', async () => {
     const scope: ReportingScope = { workspaceId, from: '2026-09-01T00:00:00Z', to: '2026-09-10T00:00:00Z', evaluationAt: new Date('2026-09-10T00:00:00Z'), timezone: 'UTC' };
     const result = await getKpis(db, scope);
-    expect(result.denominators).toEqual({ due: 3, completed: 2, overdue: 3, onTime: 1 });
-    expect(result.completion_rate).toBe('0.666667');
-    expect(result.overdue_rate).toBe('1.000000');
+    expect(result.denominators).toEqual({ due: 5, completed: 2, overdue: 3, onTime: 1 });
+    expect(result.completion_rate).toBe('0.400000');
+    expect(result.overdue_rate).toBe('0.600000');
     expect(result.on_time_completion_rate).toBe('0.500000');
     expect(result.average_completion_time_seconds).toBe('216000');
-    expect(result.workload).toBe(2);
+    expect(result.workload).toBe(3);
+  });
+
+  it('caps explicit custom intervals at evaluationAt and excludes post-cutoff completions from numerator and overdue escape hatch', async () => {
+    const result = await getKpis(db, { workspaceId, from: '2026-09-01T00:00:00Z', to: '2026-09-30T00:00:00Z', evaluationAt: new Date('2026-09-05T00:00:00Z'), timezone: 'UTC' });
+    expect(result.period.to).toEqual(new Date('2026-09-05T00:00:00Z'));
+    expect(result.denominators).toEqual({ due: 1, completed: 1, overdue: 0, onTime: 0 });
+    expect(result.completion_rate).toBe('1.000000');
+    expect(result.overdue_rate).toBe('0.000000');
   });
 
   it('uses MTD cutoff and excludes due work after evaluationAt', async () => {
     const result = await getKpis(db, { workspaceId, period: 'MTD', evaluationAt: new Date('2026-09-05T00:00:00Z'), timezone: 'UTC' });
-    expect(result.denominators.due).toBe(1);
-    expect(result.denominators.completed).toBe(1);
+    expect(result.denominators).toEqual({ due: 1, completed: 1, overdue: 0, onTime: 0 });
   });
 
   it('reflects live reopen and reschedule mutations', async () => {
     await sql`UPDATE tasks SET completed_at=NULL,status_id=${activeStatusId},due_at='2026-09-12T00:00:00Z' WHERE task_key='DONE' AND workspace_id=${workspaceId}`;
     const result = await getKpis(db, { workspaceId, from: '2026-09-01T00:00:00Z', to: '2026-09-10T00:00:00Z', evaluationAt: new Date('2026-09-10T00:00:00Z'), timezone: 'UTC' });
-    expect(result.denominators).toEqual({ due: 2, completed: 1, overdue: 2, onTime: 0 });
+    expect(result.denominators).toEqual({ due: 4, completed: 1, overdue: 3, onTime: 0 });
   });
 });

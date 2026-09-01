@@ -19,7 +19,8 @@ export type Kpis = {
 const rate = (numerator: number, denominator: number) => denominator ? (numerator / denominator).toFixed(6) : '0.000000';
 
 export async function getKpis(db: DatabaseClient, scope: ReportingScope): Promise<Kpis> {
-  const period = scope.period === 'MTD' ? getMtdPeriod(scope.evaluationAt, scope.timezone) : { ...parseReportingInterval({ from: scope.from, to: scope.to }), evaluationAt: scope.evaluationAt };
+  const requested = scope.period === 'MTD' ? getMtdPeriod(scope.evaluationAt, scope.timezone) : { ...parseReportingInterval({ from: scope.from, to: scope.to }), evaluationAt: scope.evaluationAt };
+  const period = { ...requested, to: requested.to < scope.evaluationAt ? requested.to : scope.evaluationAt };
   const eligible = buildKpiEligiblePredicate();
   const operational = buildOperationalActivePredicate();
   const from = period.from.toISOString(), to = period.to.toISOString(), evaluationAt = scope.evaluationAt.toISOString();
@@ -27,7 +28,7 @@ export async function getKpis(db: DatabaseClient, scope: ReportingScope): Promis
     SELECT
       count(*) FILTER (WHERE tasks.due_at >= ${from} AND tasks.due_at < ${to})::int AS due,
       count(*) FILTER (WHERE tasks.due_at >= ${from} AND tasks.due_at < ${to} AND tasks.completed_at IS NOT NULL AND tasks.completed_at <= ${evaluationAt})::int AS completed,
-      count(*) FILTER (WHERE tasks.due_at >= ${from} AND tasks.due_at < ${to} AND tasks.due_at < ${evaluationAt})::int AS overdue,
+      count(*) FILTER (WHERE tasks.due_at >= ${from} AND tasks.due_at < ${to} AND tasks.due_at < ${evaluationAt} AND (tasks.completed_at IS NULL OR tasks.completed_at > ${evaluationAt}))::int AS overdue,
       count(*) FILTER (WHERE tasks.due_at >= ${from} AND tasks.due_at < ${to} AND tasks.completed_at IS NOT NULL AND tasks.completed_at <= ${evaluationAt} AND tasks.completed_at <= tasks.due_at)::int AS on_time,
       coalesce(avg(extract(epoch from (tasks.completed_at - tasks.created_at))) FILTER (WHERE tasks.completed_at IS NOT NULL AND tasks.completed_at <= ${evaluationAt} AND tasks.due_at >= ${from} AND tasks.due_at < ${to}), 0)::numeric AS average_seconds,
       count(*) FILTER (WHERE ${operational})::int AS workload
