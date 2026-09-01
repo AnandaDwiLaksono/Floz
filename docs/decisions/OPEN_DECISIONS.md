@@ -7,4 +7,11 @@
 - Open: DST ambiguous/nonexistent local time semantics beyond anchored timezone conversions.
 - Open: Email, push, object storage, and deployment provider.
 - Open: Granular RBAC beyond provisional ADMIN-only team mutation policy.
+- Resolved (Phase 8): Operational reporting excludes soft-deleted tasks, terminal statuses, and `CANCELLED`; KPI eligibility excludes soft-deleted tasks and `CANCELLED` but includes completed terminal work.
+- Resolved (Phase 8): Reporting intervals use half-open bounds (`from <= value < to`); overdue uses strict `due_at < evaluation_at`; KPI calculations cap completion state at evaluation time.
+- Resolved (Phase 8): My Work uses workspace-local Today boundaries, a seven-local-day Upcoming window, and independent PostgreSQL timezone conversion for DST-safe boundaries; undated assigned tasks remain excluded.
+- Resolved (Phase 8): KPI and dashboard scopes are member self, manager active managed teams, or admin workspace/team scope; inactive or unauthorized team filters are rejected.
+- Resolved (Phase 8): Reporting uses current task fields rather than historical snapshots; no export, saved-filter, custom-formula, scheduled-report, or cross-workspace reporting is included.
+- Open (Phase 8 follow-up): Historical KPI snapshots and audit analytics if immutable past-period reporting becomes required.
+- Open (Phase 8 follow-up): Business-hours/paused-time completion metrics and configurable Upcoming horizons.
 - Open: Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported in projection.

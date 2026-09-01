@@ -17,10 +17,10 @@ Completed
 - Phase 7 P0 in-app notifications and reminders with assignment, due-soon, overdue, durable schedule-aware deduplication, outbox/worker/reconciliation recovery, workspace/user-isolated APIs, accessible Notification Center, polling refresh, and real-stack E2E coverage.
 
 In Progress
-- None.
+- Phase 8 Task 11 documentation and final verification. Implementation is complete; final gates remain pending.
 
 Next
-- None. Do not proceed to Phase 8 automatically.
+- Mark Phase 8 complete only after all required final gates pass. Do not proceed to Phase 9 automatically.
 
 Blocked
 - None.
@@ -29,7 +29,8 @@ Open Decisions
 - See `docs/decisions/OPEN_DECISIONS.md`.
 
 Known Limitations
-- Approval notifications, comments, mentions, attachments, audit, KPI, notification preferences UI, push, email delivery, and remaining product UI beyond Phase 7 are out of scope.
+- Approval notifications, comments, mentions, attachments, audit, notification preferences UI, push, email delivery, and remaining product UI beyond Phase 8 are out of scope.
+- Phase 8 reporting has no historical snapshots, exports, scheduled reports, charting warehouse, saved filters, custom KPI formulas, audit analytics, or cross-workspace reporting.
 - Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported and are excluded from projection.
 - Better Auth `baseURL` is set in test env for deterministic API integration tests.
 - Web production builds now pass; previous React Hook dependency warnings were cleared.
