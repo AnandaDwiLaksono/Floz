@@ -29,6 +29,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
   const [filterRead, setFilterRead] = useState<boolean | null>(null);
   const bellButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const mobileMenuRef = useRef<HTMLDivElement | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -68,7 +70,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // ponytail: handle escape to close notification center and return focus
   React.useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && mobileMenuOpen) setMobileMenuOpen(false);
+      if (e.key === 'Escape' && mobileMenuOpen) { setMobileMenuOpen(false); mobileMenuTriggerRef.current?.focus(); }
       if (e.key === 'Escape' && notificationCenterOpen) {
         setNotificationCenterOpen(false);
         bellButtonRef.current?.focus();
@@ -77,6 +79,32 @@ export function Shell({ children }: { children: React.ReactNode }) {
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [mobileMenuOpen, notificationCenterOpen]);
+
+  React.useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const container = mobileMenuRef.current;
+    const trigger = mobileMenuTriggerRef.current;
+    const focusable = container?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    const first = focusable?.[0];
+    const last = focusable?.[focusable.length - 1];
+    first?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !focusable?.length) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    container?.addEventListener('keydown', handleKeyDown);
+    return () => {
+      container?.removeEventListener('keydown', handleKeyDown);
+      trigger?.focus();
+    };
+  }, [mobileMenuOpen]);
 
   if (pathname === '/login') {
     return <>{children}</>;
@@ -202,6 +230,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center space-x-4">
             {/* Mobile Menu Button */}
 <button
+               ref={mobileMenuTriggerRef}
                aria-label="Open navigation"
                onClick={() => setMobileMenuOpen(true)}
               className="md:hidden p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
@@ -264,7 +293,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               className="fixed inset-0 bg-black/50"
               onClick={() => setMobileMenuOpen(false)}
             />
-            <div className="relative flex flex-col w-4/5 max-w-sm bg-white dark:bg-gray-900 p-4 space-y-4">
+            <div ref={mobileMenuRef} className="relative flex flex-col w-4/5 max-w-sm bg-white dark:bg-gray-900 p-4 space-y-4">
               <div className="flex items-center justify-between border-b pb-3">
                 <span className="font-bold text-lg">Floz Menu</span>
                 <button aria-label="Close navigation" onClick={() => setMobileMenuOpen(false)}>

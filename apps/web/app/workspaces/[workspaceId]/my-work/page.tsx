@@ -23,22 +23,24 @@ export default function MyWorkPage() {
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.workspaces.myWork>> | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const timezone = result?.meta.timezone || user?.workspaces.find((item) => item.id === workspaceId)?.timezone || user?.timezone || 'UTC';
-  const date = getTodayInTimezone(timezone);
-  const load = useCallback(async () => { setLoading(true); setError(''); try { setResult(await api.workspaces.myWork(workspaceId, getTodayInTimezone(timezone))); } catch (err) { setError(err instanceof ApiError && err.status === 403 ? 'You do not have permission to view My Work.' : err instanceof Error ? err.message : 'My Work unavailable'); } finally { setLoading(false); } }, [workspaceId, timezone]);
+  const [timezone, setTimezone] = useState<string | null>(null);
+  const date = timezone ? getTodayInTimezone(timezone) : null;
+  const load = useCallback(async () => { setLoading(true); setError(''); try { const workspace = await api.workspaces.get(workspaceId); setTimezone(workspace.data.timezone); setResult(await api.workspaces.myWork(workspaceId, getTodayInTimezone(workspace.data.timezone))); } catch (err) { setError(err instanceof ApiError && err.status === 403 ? 'You do not have permission to view My Work.' : err instanceof Error ? err.message : 'My Work unavailable'); } finally { setLoading(false); } }, [workspaceId]);
   useEffect(() => { void load(); }, [load]);
   const links = useMemo(() => {
+    if (!date || !timezone || !user?.id) return null;
     const today = getCalendarRange('day', date, timezone);
     const upcomingEnd = getCalendarRange('day', shiftCalendarDate('day', shiftCalendarDate('week', date, 1, timezone), 1, timezone), timezone).to;
+    const base = `/workspaces/${workspaceId}/tasks?assignee_id=${encodeURIComponent(user.id)}`;
     return {
-      today: `/workspaces/${workspaceId}/tasks?bucket=active&due_from=${encodeURIComponent(today.from)}&due_to=${encodeURIComponent(today.to)}&sort=due_at`,
-      upcoming: `/workspaces/${workspaceId}/tasks?bucket=active&due_from=${encodeURIComponent(today.to)}&due_to=${encodeURIComponent(upcomingEnd)}&sort=due_at`,
-      overdue: `/workspaces/${workspaceId}/tasks?bucket=active&due_to=${encodeURIComponent(today.from)}&sort=due_at`,
+      today: `${base}&bucket=active&due_from=${encodeURIComponent(today.from)}&due_to=${encodeURIComponent(today.to)}&sort=due_at`,
+      upcoming: `${base}&bucket=active&due_from=${encodeURIComponent(today.to)}&due_to=${encodeURIComponent(upcomingEnd)}&sort=due_at`,
+      overdue: `${base}&bucket=active&due_to=${encodeURIComponent(today.from)}&sort=due_at`,
     };
-  }, [date, timezone, workspaceId]);
+  }, [date, timezone, user?.id, workspaceId]);
   if (loading) return <p role="status">Loading My Work…</p>;
   if (error) return <div className="space-y-3"><h2 className="text-2xl font-bold">My Work</h2><p role="alert" className="text-red-600">{error}</p><button type="button" onClick={() => void load()} className="rounded border px-3 py-2">Try again</button></div>;
-  if (!result) return null;
+  if (!result || !links) return null;
   const { data, meta } = result;
   return <div className="space-y-4"><div><h2 className="text-2xl font-bold">My Work</h2><p className="text-sm text-gray-500">{meta.date} · {meta.timezone}</p></div><div className="grid gap-4 lg:grid-cols-3"><TaskSection title="Due today" tasks={data.today} empty="No tasks due today." href={links.today} onOpen={(id) => router.push(taskRoute(workspaceId, id))} /><TaskSection title="Upcoming" tasks={data.upcoming} empty="No upcoming tasks." href={links.upcoming} onOpen={(id) => router.push(taskRoute(workspaceId, id))} /><TaskSection title="Overdue" tasks={data.overdue} empty="No overdue tasks." href={links.overdue} onOpen={(id) => router.push(taskRoute(workspaceId, id))} /></div></div>;
 }

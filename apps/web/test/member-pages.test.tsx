@@ -10,10 +10,10 @@ const push = vi.fn();
 const workspace = { id: 'workspace-1', name: 'Field Ops', role: 'MEMBER' as const, membership_status: 'ACTIVE', timezone: 'Asia/Jakarta' };
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ workspaceId: 'workspace-1' }), useRouter: () => ({ push }) }));
-vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { workspaces: [workspace] } }) }));
+vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { id: 'user-1', workspaces: [workspace] } }) }));
 vi.mock('../lib/api-client', async (load) => {
   const actual = await load<typeof import('../lib/api-client')>();
-  return { ...actual, api: { ...actual.api, workspaces: { ...actual.api.workspaces, myWork: vi.fn(), dashboardMember: vi.fn() } } };
+  return { ...actual, api: { ...actual.api, workspaces: { ...actual.api.workspaces, get: vi.fn(), myWork: vi.fn(), dashboardMember: vi.fn() } } };
 });
 
 const task = { id: 'task-1', taskKey: 'TASK-1', title: 'Inspect pump', dueAt: '2026-09-01T09:00:00.000Z', priority: 'HIGH' };
@@ -30,7 +30,7 @@ const dashboard: MemberDashboard = {
 };
 
 describe('Task 8 member pages', () => {
-  beforeEach(() => { vi.clearAllMocks(); vi.useRealTimers(); });
+  beforeEach(() => { vi.clearAllMocks(); vi.useRealTimers(); vi.mocked(api.workspaces.get).mockResolvedValue({ data: { id: 'workspace-1', name: 'Field Ops', slug: 'field-ops', timezone: 'Asia/Jakarta' } }); });
 
   it('uses exact My Work wire fields, runtime workspace date, distinct canonical links, and drilldown route', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-08-31T18:30:00.000Z'));
@@ -38,13 +38,14 @@ describe('Task 8 member pages', () => {
     render(<MyWorkPage />);
     expect(screen.getByRole('status')).toHaveTextContent('Loading');
     await act(async () => { await vi.runAllTimersAsync(); });
+    expect(api.workspaces.get).toHaveBeenCalledWith('workspace-1');
     expect(screen.getByRole('heading', { name: 'My Work' })).toBeInTheDocument();
     expect(api.workspaces.myWork).toHaveBeenCalledWith('workspace-1', '2026-09-01');
     fireEvent.click(screen.getByRole('button', { name: /Inspect pump/ }));
     expect(push).toHaveBeenCalledWith('/workspaces/workspace-1/tasks?selected_task_id=task-1');
-    expect(screen.getByRole('link', { name: 'View all due today' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?bucket=active&due_from=2026-08-31T17%3A00%3A00.000Z&due_to=2026-09-01T17%3A00%3A00.000Z&sort=due_at');
-    expect(screen.getByRole('link', { name: 'View all upcoming' }).getAttribute('href')).toContain('due_from=2026-09-01T17%3A00%3A00.000Z');
-    expect(screen.getByRole('link', { name: 'View all overdue' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?bucket=active&due_to=2026-08-31T17%3A00%3A00.000Z&sort=due_at');
+    expect(screen.getByRole('link', { name: 'View all due today' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=active&due_from=2026-08-31T17%3A00%3A00.000Z&due_to=2026-09-01T17%3A00%3A00.000Z&sort=due_at');
+    expect(screen.getByRole('link', { name: 'View all upcoming' }).getAttribute('href')).toContain('assignee_id=user-1');
+    expect(screen.getByRole('link', { name: 'View all overdue' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=active&due_to=2026-08-31T17%3A00%3A00.000Z&sort=due_at');
   });
 
   it.each([[403, 'You do not have permission to view My Work.'], [500, 'My Work unavailable']])('renders My Work permission/error state for %i', async (status, text) => {
@@ -71,8 +72,8 @@ describe('Task 8 member pages', () => {
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.getByText('1h 30m')).toBeInTheDocument();
     expect(screen.queryByText('OPEN')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View active tasks' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?bucket=active&sort=due_at');
-    expect(screen.getByRole('link', { name: 'View completed tasks' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?bucket=completed&sort=-updated_at');
+    expect(screen.getByRole('link', { name: 'View active tasks' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=active&sort=due_at');
+    expect(screen.getByRole('link', { name: 'View completed tasks' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=completed&sort=-updated_at');
   });
 
   it('renders dashboard empty state and zero/null-safe formatting', async () => {

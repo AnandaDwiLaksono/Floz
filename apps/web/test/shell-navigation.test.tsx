@@ -12,9 +12,16 @@ describe('Task 8 shell navigation', () => {
     render(<Shell><p>Content</p></Shell>);
     expect(screen.getAllByRole('link', { name: 'Dashboard' })[0]).toHaveAttribute('href', '/workspaces/workspace-1/dashboard');
     expect(screen.getAllByRole('link', { name: 'My Work' })[0]).toHaveAttribute('href', '/workspaces/workspace-1/my-work');
-    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
-    expect(screen.getByRole('dialog', { name: 'Navigation' })).toBeInTheDocument();
+    const open = screen.getByRole('button', { name: 'Open navigation' });
+    fireEvent.click(open);
+    const dialog = screen.getByRole('dialog', { name: 'Navigation' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    const close = screen.getByRole('button', { name: 'Close navigation' });
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(screen.getAllByRole('button', { name: 'Log out' })[1]);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Navigation' })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(open);
   });
 });
