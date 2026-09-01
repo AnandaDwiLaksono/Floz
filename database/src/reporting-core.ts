@@ -1,13 +1,14 @@
 import { and, asc, eq, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import { taskStatuses, tasks } from './schema.js';
 
+export const CANCELLED_TASK_CATEGORY = 'CANCELLED' as const;
 export const PRIORITY_RANK = { URGENT: 1, HIGH: 2, MEDIUM: 3, LOW: 4 } as const;
 export type TaskPriority = keyof typeof PRIORITY_RANK;
 export type ReportingIntervalInput = { from?: string; to?: string };
 export type ReportingPeriod = { from: Date; to: Date; evaluationAt?: Date };
 
 export function buildOperationalActivePredicate(): SQL {
-  return and(isNull(tasks.deletedAt), eq(taskStatuses.isTerminal, false))!;
+  return and(isNull(tasks.deletedAt), eq(taskStatuses.isTerminal, false), ne(taskStatuses.category, CANCELLED_TASK_CATEGORY))!;
 }
 
 export function buildKpiEligiblePredicate(): SQL {

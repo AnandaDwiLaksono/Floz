@@ -1,5 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { api, apiFetch, ApiError } from '../lib/api-client';
+import { taskRoute } from '../lib/task-route';
+
+describe('taskRoute', () => {
+  it('builds the canonical selected task route', () => {
+    expect(taskRoute('workspace-1', 'task-1')).toBe('/workspaces/workspace-1/tasks?selected_task_id=task-1');
+  });
+});
 
 describe('apiFetch client', () => {
   beforeEach(() => {

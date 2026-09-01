@@ -10,7 +10,7 @@ describe('reporting core', () => {
     const operational = render(buildOperationalActivePredicate());
     const eligible = render(buildKpiEligiblePredicate());
     expect(operational.sql).toContain('"tasks"."deleted_at" is null and "task_statuses"."is_terminal" = $1');
-    expect(operational.params).toEqual([false]);
+    expect(operational.params).toEqual([false, 'CANCELLED']);
     expect(eligible.sql).toContain('"tasks"."deleted_at" is null and "task_statuses"."category" <> $1');
     expect(eligible.params).toEqual(['CANCELLED']);
   });

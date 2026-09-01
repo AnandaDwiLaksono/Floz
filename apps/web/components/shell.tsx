@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { NotificationCenter } from './notification-center';
 import { NotificationResource } from './notification-item';
+import { taskRoute } from '../lib/task-route';
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { user, activeWorkspace, setActiveWorkspace, logout, loading } = useAuth();
@@ -57,7 +58,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       // Navigate to context route or fallback
       const route =
         notification.context?.route ||
-        `/workspaces/${activeWorkspace?.id}/tasks?selected_task_id=${notification.entity_id}`;
+        taskRoute(activeWorkspace?.id || '', notification.entity_id || '');
       router.push(route);
     },
     [activeWorkspace?.id, markRead, router]

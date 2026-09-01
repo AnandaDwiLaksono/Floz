@@ -172,6 +172,34 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ sort: 'invalid' }).expect(400);
   });
 
+  it('reuses canonical operational, completed, scoped, date, and priority filters', async () => {
+    const f = await fixture(app!);
+    const path = `/api/v1/workspaces/${f.workspaceId}/tasks`;
+    const { sql } = createDatabase(databaseUrl);
+    const cancelledId = randomUUID();
+    const terminalId = randomUUID();
+    await sql`INSERT INTO task_statuses(id,workflow_id,code,name,category,position,is_terminal) VALUES(${cancelledId},${f.workflowId},'FILTER_CANCELLED','Cancelled','CANCELLED',998,false),(${terminalId},${f.workflowId},'FILTER_TERMINAL','Terminal','IN_PROGRESS',999,true)`;
+    const team = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Filter Ops' }).expect(201)).body.data.id;
+    const create = async (title: string, priority: string, due_at: string, assignee = f.memberId) => (await request(app!.getHttpServer()).post(path).set('Cookie', f.memberCookie).send({ title, priority, due_at, team_id: team, assignees: [{ user_id: assignee }] }).expect(201)).body.data;
+    const urgent = await create('Urgent boundary', 'URGENT', '2026-09-01T00:00:00.000Z');
+    await create('High inside', 'HIGH', '2026-09-01T12:00:00.000Z');
+    await create('Low end excluded', 'LOW', '2026-09-02T00:00:00.000Z');
+    const completed = await create('Completed task', 'MEDIUM', '2026-09-01T13:00:00.000Z');
+    await sql`UPDATE tasks SET completed_at='2026-09-01T14:00:00Z',status_id=${f.todoId} WHERE id=${completed.id}`;
+    const cancelled = await create('Cancelled task', 'URGENT', '2026-09-01T10:00:00.000Z');
+    const terminal = await create('Terminal task', 'URGENT', '2026-09-01T11:00:00.000Z');
+    await sql`UPDATE tasks SET status_id=${cancelledId} WHERE id=${cancelled.id}`;
+    await sql`UPDATE tasks SET status_id=${terminalId} WHERE id=${terminal.id}`;
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/tasks`).set('Cookie', f.outsiderCookie).send({ title: 'Other workspace', priority: 'URGENT', due_at: '2026-09-01T09:00:00.000Z' }).expect(201);
+    const query = { bucket: 'active', due_from: '2026-09-01T00:00:00.000Z', due_to: '2026-09-02T00:00:00.000Z', team_id: team, assignee_id: f.memberId, sort: 'priority', limit: 1 };
+    const first = await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query(query).expect(200);
+    const second = await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ ...query, cursor: first.body.meta.pagination.next_cursor }).expect(200);
+    expect([...first.body.data, ...second.body.data].map((task: { title: string }) => task.title)).toEqual(['Urgent boundary', 'High inside']);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ bucket: 'completed' }).expect(200).expect(({ body }) => expect(body.data.map((task: { id: string }) => task.id)).toEqual([completed.id]));
+    expect(urgent.id).toBeTruthy();
+    await sql.end();
+  });
+
   it('uses opaque cursors without duplication, skips, or workspace leaks', async () => {
     const f = await fixture(app!);
     const path = `/api/v1/workspaces/${f.workspaceId}/tasks`;
@@ -190,7 +218,7 @@ describe('API', () => {
     expect(final.body.meta.pagination).toMatchObject({ has_more: false, next_cursor: null });
     await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ ...query, cursor: Buffer.from(JSON.stringify({ v: 1, sort: 'created_at', direction: 'ASC', value: 'x', id: randomUUID() })).toString('base64url') }).expect(422).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
     await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ ...query, cursor: '%%%' }).expect(422).expect(({ body }) => expect(body.message).toBe('VALIDATION_ERROR'));
-    await request(app!.getHttpServer()).get(otherPath).set('Cookie', f.outsiderCookie).query({ sort: 'priority', limit: 2, cursor: first.body.meta.pagination.next_cursor }).expect(200).expect(({ body }) => expect(body.data.map((task: { title: string }) => task.title)).toEqual(['Other']));
+    await request(app!.getHttpServer()).get(otherPath).set('Cookie', f.outsiderCookie).query({ sort: 'priority', limit: 2, cursor: first.body.meta.pagination.next_cursor }).expect(200).expect(({ body }) => expect(body.data).toEqual([]));
   });
 
   it('projects the default workflow kanban with ordered columns, public filters, counts, isolation, and deleted exclusion', async () => {
