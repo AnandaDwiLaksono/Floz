@@ -15,6 +15,8 @@ import {
   Layers,
   Calendar,
   Bell,
+  LayoutDashboard,
+  Briefcase,
 } from 'lucide-react';
 import { NotificationCenter } from './notification-center';
 import { NotificationResource } from './notification-item';
@@ -147,6 +149,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
           {activeWorkspace && (
             <>
+              <Link href={`/workspaces/${activeWorkspace.id}/dashboard`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/dashboard') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                <LayoutDashboard className="h-5 w-5" />
+                <span>Dashboard</span>
+              </Link>
+              <Link href={`/workspaces/${activeWorkspace.id}/my-work`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/my-work') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                <Briefcase className="h-5 w-5" />
+                <span>My Work</span>
+              </Link>
               <Link href={`/workspaces/${activeWorkspace.id}/tasks`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/tasks') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <CheckSquare className="h-5 w-5" />
                 <span>Tasks</span>
@@ -278,6 +288,22 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </div>
               {activeWorkspace && (
                 <div className="pt-4 border-t space-y-2">
+                  <Link
+                    href={`/workspaces/${activeWorkspace.id}/dashboard`}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
+                  >
+                    <LayoutDashboard className="h-5 w-5" />
+                    <span>Dashboard</span>
+                  </Link>
+                  <Link
+                    href={`/workspaces/${activeWorkspace.id}/my-work`}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
+                  >
+                    <Briefcase className="h-5 w-5" />
+                    <span>My Work</span>
+                  </Link>
                   <Link
                     href={`/workspaces/${activeWorkspace.id}/tasks`}
                     onClick={() => setMobileMenuOpen(false)}
