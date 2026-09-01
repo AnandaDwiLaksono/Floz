@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ManagerDashboardPage from '../app/workspaces/[workspaceId]/manager-dashboard/page';
-import { reportingPeriod } from '../lib/reporting-period';
+import { reportingDefaults, reportingPeriod } from '../lib/reporting-period';
 import { api, Dashboard, ReportingKpis } from '../lib/api-client';
 
 const auth = vi.hoisted(() => ({ role: 'MANAGER' as 'MANAGER' | 'ADMIN' | 'MEMBER' }));
@@ -34,8 +34,13 @@ describe('Task 9 manager dashboard', () => {
     vi.mocked(api.workspaces.kpis).mockResolvedValue({ data: kpis });
   });
 
-  it('converts local inclusive dates to offset-bearing workspace [from,to)', () => {
+  it('converts each target local midnight with its actual offset', () => {
     expect(reportingPeriod('2026-03-08', '2026-03-08', 'America/New_York')).toEqual({ from: '2026-03-08T00:00:00.000-05:00', to: '2026-03-09T00:00:00.000-04:00' });
+    expect(reportingPeriod('2011-12-29', '2011-12-29', 'Pacific/Apia')).toEqual({ from: '2011-12-29T00:00:00.000-10:00', to: '2011-12-30T00:00:00.000+14:00' });
+  });
+
+  it('derives MTD defaults from workspace-local today', () => {
+    expect(reportingDefaults('Pacific/Kiritimati', new Date('2026-08-31T12:30:00.000Z'))).toEqual({ from: '2026-09-01', to: '2026-09-01' });
   });
 
   it.each(['MANAGER', 'ADMIN'] as const)('is visible to %s and uses exact scope', async (role) => {
@@ -54,7 +59,10 @@ describe('Task 9 manager dashboard', () => {
   it('uses API evaluation_at for MTD and formats API values only', async () => {
     render(<ManagerDashboardPage />);
     expect(await screen.findByText('62.5%')).toBeInTheDocument();
+    expect(screen.getAllByRole('definition')[0]).toHaveTextContent('62.5%');
     expect(screen.getByText('1h 30m')).toBeInTheDocument();
+    expect(screen.getByLabelText('From')).toHaveAttribute('id', 'report-from');
+    expect(screen.getByLabelText('To')).toHaveAttribute('id', 'report-to');
     expect(screen.getByText(/Evaluated Mar 20, 2026/)).toBeInTheDocument();
     expect(screen.queryByText(/pending approvals/i)).not.toBeInTheDocument();
   });
@@ -65,8 +73,10 @@ describe('Task 9 manager dashboard', () => {
     const priority = screen.getByRole('table', { name: 'Priority breakdown' });
     expect(within(priority).getAllByRole('row').slice(1).map((row) => row.textContent)).toEqual(['Urgent4', 'High3', 'Medium2', 'Low1']);
     expect(screen.getByRole('table', { name: 'Workload by team' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View unassigned tasks' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?bucket=active&assignee_id=unassigned&sort=priority');
-    expect(screen.getByRole('link', { name: 'View urgent tasks' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?bucket=active&priority=URGENT&sort=priority');
+    const unassigned = new URL(screen.getByRole('link', { name: 'View unassigned tasks' }).getAttribute('href')!, 'https://floz.test');
+    expect(Object.fromEntries(unassigned.searchParams)).toMatchObject({ assignee_id: 'unassigned', sort: 'priority' });
+    expect(unassigned.searchParams.has('bucket')).toBe(false);
+    expect(new URL(screen.getByRole('link', { name: 'View urgent tasks' }).getAttribute('href')!, 'https://floz.test').searchParams.get('priority')).toBe('URGENT');
   });
 
   it('keeps dashboard and KPI loading/error states independent', async () => {

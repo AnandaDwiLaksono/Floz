@@ -141,7 +141,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
             Workspace
           </label>
           <button
+            aria-expanded={wsDropdownOpen}
+            aria-controls="workspace-menu"
             onClick={() => setWsDropdownOpen(!wsDropdownOpen)}
+            onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); setWsDropdownOpen(true); } if (event.key === 'Escape') setWsDropdownOpen(false); }}
             className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition"
           >
             <div className="flex items-center space-x-2 truncate">
@@ -152,10 +155,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </button>
 
           {wsDropdownOpen && (
-            <div className="absolute left-4 right-4 top-16 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1">
+            <div id="workspace-menu" role="menu" className="absolute left-4 right-4 top-16 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1">
               {user?.workspaces?.map((ws) => (
                 <button
                   key={ws.id}
+                  role="menuitem"
                   onClick={() => {
                     setActiveWorkspace(ws);
                     setWsDropdownOpen(false);
@@ -336,8 +340,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <Briefcase className="h-5 w-5" />
                     <span>My Work</span>
                   </Link>
-                  <Link
-                    href={`/workspaces/${activeWorkspace.id}/tasks`}
+                   {(activeWorkspace.role === 'MANAGER' || activeWorkspace.role === 'ADMIN') && <Link href={`/workspaces/${activeWorkspace.id}/manager-dashboard`} onClick={() => setMobileMenuOpen(false)} className="flex items-center space-x-2 px-3 py-2 font-medium rounded"><LayoutDashboard className="h-5 w-5" /><span>Manager dashboard</span></Link>}
+                   <Link
+                     href={`/workspaces/${activeWorkspace.id}/tasks`}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
                   >

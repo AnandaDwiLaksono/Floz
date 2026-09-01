@@ -1,10 +1,10 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Shell } from '../components/shell';
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/workspaces/workspace-1/my-work', useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { full_name: 'Member', email: 'member@example.com', workspaces: [] }, activeWorkspace: { id: 'workspace-1', name: 'Field Ops', role: 'MEMBER' }, loading: false, setActiveWorkspace: vi.fn(), logout: vi.fn() }) }));
+vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { full_name: 'Manager', email: 'manager@example.com', workspaces: [] }, activeWorkspace: { id: 'workspace-1', name: 'Field Ops', role: 'MANAGER' }, loading: false, setActiveWorkspace: vi.fn(), logout: vi.fn() }) }));
 vi.mock('../lib/hooks/use-notifications', () => ({ useUnreadCount: () => ({ unreadCount: 0, setUnreadCount: vi.fn() }), useNotifications: () => ({ notifications: [], loading: false, hasMore: false, error: '', loadMore: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(), fetchNotifications: vi.fn() }) }));
 
 describe('Task 8 shell navigation', () => {
@@ -12,10 +12,14 @@ describe('Task 8 shell navigation', () => {
     render(<Shell><p>Content</p></Shell>);
     expect(screen.getAllByRole('link', { name: 'Dashboard' })[0]).toHaveAttribute('href', '/workspaces/workspace-1/dashboard');
     expect(screen.getAllByRole('link', { name: 'My Work' })[0]).toHaveAttribute('href', '/workspaces/workspace-1/my-work');
+    const switcher = screen.getByRole('button', { name: /Field Ops/ });
+    expect(switcher).toHaveAttribute('aria-expanded', 'false');
+    expect(switcher).toHaveAttribute('aria-controls', 'workspace-menu');
     const open = screen.getByRole('button', { name: 'Open navigation' });
     fireEvent.click(open);
     const dialog = screen.getByRole('dialog', { name: 'Navigation' });
     expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'Manager dashboard' })).toHaveAttribute('href', '/workspaces/workspace-1/manager-dashboard');
     expect(dialog.contains(document.activeElement)).toBe(true);
     const close = screen.getByRole('button', { name: 'Close navigation' });
     fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
