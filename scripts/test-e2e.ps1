@@ -68,6 +68,8 @@ try {
     $env:BETTER_AUTH_URL = $authUrl
     $env:API_PORT = $port
     $env:ALLOWED_ORIGIN = $origin
+    $env:NODE_ENV = 'test'
+    $env:FLOZ_TEST_REPORTING_NOW = '2026-09-03T00:00:00.000Z'
     node apps/api/dist/src/main.js > $stdout 2> $stderr
   } -ArgumentList $root, $env:DATABASE_URL, $env:BETTER_AUTH_SECRET, $env:BETTER_AUTH_URL, $apiPort, $env:ALLOWED_ORIGIN, $apiStdout, $apiStderr
   Wait-ForHttp "http://127.0.0.1:$apiPort/api/v1/health" $apiJob $apiStdout $apiStderr 'API'

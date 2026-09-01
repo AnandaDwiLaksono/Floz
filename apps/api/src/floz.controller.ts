@@ -7,13 +7,14 @@ import type { TaskRole } from './task.policy';
 import { RecurrenceService } from './recurrence.service';
 import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto, validateCreateRecurringTask, validateRecurrenceRuleQuery, validateUpdateRecurrenceRule } from './recurrence.dto';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, type ReportingScope } from '@floz/database';
+import { ReportingClock } from './reporting-clock';
 
 const ok = <T>(data: T) => ({ data });
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Controller()
 export class FlozController {
-  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService, @Inject(RecurrenceService) private readonly recurrence: RecurrenceService) {}
+  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService, @Inject(RecurrenceService) private readonly recurrence: RecurrenceService, @Inject(ReportingClock) private readonly clock: ReportingClock) {}
 
   private get auth() { return this.authService.auth; }
 
@@ -65,7 +66,7 @@ export class FlozController {
   @Get('workspaces/:workspaceId/my-work')
   async myWork(@Req() req: Request, @Param('workspaceId') wid: string, @Query('date') date: string) { const ctx = await this.member(req, wid); const workspace = await this.floz.workspace(wid); if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '') || !workspace) throw new BadRequestException('VALIDATION_ERROR'); return { data: await getMyWorkSummary(this.authService.database.db, { workspaceId: wid, userId: ctx.user.id, date, timezone: workspace.timezone }), meta: { date, timezone: workspace.timezone } }; }
   @Get('workspaces/:workspaceId/dashboard/member')
-  async memberDashboard(@Req() req: Request, @Param('workspaceId') wid: string) { const ctx = await this.member(req, wid); const workspace = await this.floz.workspace(wid); const evaluationAt = new Date(); return ok(await getMemberDashboard(this.authService.database.db, { workspaceId: wid, userId: ctx.user.id, period: 'MTD', evaluationAt, timezone: workspace!.timezone })); }
+  async memberDashboard(@Req() req: Request, @Param('workspaceId') wid: string) { const ctx = await this.member(req, wid); const workspace = await this.floz.workspace(wid); const evaluationAt = this.clock.now(); return ok(await getMemberDashboard(this.authService.database.db, { workspaceId: wid, userId: ctx.user.id, period: 'MTD', evaluationAt, timezone: workspace!.timezone })); }
   @Get('workspaces/:workspaceId/dashboard/manager')
   async managerDashboard(@Req() req: Request, @Param('workspaceId') wid: string) { const ctx = await this.member(req, wid); if (!['MANAGER', 'ADMIN'].includes(ctx.membership.role)) throw new ForbiddenException('FORBIDDEN'); const workspace = await this.floz.workspace(wid); const scope = this.reportingScope(req.query as Record<string, string>, wid, workspace!.timezone); if (req.query.team_id) { if (!uuidPattern.test(String(req.query.team_id))) throw new BadRequestException('VALIDATION_ERROR'); const team = await this.floz.team(wid, String(req.query.team_id)); if (!team || !team.isActive) throw new BadRequestException('TEAM_SCOPE_MISMATCH'); if (ctx.membership.role === 'MANAGER' && team.manager_user_id !== ctx.user.id) throw new ForbiddenException('FORBIDDEN'); scope.teamIds = [String(req.query.team_id)]; } return ok(await getManagerDashboard(this.authService.database.db, { ...scope, userId: ctx.user.id })); }
   @Get('workspaces/:workspaceId/reports/kpis')
@@ -109,7 +110,7 @@ export class FlozController {
   @HttpCode(200)
   async stopRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); return ok(await this.recurrence.stop(wid, id)); }
 
-  private reportingScope(query: Record<string, string>, workspaceId: string, timezone: string): ReportingScope { const from = query.from, to = query.to; if (!from || !to || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to)) || Date.parse(from) >= Date.parse(to)) throw new BadRequestException('VALIDATION_ERROR'); return { workspaceId, from, to, evaluationAt: new Date(), timezone }; }
+  private reportingScope(query: Record<string, string>, workspaceId: string, timezone: string): ReportingScope { const from = query.from, to = query.to, evaluationAt = this.clock.now(); if (!from || !to || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to)) || Date.parse(from) >= Date.parse(to)) throw new BadRequestException('VALIDATION_ERROR'); return { workspaceId, from, to, evaluationAt, timezone }; }
   private async current(req: Request) { const session = await this.auth.api.getSession({ headers: req.headers as HeadersInit }); if (!session) throw new UnauthorizedException('UNAUTHENTICATED'); const user = await this.floz.user(session.user.id); if (!user) throw new UnauthorizedException('UNAUTHENTICATED'); if (!user.isActive) throw new ForbiddenException('ACCOUNT_INACTIVE'); return user; }
   private async member(req: Request, wid: string) { const user = await this.current(req); const membership = await this.floz.membership(user.id, wid); if (!membership) throw new NotFoundException('NOT_FOUND'); return { user, membership }; }
   private async admin(req: Request, wid: string) { const ctx = await this.member(req, wid); if (ctx.membership.role !== 'ADMIN') throw new ForbiddenException('FORBIDDEN'); return ctx; }

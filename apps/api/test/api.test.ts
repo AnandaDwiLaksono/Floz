@@ -441,6 +441,46 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(`${path}/reports/kpis`).set('Cookie', f.memberCookie).query({ from: 'bad', to: '2026-09-01T00:00:00.000Z' }).expect(400);
   });
 
+  it('freezes reporting evaluation and enforces role scopes at endpoint boundaries', async () => {
+    const f = await fixture(app!);
+    const { sql } = createDatabase(databaseUrl);
+    const base = `/api/v1/workspaces/${f.workspaceId}`;
+    const cancelledId = randomUUID();
+    await sql`INSERT INTO task_statuses(id,workflow_id,code,name,category,position,is_terminal) VALUES(${cancelledId},${f.workflowId},'REPORT_CANCELLED','Cancelled','CANCELLED',999,true)`;
+    const add = async (key: string, due: string, completed: string | null, statusId = f.todoId, assignee: string | null = f.memberId) => {
+      const id = randomUUID();
+      await sql`INSERT INTO tasks(id,workspace_id,task_key,title,workflow_id,status_id,priority,creator_id,due_at,completed_at,created_at) VALUES(${id},${f.workspaceId},${key},${key},${f.workflowId},${statusId},'HIGH',${f.adminId},${due},${completed},'2026-09-01T00:00:00Z')`;
+      if (assignee) await sql`INSERT INTO task_assignees(task_id,user_id,assigned_by) VALUES(${id},${assignee},${f.adminId})`;
+    };
+    await add('REPORT-DONE','2026-09-02T00:00:00Z','2026-09-01T01:30:00Z',f.doneId);
+    await add('REPORT-OVERDUE','2026-09-01T00:00:00Z',null);
+    await add('REPORT-EQUAL','2026-09-03T00:00:00Z',null);
+    await add('REPORT-CANCELLED','2026-09-01T00:00:00Z',null,cancelledId);
+    await add('REPORT-UNASSIGNED','2026-09-02T00:00:00Z',null,f.todoId,null);
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousReportingNow = process.env.FLOZ_TEST_REPORTING_NOW;
+    const previousEvaluationAt = process.env.FLOZ_REPORTING_EVALUATION_AT;
+    try {
+      process.env.NODE_ENV = 'test';
+      process.env.FLOZ_TEST_REPORTING_NOW = '2026-09-03T00:00:00.000Z';
+      const query = { from: '2026-09-01T00:00:00.000Z', to: '2026-09-04T00:00:00.000Z' };
+      const report = await request(app!.getHttpServer()).get(`${base}/reports/kpis`).set('Cookie', f.memberCookie).query(query).expect(200);
+      expect(report.body.data).toMatchObject({ completion_rate: '0.500000', overdue_rate: '0.500000', on_time_completion_rate: '1.000000', average_completion_time_seconds: '5400', workload: 2, denominators: { due: 2, completed: 1, overdue: 1, onTime: 1 }, period: { evaluationAt: '2026-09-03T00:00:00.000Z' } });
+      expect(report.body.data.period.evaluationAt).not.toBe('1999-01-01T00:00:00.000Z');
+      await request(app!.getHttpServer()).get(`${base}/dashboard/manager`).set('Cookie', f.memberCookie).query(query).expect(403);
+      await sql`UPDATE workspace_memberships SET role_id=(SELECT id FROM roles WHERE code='FIELD_WORKER') WHERE workspace_id=${f.workspaceId} AND user_id=${f.memberId}`;
+      await request(app!.getHttpServer()).get(`${base}/dashboard/manager`).set('Cookie', f.memberCookie).query(query).expect(403);
+      await sql`UPDATE workspace_memberships SET role_id=(SELECT id FROM roles WHERE code='MANAGER') WHERE workspace_id=${f.workspaceId} AND user_id=${f.memberId}`;
+      await request(app!.getHttpServer()).get(`${base}/dashboard/manager`).set('Cookie', f.memberCookie).query(query).expect(200);
+      await request(app!.getHttpServer()).get(`${base}/dashboard/manager`).set('Cookie', f.adminCookie).query(query).expect(200);
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previousNodeEnv;
+      if (previousReportingNow === undefined) delete process.env.FLOZ_TEST_REPORTING_NOW; else process.env.FLOZ_TEST_REPORTING_NOW = previousReportingNow;
+      if (previousEvaluationAt === undefined) delete process.env.FLOZ_REPORTING_EVALUATION_AT; else process.env.FLOZ_REPORTING_EVALUATION_AT = previousEvaluationAt;
+      await sql.end();
+    }
+  });
+
   it('validates manager dashboard team filters without expanding scope', async () => {
     const f = await fixture(app!);
     const { sql } = createDatabase(databaseUrl);

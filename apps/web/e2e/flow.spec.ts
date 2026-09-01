@@ -42,7 +42,7 @@ test.describe('Floz Kanban', () => {
     await expect(page.locator('section').filter({ hasText: 'In progress' }).getByText('1', { exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: /Kanban Task/ }).click();
     await expect(page.getByText('Change Status')).toBeVisible();
-    await expect(page.locator('span').filter({ hasText: /In progress/i }).first()).toBeVisible();
+    await expect(page.getByText('StatusIn progress')).toBeVisible();
     await page.goto(`/workspaces/${workspaceId}/kanban`);
     await expect(page.getByLabel('Change status for Kanban Task')).toBeVisible();
     const stale = createDatabase(databaseUrl);
@@ -204,6 +204,7 @@ test.describe('Floz Kanban', () => {
   });
 
   test('reporting fixtures cover roles, scopes, periods, drilldowns, mobile, and keyboard access', async ({ page, request }) => {
+    await page.addInitScript(() => { Date = class extends Date { constructor(value?: string | number | Date) { super(value ?? '2026-09-03T00:00:00.000Z'); } static now() { return Date.parse('2026-09-03T00:00:00.000Z'); } } as DateConstructor; });
     const { sql } = createDatabase(databaseUrl);
     const workspaceId = 'd8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
     const managedTeamId = 'dc2beefd-8f51-4a71-a943-db2b14b3eb92';
@@ -227,10 +228,10 @@ test.describe('Floz Kanban', () => {
     const cancelledStatusId = 'fc2beefd-8f51-4a71-a943-db2b14b3eb92';
     await sql`INSERT INTO task_statuses (id,workflow_id,code,name,category,position,is_terminal) VALUES (${cancelledStatusId},${workflow.id},'CANCELLED','Cancelled','CANCELLED',999,true)`;
     const status = (code: string) => code === 'CANCELLED' ? cancelledStatusId : String(statuses.find((row) => row.code === code)!.id);
-    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
-    const tomorrow = new Date(start); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    const afterTomorrow = new Date(tomorrow); afterTomorrow.setUTCDate(afterTomorrow.getUTCDate() + 1);
-    const yesterday = new Date(start); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const start = new Date('2026-09-01T00:00:00.000Z');
+    const tomorrow = new Date('2026-09-02T00:00:00.000Z');
+    const afterTomorrow = new Date('2026-09-03T00:00:00.000Z');
+    const yesterday = new Date('2026-08-31T00:00:00.000Z');
     const taskRows = await sql`INSERT INTO tasks (workspace_id,task_key,title,workflow_id,status_id,priority,team_id,creator_id,due_at,completed_at,created_at) VALUES
       (${workspaceId},'RPT-1','Due today member',${workflow.id},${status('TODO')},'HIGH',${managedTeamId},${adminId},${new Date(start.getTime()+3600000).toISOString()},NULL,${start.toISOString()}),
       (${workspaceId},'RPT-2','Tomorrow midnight upcoming',${workflow.id},${status('TODO')},'URGENT',${managedTeamId},${adminId},${tomorrow.toISOString()},NULL,${start.toISOString()}),
@@ -286,7 +287,16 @@ test.describe('Floz Kanban', () => {
     await page.getByLabel('From').fill(from);
     await page.getByLabel('To').fill(from);
     await expect(page.getByRole('heading', { name: 'KPI reporting' })).toBeVisible();
-    await expect(page.getByRole('table', { name: 'Workload by team' })).toBeVisible();
+    const workloadTable = page.getByRole('table', { name: 'Workload by team' });
+    await expect(workloadTable).toContainText('Managed ops');
+    await expect(workloadTable).toContainText('5');
+    const priorityTable = page.getByRole('table', { name: 'Priority breakdown' });
+    await expect(priorityTable).toContainText('Urgent');
+    await expect(priorityTable).toContainText('High');
+    await expect(priorityTable).toContainText('Medium');
+    await expect(priorityTable).toContainText('Low');
+    await expect(page.getByText('33%')).toBeVisible();
+    await expect(page.getByText('1h 30m')).toBeVisible();
     const unassignedHref = await page.getByRole('link', { name: 'View unassigned tasks' }).getAttribute('href');
     expect(unassignedHref).toContain('/tasks?assignee_id=unassigned');
 
