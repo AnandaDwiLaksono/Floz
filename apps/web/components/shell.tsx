@@ -186,6 +186,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <Briefcase className="h-5 w-5" />
                 <span>My Work</span>
               </Link>
+              {(activeWorkspace.role === 'MANAGER' || activeWorkspace.role === 'ADMIN') && <Link href={`/workspaces/${activeWorkspace.id}/manager-dashboard`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/manager-dashboard') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}><LayoutDashboard className="h-5 w-5" /><span>Manager dashboard</span></Link>}
               <Link href={`/workspaces/${activeWorkspace.id}/tasks`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/tasks') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <CheckSquare className="h-5 w-5" />
                 <span>Tasks</span>

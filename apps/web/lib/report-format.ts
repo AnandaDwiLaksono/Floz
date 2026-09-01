@@ -1,2 +1,2 @@
-export function formatRatio(value: string | null | undefined) { return value == null ? '—' : `${Math.round(Number(value) * 100)}%`; }
+export function formatRatio(value: string | null | undefined) { return value == null ? '—' : `${Number((Number(value) * 100).toFixed(2))}%`; }
 export function formatDuration(value: string | null | undefined) { if (value == null) return '—'; const seconds = Number(value); const hours = Math.floor(seconds / 3600); const minutes = Math.round((seconds % 3600) / 60); return hours ? `${hours}h ${minutes}m` : `${minutes}m`; }
