@@ -14,3 +14,4 @@ export * from './outbox.js';
 export * from './task-core.js';
 export * from './notification-core.js';
 export * from './reporting-core.js';
+export * from './my-work.js';
