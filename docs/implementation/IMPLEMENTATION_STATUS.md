@@ -15,15 +15,21 @@ Completed
 - Phase 5 Calendar projection, thin route, timezone utility, task handoff, docs, and integration coverage.
 - Phase 6 recurring tasks, persistent task template snapshot, ledger unique occurrences, outbox, BullMQ worker runtime, advisory-locked chronological catch-up, edit/stop semantics, and recurring Task Create modal UI.
 - Phase 7 P0 in-app notifications and reminders with assignment, due-soon, overdue, durable schedule-aware deduplication, outbox/worker/reconciliation recovery, workspace/user-isolated APIs, accessible Notification Center, polling refresh, and real-stack E2E coverage.
+- Phase 8 Dashboard, KPI Reporting & My Work, including final documentation and verification gates.
 
 In Progress
-- Phase 8 Task 11 documentation and final verification. Implementation is complete; final gates remain pending.
+- None.
 
 Next
-- Mark Phase 8 complete only after all required final gates pass. Do not proceed to Phase 9 automatically.
+- Phase 9 is not started. Await explicit direction; do not proceed automatically.
 
 Blocked
 - None.
+
+Phase 8 verification
+- Complete. Clean DB/API/auth, E2E, database My Work, worker integration, lint, typecheck, root tests, and build gates passed in the controller's stable environment.
+- Root tests passed twice consecutively: API 28/28, web 34/34, worker 28/28.
+- Nonblocking: Next.js multi-lockfile warning and existing ESLint Pages warning.
 
 Open Decisions
 - See `docs/decisions/OPEN_DECISIONS.md`.

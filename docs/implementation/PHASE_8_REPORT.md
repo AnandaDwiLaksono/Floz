@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 8 implementation is complete. Task 11 documentation and final verification are in progress. Final gates are pending; this report does not claim they passed.
+Phase 8 is complete. Task 11 documentation and final verification passed. Phase 9 is not started. Blockers: none.
 
 ## Delivered scope
 
@@ -49,7 +49,7 @@ Evidence: `1a0d711`, `6d91757`, `0f1110c`, `1f135c0`, `f8c0dcf`, `06380af`, `4d5
 
 Evidence: `544838e`, `e872a1a`, `3e48309`, `aed0ad9`, `32dc4aa`, `1d9d434`, `f8c0dcf`, `bbdcdf5`.
 
-### Verification evidence implemented before final gates
+### Verification evidence
 
 - Added database integration coverage for reporting predicates, My Work boundaries/isolation/order, KPI cutoffs/scopes, and dashboard projections/order.
 - Added API coverage for authentication, validation, workspace isolation, role scope, team scope, and reporting responses.
@@ -57,7 +57,16 @@ Evidence: `544838e`, `e872a1a`, `3e48309`, `aed0ad9`, `32dc4aa`, `1d9d434`, `f8c
 - Added real-stack Playwright reporting coverage for member, field-worker, manager, and admin flows; scope restrictions; period controls; drilldowns; mobile rendering; and keyboard access.
 - Task 10 evidence was strengthened in `f2bf2a7`, `cdd728c`, and `269d5bf`.
 
-These committed tests are implementation evidence only. Task 11 final clean-database, test, lint, typecheck, E2E, and build gates remain pending.
+Final verification was run in the controller's stable environment at `D:\Portofolio\Floz\app\.worktrees\phase8-dashboard-kpi-my-work` after commit `5089855`:
+
+- `./scripts/test-clean-db.ps1`: PASS, 26 API/auth tests.
+- `./scripts/test-e2e.ps1`: PASS, 8/8.
+- `DATABASE_URL=postgres://postgres:postgres@localhost:5433/floz pnpm --filter @floz/database test -- my-work.integration.test.ts`: PASS, 3/3 executed.
+- `DATABASE_URL=...:5433/floz REDIS_URL=redis://127.0.0.1:6379 pnpm --filter @floz/worker test:integration`: PASS, 28/28.
+- `pnpm lint`: PASS.
+- `pnpm typecheck`: PASS.
+- Root `pnpm test`: PASS twice consecutively in the stable environment; API 28/28, web 34/34, worker 28/28.
+- `pnpm build`: PASS.
 
 ## Database and migration
 
@@ -91,4 +100,9 @@ These committed tests are implementation evidence only. Task 11 final clean-data
 
 ## Final gates
 
-Pending Task 11 verification. Record actual commands and results only after execution. Do not mark Phase 8 complete in implementation status until all required final gates pass.
+Task 11 final gates passed using the authoritative controller results above. Phase 8 is complete; Phase 9 is not started. Blockers: none.
+
+## Nonblocking follow-up
+
+- Next.js reports a multi-lockfile warning.
+- Existing ESLint Pages warning remains.
