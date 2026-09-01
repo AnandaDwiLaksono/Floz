@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/auth';
 import { createTaskAssigneesTx, createTaskRecordTx, validateTaskTemplateReferences, writeTaskHistoryTx } from '../src/task-core';
 import { claimOutboxBatch, markOutboxDispatched, markOutboxRetry } from '../src/outbox.service';
+import { ReportingClock } from '../src/reporting-clock';
 
 const databaseUrl = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/floz';
 process.env.DATABASE_URL = databaseUrl;
@@ -73,6 +74,21 @@ describe('API', () => {
   beforeAll(async () => { await resetDatabase(); });
   beforeEach(async () => { app = await createApp(); });
   afterEach(async () => { await app?.close(); app = undefined; await resetDatabase(); });
+
+  it('fails closed for invalid test-only reporting clocks and ignores them outside test mode', () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousReportingNow = process.env.FLOZ_TEST_REPORTING_NOW;
+    try {
+      process.env.NODE_ENV = 'test';
+      process.env.FLOZ_TEST_REPORTING_NOW = 'not-a-date';
+      expect(() => app!.get(ReportingClock).now()).toThrow('FLOZ_TEST_REPORTING_NOW');
+      process.env.NODE_ENV = 'production';
+      expect(app!.get(ReportingClock).now()).toBeInstanceOf(Date);
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previousNodeEnv;
+      if (previousReportingNow === undefined) delete process.env.FLOZ_TEST_REPORTING_NOW; else process.env.FLOZ_TEST_REPORTING_NOW = previousReportingNow;
+    }
+  });
 
   it('keeps /api/v1 health shape', async () => {
     await request(app!.getHttpServer()).get('/api/v1/health').expect(200).expect(({ body }) => expect(body).toEqual({ data: { status: 'ok', service: 'api' } }));
