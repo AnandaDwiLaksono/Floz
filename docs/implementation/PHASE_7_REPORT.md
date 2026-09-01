@@ -69,3 +69,9 @@ Fix:
 - Phase 7 complete.
 - Phase 8 not started.
 - Email/Resend, push, notification preferences UI/API behavior, approval notifications, and mention notifications remain out of scope.
+
+## Task 1 follow-up
+
+- Added PATCH manager assignment rejection coverage for MEMBER, FIELD_WORKER, inactive, and cross-workspace targets.
+- Production behavior unchanged; Task 2 not started.
+- Verification: focused API tests, API lint/typecheck passed.

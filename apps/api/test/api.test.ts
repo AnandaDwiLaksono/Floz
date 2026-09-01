@@ -84,12 +84,17 @@ describe('API', () => {
     await sql`UPDATE workspace_memberships SET role_id = (SELECT id FROM roles WHERE code = 'MANAGER') WHERE workspace_id = ${f.workspaceId} AND user_id = ${f.memberId}`;
     const managerTeam = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Managed', manager_user_id: f.memberId }).expect(201);
     await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/teams/${managerTeam.body.data.id}`).set('Cookie', f.adminCookie).send({ manager_user_id: null }).expect(200).expect(({ body }) => expect(body.data.manager_user_id).toBeNull());
+    const patchPath = `/api/v1/workspaces/${f.workspaceId}/teams/${managerTeam.body.data.id}`;
     await sql`UPDATE workspace_memberships SET role_id = (SELECT id FROM roles WHERE code = 'MEMBER') WHERE workspace_id = ${f.workspaceId} AND user_id = ${f.memberId}`;
     await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Member Managed', manager_user_id: f.memberId }).expect(400);
+    await request(app!.getHttpServer()).patch(patchPath).set('Cookie', f.adminCookie).send({ manager_user_id: f.memberId }).expect(400);
     await sql`UPDATE workspace_memberships SET role_id = (SELECT id FROM roles WHERE code = 'FIELD_WORKER') WHERE workspace_id = ${f.workspaceId} AND user_id = ${f.memberId}`;
     await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Worker Managed', manager_user_id: f.memberId }).expect(400);
+    await request(app!.getHttpServer()).patch(patchPath).set('Cookie', f.adminCookie).send({ manager_user_id: f.memberId }).expect(400);
     await sql`UPDATE workspace_memberships SET status = 'INACTIVE' WHERE workspace_id = ${f.workspaceId} AND user_id = ${f.memberId}`;
     await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Inactive Managed', manager_user_id: f.memberId }).expect(400);
+    await request(app!.getHttpServer()).patch(patchPath).set('Cookie', f.adminCookie).send({ manager_user_id: f.memberId }).expect(400);
+    await request(app!.getHttpServer()).patch(patchPath).set('Cookie', f.adminCookie).send({ manager_user_id: f.outsiderId }).expect(400);
     await sql.end();
   });
 
