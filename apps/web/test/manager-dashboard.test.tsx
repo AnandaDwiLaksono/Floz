@@ -34,11 +34,14 @@ describe('Task 9 manager dashboard', () => {
     vi.mocked(api.workspaces.kpis).mockResolvedValue({ data: kpis });
   });
 
-  it('converts each target local midnight with its actual offset', () => {
+  it('converts to the first representable instant on or after the requested local date', () => {
     expect(reportingPeriod('2026-03-08', '2026-03-08', 'America/New_York')).toEqual({ from: '2026-03-08T00:00:00.000-05:00', to: '2026-03-09T00:00:00.000-04:00' });
     const apia = reportingPeriod('2011-12-29', '2011-12-29', 'Pacific/Apia');
     expect(apia.to).toBe('2011-12-31T00:00:00.000+14:00');
     expect(new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Apia', dateStyle: 'short', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date(apia.to))).toBe('2011-12-31, 00:00:00');
+    const saoPaulo = reportingPeriod('2018-11-03', '2018-11-03', 'America/Sao_Paulo');
+    expect(saoPaulo.to).toBe('2018-11-04T01:00:00.000-02:00');
+    expect(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date(saoPaulo.to))).toBe('2018-11-04, 01:00:00');
   });
 
   it('derives MTD defaults from workspace-local today', () => {

@@ -5,13 +5,14 @@ function offsetAt(date: Date, timeZone: string) { return parts(date, timeZone).t
 function target(value: string, timeZone: string) {
   let instant = new Date(`${value}T00:00:00.000Z`);
   for (let i = 0; i < 3; i++) instant = new Date(`${value}T00:00:00.000${offsetAt(instant, timeZone)}`);
-  return { value, instant, localDate: `${parts(instant, timeZone).year}-${parts(instant, timeZone).month}-${parts(instant, timeZone).day}` };
+  const local = parts(instant, timeZone);
+  return { value, instant, local, localDate: `${local.year}-${local.month}-${local.day}` };
 }
 function addDay(value: string) { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + 1); return date.toISOString().slice(0, 10); }
 function zonedMidnight(value: string, timeZone: string) {
   let result = target(value, timeZone);
   while (result.localDate !== result.value || result.localDate < value) result = target(addDay(result.value), timeZone);
-  return `${result.value}T00:00:00.000${offsetAt(result.instant, timeZone)}`;
+  return `${result.localDate}T${result.local.hour}:${result.local.minute}:${result.local.second}.000${offsetAt(result.instant, timeZone)}`;
 }
 export function reportingPeriod(from: string, to: string, timeZone: string) { return { from: zonedMidnight(from, timeZone), to: zonedMidnight(addDay(to), timeZone) }; }
 export function reportingDefaults(timeZone: string, now = new Date()) { const p = parts(now, timeZone); const today = `${p.year}-${p.month}-${p.day}`; return { from: `${p.year}-${p.month}-01`, to: today }; }

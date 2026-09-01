@@ -19,6 +19,14 @@ describe('Task 8 shell navigation', () => {
     const menu = screen.getByRole('menu');
     const item = within(menu).getByRole('menuitem', { name: /Field Ops/ });
     expect(document.activeElement).toBe(item);
+    fireEvent.keyDown(item, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(within(menu).getAllByRole('menuitem')[1]);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(item);
+    fireEvent.keyDown(item, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(within(menu).getAllByRole('menuitem')[1]);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(item);
     fireEvent.keyDown(item, { key: 'End' });
     expect(document.activeElement).toBe(within(menu).getAllByRole('menuitem')[1]);
     fireEvent.keyDown(document.activeElement!, { key: 'Home' });
