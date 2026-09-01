@@ -203,6 +203,106 @@ test.describe('Floz Kanban', () => {
     await expect(page.getByRole('button', { name: 'Create task on 2026-08-18' })).toBeVisible();
   });
 
+  test('reporting fixtures cover roles, scopes, periods, drilldowns, mobile, and keyboard access', async ({ page, request }) => {
+    const { sql } = createDatabase(databaseUrl);
+    const workspaceId = 'd8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    const managedTeamId = 'dc2beefd-8f51-4a71-a943-db2b14b3eb92';
+    const unmanagedTeamId = 'ec2beefd-8f51-4a71-a943-db2b14b3eb92';
+    const people = await Promise.all([
+      auth.api.signUpEmail({ body: { email: 'report-admin@example.com', password: 'password123', name: 'Report Admin' } }),
+      auth.api.signUpEmail({ body: { email: 'report-manager@example.com', password: 'password123', name: 'Report Manager' } }),
+      auth.api.signUpEmail({ body: { email: 'report-member@example.com', password: 'password123', name: 'Report Member' } }),
+      auth.api.signUpEmail({ body: { email: 'report-worker@example.com', password: 'password123', name: 'Report Worker' } }),
+    ]);
+    const [adminId, managerId, memberId, workerId] = people.map((person) => String(person.user.id));
+    await sql`INSERT INTO roles (code,name) VALUES ('MANAGER','Manager'),('FIELD_WORKER','Field Worker') ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name`;
+    const roles = await sql`SELECT id,code FROM roles`;
+    const role = (code: string) => String(roles.find((row) => row.code === code)!.id);
+    await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'Reporting Work','reporting-work','UTC',${adminId},true)`;
+    await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${adminId},${role('ADMIN')},'ACTIVE'),(${workspaceId},${managerId},${role('MANAGER')},'ACTIVE'),(${workspaceId},${memberId},${role('MEMBER')},'ACTIVE'),(${workspaceId},${workerId},${role('FIELD_WORKER')},'ACTIVE')`;
+    await sql`INSERT INTO teams (id,workspace_id,name,manager_user_id,is_active) VALUES (${managedTeamId},${workspaceId},'Managed Ops',${managerId},true),(${unmanagedTeamId},${workspaceId},'Unmanaged Ops',NULL,true)`;
+    await sql`INSERT INTO team_memberships (team_id,user_id,membership_role) VALUES (${managedTeamId},${memberId},'MEMBER'),(${managedTeamId},${workerId},'MEMBER')`;
+    const workflow = (await sql`SELECT id FROM workflows WHERE workspace_id=${workspaceId} LIMIT 1`)[0];
+    const statuses = await sql`SELECT id,code FROM task_statuses WHERE workflow_id=${workflow.id}`;
+    const cancelledStatusId = 'fc2beefd-8f51-4a71-a943-db2b14b3eb92';
+    await sql`INSERT INTO task_statuses (id,workflow_id,code,name,category,position,is_terminal) VALUES (${cancelledStatusId},${workflow.id},'CANCELLED','Cancelled','CANCELLED',999,true)`;
+    const status = (code: string) => code === 'CANCELLED' ? cancelledStatusId : String(statuses.find((row) => row.code === code)!.id);
+    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+    const tomorrow = new Date(start); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const afterTomorrow = new Date(tomorrow); afterTomorrow.setUTCDate(afterTomorrow.getUTCDate() + 1);
+    const yesterday = new Date(start); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const taskRows = await sql`INSERT INTO tasks (workspace_id,task_key,title,workflow_id,status_id,priority,team_id,creator_id,due_at,completed_at,created_at) VALUES
+      (${workspaceId},'RPT-1','Due today member',${workflow.id},${status('TODO')},'HIGH',${managedTeamId},${adminId},${new Date(start.getTime()+3600000).toISOString()},NULL,${start.toISOString()}),
+      (${workspaceId},'RPT-2','Tomorrow midnight upcoming',${workflow.id},${status('TODO')},'URGENT',${managedTeamId},${adminId},${tomorrow.toISOString()},NULL,${start.toISOString()}),
+      (${workspaceId},'RPT-3','Strictly overdue',${workflow.id},${status('TODO')},'MEDIUM',${managedTeamId},${adminId},${yesterday.toISOString()},NULL,${start.toISOString()}),
+      (${workspaceId},'RPT-4','Equality is not overdue',${workflow.id},${status('TODO')},'LOW',${managedTeamId},${adminId},${start.toISOString()},NULL,${start.toISOString()}),
+      (${workspaceId},'RPT-5','Done in period',${workflow.id},${status('DONE')},'HIGH',${managedTeamId},${adminId},${new Date(start.getTime()+7200000).toISOString()},${new Date(start.getTime()+5400000).toISOString()},${start.toISOString()}),
+      (${workspaceId},'RPT-6','Cancelled excluded',${workflow.id},${status('CANCELLED')},'URGENT',${managedTeamId},${adminId},${new Date(start.getTime()+7200000).toISOString()},NULL,${start.toISOString()}),
+      (${workspaceId},'RPT-7','Managed unassigned',${workflow.id},${status('TODO')},'HIGH',${managedTeamId},${adminId},${afterTomorrow.toISOString()},NULL,${start.toISOString()}),
+      (${workspaceId},'RPT-8','Outside team assignee',${workflow.id},${status('TODO')},'LOW',${unmanagedTeamId},${adminId},${afterTomorrow.toISOString()},NULL,${start.toISOString()}) RETURNING id,task_key`;
+    const id = (key: string) => String(taskRows.find((row) => row.task_key === key)!.id);
+    await sql`INSERT INTO task_assignees (task_id,user_id,is_primary,assigned_by) VALUES (${id('RPT-1')},${memberId},true,${adminId}),(${id('RPT-2')},${memberId},true,${adminId}),(${id('RPT-3')},${memberId},true,${adminId}),(${id('RPT-4')},${memberId},true,${adminId}),(${id('RPT-5')},${memberId},true,${adminId}),(${id('RPT-6')},${memberId},true,${adminId}),(${id('RPT-8')},${workerId},true,${adminId})`;
+    await sql.end();
+
+    const login = async (email: string) => {
+      await page.goto('/login');
+      await page.getByLabel('Email').fill(email);
+      await page.getByLabel('Password').fill('password123');
+      await page.getByRole('button', { name: 'Sign in' }).click();
+      await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
+    };
+    await login('report-member@example.com');
+    await page.goto(`/workspaces/${workspaceId}/my-work`);
+    await expect(page.getByRole('heading', { name: 'My Work' })).toBeVisible();
+    await expect(page.getByText('Due today member')).toBeVisible();
+    await expect(page.getByText('Tomorrow midnight upcoming')).toBeVisible();
+    await expect(page.getByText('Strictly overdue')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Overdue/ }).locator('..')).not.toContainText('Equality is not overdue');
+    await page.getByRole('button', { name: /Due today member/ }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(new RegExp(`selected_task_id=${id('RPT-1')}`));
+    await page.goto(`/workspaces/${workspaceId}/dashboard`);
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByText(/%$/).first()).toBeVisible();
+    await expect(page.getByText(/(?:h|m)$/).last()).toBeVisible();
+    const activeHref = await page.getByRole('link', { name: 'View active tasks' }).getAttribute('href');
+    expect(activeHref).toContain('/tasks?assignee_id=');
+
+    await page.context().clearCookies();
+    await login('report-worker@example.com');
+    await page.goto(`/workspaces/${workspaceId}/my-work`);
+    await expect(page.getByText('Outside team assignee')).toBeVisible();
+    await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
+    await expect(page.getByText('MANAGER or ADMIN access required.')).toBeVisible();
+
+    await page.context().clearCookies();
+    await login('report-manager@example.com');
+    await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
+    await expect(page.getByRole('heading', { name: 'Manager dashboard' })).toBeVisible();
+    await expect(page.getByText('Managed Ops')).toBeVisible();
+    await expect(page.getByText('Unmanaged Ops')).not.toBeVisible();
+    await expect(page.getByText('Unassigned workload')).toBeVisible();
+    const from = start.toISOString().slice(0, 10);
+    await page.getByLabel('From').fill(from);
+    await page.getByLabel('To').fill(from);
+    await expect(page.getByRole('heading', { name: 'KPI reporting' })).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Workload by team' })).toBeVisible();
+    const unassignedHref = await page.getByRole('link', { name: 'View unassigned tasks' }).getAttribute('href');
+    expect(unassignedHref).toContain('/tasks?assignee_id=unassigned');
+
+    await page.context().clearCookies();
+    await login('report-admin@example.com');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
+    await expect(page.getByRole('heading', { name: 'Manager dashboard' })).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Priority breakdown' })).toBeVisible();
+    await page.locator('body').press('Tab');
+    for (let i = 0; i < 20 && await page.getByLabel('To').evaluate((element) => element !== document.activeElement); i++) await page.keyboard.press('Tab');
+    await expect(page.getByLabel('To')).toBeFocused();
+    const apiResponse = await request.get(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/health`);
+    expect(apiResponse.ok()).toBe(true);
+  });
+
   test('notification badge updates, opens popover, clicks item to mark read and navigate', async ({ page }) => {
     const { sql } = createDatabase(databaseUrl);
     const admin = await auth.api.signUpEmail({ body: { email: 'notif_admin@example.com', password: 'password123', name: 'Notif Admin' } });
