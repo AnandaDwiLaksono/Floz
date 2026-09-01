@@ -47,7 +47,7 @@ async function fixture(app: INestApplication): Promise<Fixture> {
   const memberId = String(member.user.id);
   const outsiderId = String(outsider.user.id);
   const { sql: db2 } = createDatabase(databaseUrl);
-  const role = await db2`INSERT INTO roles (code, name) VALUES ('ADMIN', 'Admin'), ('MEMBER', 'Member') ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name RETURNING id, code`;
+  const role = await db2`INSERT INTO roles (code, name) VALUES ('ADMIN', 'Admin'), ('MANAGER', 'Manager'), ('MEMBER', 'Member'), ('FIELD_WORKER', 'Field Worker') ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name RETURNING id, code`;
   const adminRole = String(role.find((r) => r.code === 'ADMIN')!.id);
   const memberRole = String(role.find((r) => r.code === 'MEMBER')!.id);
   const workspace = await db2`INSERT INTO workspaces (name, slug, created_by) VALUES ('Floz', 'floz', ${adminId}) RETURNING id`;
@@ -78,13 +78,28 @@ describe('API', () => {
     await request(app!.getHttpServer()).get('/api/v1/health').expect(200).expect(({ body }) => expect(body).toEqual({ data: { status: 'ok', service: 'api' } }));
   });
 
+  it('validates manager authority and supports explicit manager clearing', async () => {
+    const f = await fixture(app!);
+    const { sql } = createDatabase(databaseUrl);
+    await sql`UPDATE workspace_memberships SET role_id = (SELECT id FROM roles WHERE code = 'MANAGER') WHERE workspace_id = ${f.workspaceId} AND user_id = ${f.memberId}`;
+    const managerTeam = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Managed', manager_user_id: f.memberId }).expect(201);
+    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/teams/${managerTeam.body.data.id}`).set('Cookie', f.adminCookie).send({ manager_user_id: null }).expect(200).expect(({ body }) => expect(body.data.manager_user_id).toBeNull());
+    await sql`UPDATE workspace_memberships SET role_id = (SELECT id FROM roles WHERE code = 'MEMBER') WHERE workspace_id = ${f.workspaceId} AND user_id = ${f.memberId}`;
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Member Managed', manager_user_id: f.memberId }).expect(400);
+    await sql`UPDATE workspace_memberships SET role_id = (SELECT id FROM roles WHERE code = 'FIELD_WORKER') WHERE workspace_id = ${f.workspaceId} AND user_id = ${f.memberId}`;
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Worker Managed', manager_user_id: f.memberId }).expect(400);
+    await sql`UPDATE workspace_memberships SET status = 'INACTIVE' WHERE workspace_id = ${f.workspaceId} AND user_id = ${f.memberId}`;
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Inactive Managed', manager_user_id: f.memberId }).expect(400);
+    await sql.end();
+  });
+
   it('persists workspace and team relations with isolation and reference rejection', async () => {
     const f = await fixture(app!);
     await request(app!.getHttpServer()).get('/api/v1/workspaces').set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data.map((w: { id: string }) => w.id)).toEqual([f.workspaceId]));
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.otherWorkspaceId}`).set('Cookie', f.memberCookie).expect(404);
     await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.memberCookie).send({ name: 'Ops' }).expect(403);
     await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Ops', manager_user_id: f.outsiderId }).expect(400);
-    const team = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Ops', manager_user_id: f.memberId }).expect(201);
+    const team = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Ops', manager_user_id: f.adminId }).expect(201);
     await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams/${team.body.data.id}/members`).set('Cookie', f.adminCookie).send({ user_id: f.outsiderId }).expect(400);
     await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams/${team.body.data.id}/members`).set('Cookie', f.adminCookie).send({ user_id: f.memberId }).expect(201);
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/teams/${team.body.data.id}/members`).set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data).toEqual([{ user_id: f.memberId, membership_role: 'MEMBER' }]));
@@ -258,7 +273,7 @@ describe('API', () => {
   it('implements recurrence API persistence and orchestration', async () => {
     const f = await fixture(app!);
     const { sql: db } = createDatabase(databaseUrl);
-    const team = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Ops', manager_user_id: f.memberId }).expect(201)).body.data;
+    const team = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Ops', manager_user_id: f.adminId }).expect(201)).body.data;
     const otherTeam = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/teams`).set('Cookie', f.outsiderCookie).send({ name: 'Alien' }).expect(201)).body.data;
     const otherWorkflowId = (await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/tasks`).set('Cookie', f.outsiderCookie).send({ title: 'Alien workflow' }).expect(201)).body.data.workflow_id;
     const base = `/api/v1/workspaces/${f.workspaceId}`;

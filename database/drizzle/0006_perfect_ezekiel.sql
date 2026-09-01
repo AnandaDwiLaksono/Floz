@@ -1,0 +1,1 @@
+CREATE INDEX "teams_workspace_manager_idx" ON "teams" USING btree ("workspace_id","manager_user_id");

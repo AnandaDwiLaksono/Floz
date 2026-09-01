@@ -94,7 +94,7 @@ export const teams = pgTable('teams', {
   isActive: boolean('is_active').notNull().default(true),
   createdAt: now(),
   updatedAt: updated()
-}, (table) => ({ workspaceName: unique().on(table.workspaceId, table.name) }));
+}, (table) => ({ workspaceName: unique().on(table.workspaceId, table.name), workspaceManager: index('teams_workspace_manager_idx').on(table.workspaceId, table.managerUserId) }));
 
 export const teamMemberships = pgTable('team_memberships', {
   id: uuid('id').primaryKey().defaultRandom(),
