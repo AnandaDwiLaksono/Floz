@@ -44,7 +44,7 @@ describe.skipIf(!databaseUrl)('my work integration', () => {
       activeStatusId = statuses.find((status) => !status.is_terminal)!.id;
       terminalStatusId = statuses.find((status) => status.is_terminal && status.category !== 'CANCELLED')!.id;
       cancelledStatusId = randomUUID();
-      await sql`INSERT INTO task_statuses(id,workflow_id,code,name,category,position,is_terminal) VALUES(${cancelledStatusId},${workflowId},${'CANCELLED_MY_WORK'},'Cancelled My Work','CANCELLED',999,true)`;
+      await sql`INSERT INTO task_statuses(id,workflow_id,code,name,category,position,is_terminal) VALUES(${cancelledStatusId},${workflowId},${'CANCELLED_MY_WORK'},'Cancelled My Work','CANCELLED',999,false)`;
       otherActiveStatusId = (await sql<{ id: string }[]>`SELECT id FROM task_statuses WHERE workflow_id=${otherWorkflowId} AND NOT is_terminal LIMIT 1`)[0].id;
 
       const insertTask = async (key: string, dueAt: string, statusId = activeStatusId, owner = userId, workspace = workspaceId, workflow = workflowId, deletedAt: string | null = null) => {
@@ -65,6 +65,8 @@ describe.skipIf(!databaseUrl)('my work integration', () => {
       await insertTask('DELETED', '2026-09-01T11:00:00Z', activeStatusId, userId, workspaceId, workflowId, '2026-09-01T00:00:00Z');
       await insertTask('OTHER-USER', '2026-09-01T11:00:00Z', activeStatusId, otherUserId);
       await insertTask('OTHER-WORKSPACE', '2026-09-01T11:00:00Z', otherActiveStatusId, userId, otherWorkspaceId, otherWorkflowId);
+      await insertTask('DST-MIDNIGHT', '2027-03-15T04:00:00Z');
+      await insertTask('DST-EARLY', '2027-03-15T04:30:00Z');
     } catch (error) {
       await cleanup();
       throw error;
@@ -83,5 +85,19 @@ describe.skipIf(!databaseUrl)('my work integration', () => {
     expect(result.upcoming.map((task) => task.taskKey)).toEqual(['TOMORROW', 'UPCOMING-END']);
     expect(result.overdue.map((task) => task.taskKey)).toEqual(['OVERDUE', 'TODAY-A', 'TODAY-B']);
     expect(result.counts).toEqual({ today: 4, upcoming: 2, overdue: 3 });
+  });
+
+  it('excludes cancelled status even when fixture marks it non-terminal', async () => {
+    const result = await getMyWorkSummary(db, { workspaceId, userId, date: '2026-09-01', timezone: 'Asia/Jakarta', now: new Date('2026-09-01T12:00:00Z') });
+
+    expect(result.today.map((task) => task.taskKey)).not.toContain('CANCELLED');
+    expect(result.overdue.map((task) => task.taskKey)).not.toContain('CANCELLED');
+  });
+
+  it('uses independent local-midnight conversion across DST boundaries', async () => {
+    const result = await getMyWorkSummary(db, { workspaceId, userId, date: '2027-03-14', timezone: 'America/New_York', now: new Date('2027-03-14T12:00:00Z') });
+
+    expect(result.today.map((task) => task.taskKey)).toEqual([]);
+    expect(result.upcoming.map((task) => task.taskKey)).toEqual(['DST-MIDNIGHT', 'DST-EARLY']);
   });
 });
