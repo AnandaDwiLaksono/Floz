@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Shell } from '../components/shell';
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/workspaces/workspace-1/my-work', useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { full_name: 'Manager', email: 'manager@example.com', workspaces: [] }, activeWorkspace: { id: 'workspace-1', name: 'Field Ops', role: 'MANAGER' }, loading: false, setActiveWorkspace: vi.fn(), logout: vi.fn() }) }));
+vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { full_name: 'Manager', email: 'manager@example.com', workspaces: [{ id: 'workspace-1', name: 'Field Ops', role: 'MANAGER' }, { id: 'workspace-2', name: 'Back Office', role: 'ADMIN' }] }, activeWorkspace: { id: 'workspace-1', name: 'Field Ops', role: 'MANAGER' }, loading: false, setActiveWorkspace: vi.fn(), logout: vi.fn() }) }));
 vi.mock('../lib/hooks/use-notifications', () => ({ useUnreadCount: () => ({ unreadCount: 0, setUnreadCount: vi.fn() }), useNotifications: () => ({ notifications: [], loading: false, hasMore: false, error: '', loadMore: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(), fetchNotifications: vi.fn() }) }));
 
 describe('Task 8 shell navigation', () => {
@@ -15,6 +15,17 @@ describe('Task 8 shell navigation', () => {
     const switcher = screen.getByRole('button', { name: /Field Ops/ });
     expect(switcher).toHaveAttribute('aria-expanded', 'false');
     expect(switcher).toHaveAttribute('aria-controls', 'workspace-menu');
+    fireEvent.keyDown(switcher, { key: 'ArrowDown' });
+    const menu = screen.getByRole('menu');
+    const item = within(menu).getByRole('menuitem', { name: /Field Ops/ });
+    expect(document.activeElement).toBe(item);
+    fireEvent.keyDown(item, { key: 'End' });
+    expect(document.activeElement).toBe(within(menu).getAllByRole('menuitem')[1]);
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    expect(document.activeElement).toBe(item);
+    fireEvent.keyDown(item, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(switcher);
     const open = screen.getByRole('button', { name: 'Open navigation' });
     fireEvent.click(open);
     const dialog = screen.getByRole('dialog', { name: 'Navigation' });

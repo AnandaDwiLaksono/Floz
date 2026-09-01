@@ -10,7 +10,7 @@ function target(value: string, timeZone: string) {
 function addDay(value: string) { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + 1); return date.toISOString().slice(0, 10); }
 function zonedMidnight(value: string, timeZone: string) {
   let result = target(value, timeZone);
-  while (result.localDate < value) result = target(addDay(result.value), timeZone);
+  while (result.localDate !== result.value || result.localDate < value) result = target(addDay(result.value), timeZone);
   return `${result.value}T00:00:00.000${offsetAt(result.instant, timeZone)}`;
 }
 export function reportingPeriod(from: string, to: string, timeZone: string) { return { from: zonedMidnight(from, timeZone), to: zonedMidnight(addDay(to), timeZone) }; }

@@ -31,6 +31,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const bellButtonRef = useRef<HTMLButtonElement | null>(null);
   const mobileMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const mobileMenuRef = useRef<HTMLDivElement | null>(null);
+  const workspaceMenuRef = useRef<HTMLDivElement | null>(null);
+  const workspaceTriggerRef = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -79,6 +81,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [mobileMenuOpen, notificationCenterOpen]);
+
+  React.useEffect(() => {
+    const menu = workspaceMenuRef.current;
+    if (!wsDropdownOpen || !menu) return;
+    const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    items[0]?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!items.length) return;
+      const current = items.indexOf(document.activeElement as HTMLElement);
+      if (event.key === 'ArrowDown') { event.preventDefault(); items[(current + 1 + items.length) % items.length]?.focus(); }
+      if (event.key === 'ArrowUp') { event.preventDefault(); items[(current - 1 + items.length) % items.length]?.focus(); }
+      if (event.key === 'Home') { event.preventDefault(); items[0]?.focus(); }
+      if (event.key === 'End') { event.preventDefault(); items[items.length - 1]?.focus(); }
+      if (event.key === 'Escape') { event.preventDefault(); setWsDropdownOpen(false); workspaceTriggerRef.current?.focus(); }
+    };
+    menu.addEventListener('keydown', handleKeyDown);
+    return () => menu.removeEventListener('keydown', handleKeyDown);
+  }, [wsDropdownOpen]);
 
   React.useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -141,6 +161,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             Workspace
           </label>
           <button
+            ref={workspaceTriggerRef}
             aria-expanded={wsDropdownOpen}
             aria-controls="workspace-menu"
             onClick={() => setWsDropdownOpen(!wsDropdownOpen)}
@@ -155,7 +176,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </button>
 
           {wsDropdownOpen && (
-            <div id="workspace-menu" role="menu" className="absolute left-4 right-4 top-16 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1">
+            <div ref={workspaceMenuRef} id="workspace-menu" role="menu" className="absolute left-4 right-4 top-16 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1">
               {user?.workspaces?.map((ws) => (
                 <button
                   key={ws.id}

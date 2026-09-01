@@ -36,7 +36,9 @@ describe('Task 9 manager dashboard', () => {
 
   it('converts each target local midnight with its actual offset', () => {
     expect(reportingPeriod('2026-03-08', '2026-03-08', 'America/New_York')).toEqual({ from: '2026-03-08T00:00:00.000-05:00', to: '2026-03-09T00:00:00.000-04:00' });
-    expect(reportingPeriod('2011-12-29', '2011-12-29', 'Pacific/Apia')).toEqual({ from: '2011-12-29T00:00:00.000-10:00', to: '2011-12-30T00:00:00.000+14:00' });
+    const apia = reportingPeriod('2011-12-29', '2011-12-29', 'Pacific/Apia');
+    expect(apia.to).toBe('2011-12-31T00:00:00.000+14:00');
+    expect(new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Apia', dateStyle: 'short', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date(apia.to))).toBe('2011-12-31, 00:00:00');
   });
 
   it('derives MTD defaults from workspace-local today', () => {
