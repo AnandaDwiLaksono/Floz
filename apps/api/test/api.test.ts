@@ -479,7 +479,7 @@ describe('API', () => {
     try {
       process.env.NODE_ENV = 'test';
       process.env.FLOZ_TEST_REPORTING_NOW = '2026-09-03T00:00:00.000Z';
-      const query = { from: '2026-09-01T00:00:00.000Z', to: '2026-09-04T00:00:00.000Z' };
+      const query = { from: '2026-09-01T00:00:00.000Z', to: '2026-09-04T00:00:00.000Z', evaluationAt: '1999-01-01T00:00:00.000Z', now: '1999-01-01T00:00:00.000Z', clock: 'invalid' };
       const report = await request(app!.getHttpServer()).get(`${base}/reports/kpis`).set('Cookie', f.memberCookie).query(query).expect(200);
       expect(report.body.data).toMatchObject({ completion_rate: '0.500000', overdue_rate: '0.500000', on_time_completion_rate: '1.000000', average_completion_time_seconds: '5400', workload: 2, denominators: { due: 2, completed: 1, overdue: 1, onTime: 1 }, period: { evaluationAt: '2026-09-03T00:00:00.000Z' } });
       expect(report.body.data.period.evaluationAt).not.toBe('1999-01-01T00:00:00.000Z');

@@ -297,6 +297,11 @@ test.describe('Floz Kanban', () => {
     await expect(priorityTable).toContainText('Low');
     await expect(page.getByText('33%')).toBeVisible();
     await expect(page.getByText('1h 30m')).toBeVisible();
+    const report = await page.evaluate(async ({ workspaceId, apiUrl }) => {
+      const response = await fetch(`${apiUrl}/api/v1/workspaces/${workspaceId}/reports/kpis?from=2026-09-01T00%3A00%3A00.000Z&to=2026-09-02T00%3A00%3A00.000Z&evaluationAt=1999-01-01T00%3A00%3A00.000Z`, { credentials: 'include' });
+      return { status: response.status, body: await response.json() };
+    }, { workspaceId, apiUrl: process.env.NEXT_PUBLIC_API_URL! });
+    expect(report).toMatchObject({ status: 200, body: { data: { completion_rate: '0.333333', overdue_rate: '0.666667', on_time_completion_rate: '1.000000', average_completion_time_seconds: '5400', workload: 5, denominators: { due: 3, completed: 1, overdue: 2, onTime: 1 }, period: { evaluationAt: '2026-09-03T00:00:00.000Z' } } } });
     const unassignedHref = await page.getByRole('link', { name: 'View unassigned tasks' }).getAttribute('href');
     expect(unassignedHref).toContain('/tasks?assignee_id=unassigned');
 
