@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$name = 'floz-e2e-db'
+$name = "floz-e2e-db-$PID-$(Get-Random)"
 $apiJob = $null
 $webJob = $null
 
@@ -26,10 +26,13 @@ function Wait-ForHttp($url, $job, $stdout, $stderr, $label) {
 }
 
 try {
-  $dbPort = Get-FreePort
-
-  docker rm -f $name 2>$null | Out-Null
-  docker run --name $name -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=floz -p "${dbPort}:5432" -d postgres:16-alpine | Out-Null
+  for ($i = 0; $i -lt 10; $i++) {
+    $dbPort = Get-FreePort
+    docker run --name $name -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=floz -p "127.0.0.1:${dbPort}:5432" -d postgres:16-alpine 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { break }
+    Start-Sleep -Milliseconds 200
+  }
+  if ($LASTEXITCODE -ne 0) { throw 'Unable to bind a PostgreSQL test port' }
 
   $env:DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:$dbPort/floz"
   $env:BETTER_AUTH_SECRET = 'test-secret-at-least-32-characters-long'
@@ -55,7 +58,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Web build failed' }
 
   $root = (Get-Location).Path
-  $logDir = Join-Path $env:TEMP 'floz-e2e'
+  $logDir = Join-Path $env:TEMP $name
   New-Item -ItemType Directory -Path $logDir -Force | Out-Null
   $apiStdout = Join-Path $logDir 'api.out.log'
   $apiStderr = Join-Path $logDir 'api.err.log'

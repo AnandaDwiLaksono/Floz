@@ -66,7 +66,7 @@ export async function getManagerDashboard(db: DatabaseClient, input: DashboardIn
   }
   const teamIds = await db.execute(sql`SELECT id FROM teams WHERE workspace_id = ${input.workspaceId} AND manager_user_id = ${input.userId} AND is_active = true`);
   const managed = (teamIds as unknown as Array<{ id: string }>).map(({ id }) => id);
-  const ids = input.teamIds ?? managed;
+  const ids = input.teamIds ? input.teamIds.filter((id) => managed.includes(id)) : managed;
   const predicate = ids.length ? sql`tasks.team_id IN ${sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`}` : sql`false`;
   const [kpis, projection] = await Promise.all([getKpis(db, { ...input, teamIds: ids }), project(db, input, predicate)]);
   return { kpis, ...projection };

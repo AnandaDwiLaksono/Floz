@@ -455,6 +455,8 @@ describe('API', () => {
     const report = await request(app!.getHttpServer()).get(`${path}/reports/kpis`).set('Cookie', f.memberCookie).query({ from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' }).expect(200);
     expect(report.body.data.period).toMatchObject({ from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' });
     await request(app!.getHttpServer()).get(`${path}/reports/kpis`).set('Cookie', f.memberCookie).query({ from: 'bad', to: '2026-09-01T00:00:00.000Z' }).expect(400);
+    for (const from of ['2026-02-30T00:00:00.000Z', '2026-08-01', 'August 1, 2026']) await request(app!.getHttpServer()).get(`${path}/reports/kpis`).set('Cookie', f.memberCookie).query({ from, to: '2026-09-01T00:00:00.000Z' }).expect(400);
+    await request(app!.getHttpServer()).get(`${path}/my-work`).set('Cookie', f.memberCookie).query({ date: '2026-02-30' }).expect(400);
   });
 
   it('freezes reporting evaluation and enforces role scopes at endpoint boundaries', async () => {
@@ -529,6 +531,9 @@ describe('API', () => {
     await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ ...query, team_id: unmanaged }).expect(403).expect(({ body }) => expect(body.message).toBe('FORBIDDEN'));
     await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).query({ ...query, team_id: managed }).expect(200);
     await request(app!.getHttpServer()).get(path).set('Cookie', f.adminCookie).query({ ...query, team_id: unmanaged }).expect(200);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.adminCookie).query({ ...query, assignee_id: 'invalid' }).expect(400);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.adminCookie).query({ ...query, assignee_id: f.outsiderId }).expect(400);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.adminCookie).query({ ...query, assignee_id: f.memberId }).expect(200);
     await sql.end();
   });
 

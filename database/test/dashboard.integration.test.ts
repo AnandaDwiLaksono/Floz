@@ -89,6 +89,11 @@ describe('dashboard integration', () => {
     expect(result).not.toHaveProperty('pending_approvals');
   });
 
+  it('does not let direct manager dashboard calls expand to unmanaged teams', async () => {
+    const result = await getManagerDashboard(db, { ...input(managerId), teamIds: [unmanagedTeamId] });
+    expect(result.workload_by_team).toEqual([]);
+  });
+
   it('projects the full workspace for admins excluding deleted inactive-team and other-workspace rows', async () => {
     const result = await getManagerDashboard(db, input(adminId));
     expect(result.workload_by_team).toEqual(expect.arrayContaining([{ key: 'UNASSIGNED', count: 1 }, { key: 'Unmanaged', count: 1 }]));

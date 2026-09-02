@@ -1,6 +1,6 @@
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { ascPriorityRank, buildKpiEligiblePredicate, buildOperationalActivePredicate, getMtdPeriod, isInReportingInterval, isOverdue, isUpcoming, parseReportingInterval } from '../src/reporting-core.js';
+import { ascPriorityRank, buildKpiEligiblePredicate, buildOperationalActivePredicate, getMtdPeriod, isInReportingInterval, isOverdue, isUpcoming, parseReportingDate, parseReportingInterval } from '../src/reporting-core.js';
 
 const dialect = new PgDialect();
 const render = (predicate: ReturnType<typeof buildOperationalActivePredicate>) => dialect.sqlToQuery(predicate);
@@ -25,6 +25,11 @@ describe('reporting core', () => {
     expect(isInReportingInterval(period.from, period)).toBe(true);
     expect(isInReportingInterval(period.to, period)).toBe(false);
     for (const input of [{ from: '2026-09-02T00:00:00Z', to: '2026-09-01T00:00:00Z' }, { from: '2026-09-01T00:00:00Z' }, { from: '2026-02-30T00:00:00Z', to: '2026-03-01T00:00:00Z' }, { from: '2026-09-01T24:00:00Z', to: '2026-09-02T00:00:00Z' }, { from: '2026-09-01T00:00:00+99:00', to: '2026-09-02T00:00:00Z' }]) expect(() => parseReportingInterval(input)).toThrow('INVALID_REPORTING_INTERVAL');
+  });
+
+  it('validates exact calendar reporting dates', () => {
+    expect(parseReportingDate('2026-02-28')).toEqual(new Date(Date.UTC(2026, 1, 28)));
+    for (const date of ['2026-02-30', '2026-2-28', '2026-02-28T00:00:00Z']) expect(() => parseReportingDate(date)).toThrow('INVALID_REPORTING_DATE');
   });
 
   it('uses evaluation_at for month-to-date cutoff', () => {
