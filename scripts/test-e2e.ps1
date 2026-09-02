@@ -44,48 +44,56 @@ try {
   }
   if ($LASTEXITCODE -ne 0) { throw 'Postgres did not become ready' }
 
-  $apiPort = Get-FreePort
-  do { $webPort = Get-FreePort } while ($webPort -eq $apiPort)
-  $env:BETTER_AUTH_URL = "http://127.0.0.1:$apiPort"
-  $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:$apiPort"
-  $env:ALLOWED_ORIGIN = "http://127.0.0.1:$webPort"
-
   pnpm --filter @floz/database migrate
   if ($LASTEXITCODE -ne 0) { throw 'Database migration failed' }
   pnpm --filter @floz/api build
   if ($LASTEXITCODE -ne 0) { throw 'API build failed' }
-  pnpm --filter @floz/web build
-  if ($LASTEXITCODE -ne 0) { throw 'Web build failed' }
 
   $root = (Get-Location).Path
   $logDir = Join-Path $env:TEMP $name
   New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-  $apiStdout = Join-Path $logDir 'api.out.log'
-  $apiStderr = Join-Path $logDir 'api.err.log'
-  $webStdout = Join-Path $logDir 'web.out.log'
-  $webStderr = Join-Path $logDir 'web.err.log'
-  $apiJob = Start-Job -ScriptBlock {
-    param($root, $databaseUrl, $secret, $authUrl, $port, $origin, $stdout, $stderr)
-    Set-Location $root
-    $env:DATABASE_URL = $databaseUrl
-    $env:BETTER_AUTH_SECRET = $secret
-    $env:BETTER_AUTH_URL = $authUrl
-    $env:API_PORT = $port
-    $env:ALLOWED_ORIGIN = $origin
-    $env:NODE_ENV = 'test'
-    $env:FLOZ_TEST_REPORTING_NOW = '2026-09-03T00:00:00.000Z'
-    node apps/api/dist/src/main.js > $stdout 2> $stderr
-  } -ArgumentList $root, $env:DATABASE_URL, $env:BETTER_AUTH_SECRET, $env:BETTER_AUTH_URL, $apiPort, $env:ALLOWED_ORIGIN, $apiStdout, $apiStderr
-  Wait-ForHttp "http://127.0.0.1:$apiPort/api/v1/health" $apiJob $apiStdout $apiStderr 'API'
-
-  $webJob = Start-Job -ScriptBlock {
-    param($root, $apiUrl, $port, $stdout, $stderr)
-    Set-Location (Join-Path $root 'apps/web')
-    $env:NEXT_PUBLIC_API_URL = $apiUrl
-    $env:PORT = $port
-    pnpm start -- --hostname 127.0.0.1 > $stdout 2> $stderr
-  } -ArgumentList $root, $env:NEXT_PUBLIC_API_URL, $webPort, $webStdout, $webStderr
-  Wait-ForHttp "http://127.0.0.1:$webPort/login" $webJob $webStdout $webStderr 'Web'
+  for ($attempt = 0; $attempt -lt 5; $attempt++) {
+    if ($webJob) { Stop-Job $webJob -ErrorAction SilentlyContinue; Remove-Job $webJob -Force -ErrorAction SilentlyContinue; $webJob = $null }
+    if ($apiJob) { Stop-Job $apiJob -ErrorAction SilentlyContinue; Remove-Job $apiJob -Force -ErrorAction SilentlyContinue; $apiJob = $null }
+    $apiPort = Get-FreePort
+    do { $webPort = Get-FreePort } while ($webPort -eq $apiPort)
+    $env:BETTER_AUTH_URL = "http://127.0.0.1:$apiPort"
+    $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:$apiPort"
+    $env:ALLOWED_ORIGIN = "http://127.0.0.1:$webPort"
+    pnpm --filter @floz/web build
+    if ($LASTEXITCODE -ne 0) { throw 'Web build failed' }
+    $apiStdout = Join-Path $logDir "api-$attempt.out.log"
+    $apiStderr = Join-Path $logDir "api-$attempt.err.log"
+    $webStdout = Join-Path $logDir "web-$attempt.out.log"
+    $webStderr = Join-Path $logDir "web-$attempt.err.log"
+    $apiJob = Start-Job -ScriptBlock {
+      param($root, $databaseUrl, $secret, $authUrl, $port, $origin, $stdout, $stderr)
+      Set-Location $root
+      $env:DATABASE_URL = $databaseUrl
+      $env:BETTER_AUTH_SECRET = $secret
+      $env:BETTER_AUTH_URL = $authUrl
+      $env:API_PORT = $port
+      $env:ALLOWED_ORIGIN = $origin
+      $env:NODE_ENV = 'test'
+      $env:FLOZ_TEST_REPORTING_NOW = '2026-09-03T00:00:00.000Z'
+      node apps/api/dist/src/main.js > $stdout 2> $stderr
+    } -ArgumentList $root, $env:DATABASE_URL, $env:BETTER_AUTH_SECRET, $env:BETTER_AUTH_URL, $apiPort, $env:ALLOWED_ORIGIN, $apiStdout, $apiStderr
+    try {
+      Wait-ForHttp "http://127.0.0.1:$apiPort/api/v1/health" $apiJob $apiStdout $apiStderr 'API'
+      $webJob = Start-Job -ScriptBlock {
+        param($root, $apiUrl, $port, $stdout, $stderr)
+        Set-Location (Join-Path $root 'apps/web')
+        $env:NEXT_PUBLIC_API_URL = $apiUrl
+        $env:PORT = $port
+        pnpm start -- --hostname 127.0.0.1 > $stdout 2> $stderr
+      } -ArgumentList $root, $env:NEXT_PUBLIC_API_URL, $webPort, $webStdout, $webStderr
+      Wait-ForHttp "http://127.0.0.1:$webPort/login" $webJob $webStdout $webStderr 'Web'
+      break
+    } catch {
+      $logs = "$(Get-Content $apiStderr -Raw -ErrorAction SilentlyContinue)$(Get-Content $webStderr -Raw -ErrorAction SilentlyContinue)"
+      if ($logs -notmatch 'EACCES|EADDRINUSE' -or $attempt -eq 4) { throw }
+    }
+  }
 
   $env:PLAYWRIGHT_TEST_BASE_URL = "http://127.0.0.1:$webPort"
   pnpm --filter @floz/web exec playwright test
