@@ -1,4 +1,0 @@
-STATUS: DONE
-Commits created: None (no instructions to commit).
-One-line test/build summary: `pnpm --filter @floz/worker test` passes for notification handlers and `pnpm --filter @floz/worker build` is clean.
-Concise summary of changes: Added `notificationDueSoon` to `QUEUES` and `buildDueSoonWakeupJobId` to `queues.ts`. Implemented task.assigned and task.due_changed handling in `outbox-dispatcher.ts`, including transactional execution of `createAssignmentNotifications` and immediate/delayed enqueuing of BullMQ jobs for due-soon based on the 24-hour target lead time. Added covering unit tests in `apps/worker/test/notification-handlers.test.ts`.

@@ -11,3 +11,9 @@ blob-report
 *.tsbuildinfo
 .worktrees/
 .superpowers/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.tmp
+*.log
