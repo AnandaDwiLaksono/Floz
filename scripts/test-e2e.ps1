@@ -1,5 +1,9 @@
 $ErrorActionPreference = 'Stop'
 $name = "floz-e2e-db-$PID-$(Get-Random)"
+$nextDistDir = ".next-e2e-$PID-$(Get-Random)"
+$webTsconfig = Join-Path $PSScriptRoot '../apps/web/tsconfig.json'
+$webTsconfigBackup = "$webTsconfig.e2e-$PID"
+Copy-Item -LiteralPath $webTsconfig -Destination $webTsconfigBackup
 $apiJob = $null
 $webJob = $null
 
@@ -60,6 +64,7 @@ try {
     $env:BETTER_AUTH_URL = "http://127.0.0.1:$apiPort"
     $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:$apiPort"
     $env:ALLOWED_ORIGIN = "http://127.0.0.1:$webPort"
+    $env:FLOZ_NEXT_DIST_DIR = $nextDistDir
     pnpm --filter @floz/web build
     if ($LASTEXITCODE -ne 0) { throw 'Web build failed' }
     $apiStdout = Join-Path $logDir "api-$attempt.out.log"
@@ -81,12 +86,13 @@ try {
     try {
       Wait-ForHttp "http://127.0.0.1:$apiPort/api/v1/health" $apiJob $apiStdout $apiStderr 'API'
       $webJob = Start-Job -ScriptBlock {
-        param($root, $apiUrl, $port, $stdout, $stderr)
+        param($root, $apiUrl, $port, $distDir, $stdout, $stderr)
         Set-Location (Join-Path $root 'apps/web')
         $env:NEXT_PUBLIC_API_URL = $apiUrl
         $env:PORT = $port
+        $env:FLOZ_NEXT_DIST_DIR = $distDir
         pnpm start -- --hostname 127.0.0.1 > $stdout 2> $stderr
-      } -ArgumentList $root, $env:NEXT_PUBLIC_API_URL, $webPort, $webStdout, $webStderr
+      } -ArgumentList $root, $env:NEXT_PUBLIC_API_URL, $webPort, $nextDistDir, $webStdout, $webStderr
       Wait-ForHttp "http://127.0.0.1:$webPort/login" $webJob $webStdout $webStderr 'Web'
       break
     } catch {
@@ -101,5 +107,7 @@ try {
 } finally {
   if ($webJob) { Stop-Job $webJob -ErrorAction SilentlyContinue; Remove-Job $webJob -Force -ErrorAction SilentlyContinue }
   if ($apiJob) { Stop-Job $apiJob -ErrorAction SilentlyContinue; Remove-Job $apiJob -Force -ErrorAction SilentlyContinue }
+  Remove-Item -LiteralPath (Join-Path $PSScriptRoot "../apps/web/$nextDistDir") -Recurse -Force -ErrorAction SilentlyContinue
+  Move-Item -LiteralPath $webTsconfigBackup -Destination $webTsconfig -Force -ErrorAction SilentlyContinue
   docker rm -f $name 2>$null | Out-Null
 }
