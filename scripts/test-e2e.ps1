@@ -3,6 +3,7 @@ $name = "floz-e2e-db-$PID-$(Get-Random)"
 $nextDistDir = ".next-e2e-$PID-$(Get-Random)"
 $webTsconfig = Join-Path $PSScriptRoot '../apps/web/tsconfig.json'
 $webTsconfigBackup = "$webTsconfig.e2e-$PID"
+$previousNextDistDir = $env:FLOZ_NEXT_DIST_DIR
 Copy-Item -LiteralPath $webTsconfig -Destination $webTsconfigBackup
 $apiJob = $null
 $webJob = $null
@@ -109,5 +110,6 @@ try {
   if ($apiJob) { Stop-Job $apiJob -ErrorAction SilentlyContinue; Remove-Job $apiJob -Force -ErrorAction SilentlyContinue }
   Remove-Item -LiteralPath (Join-Path $PSScriptRoot "../apps/web/$nextDistDir") -Recurse -Force -ErrorAction SilentlyContinue
   Move-Item -LiteralPath $webTsconfigBackup -Destination $webTsconfig -Force -ErrorAction SilentlyContinue
+  $env:FLOZ_NEXT_DIST_DIR = $previousNextDistDir
   docker rm -f $name 2>$null | Out-Null
 }
