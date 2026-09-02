@@ -27,9 +27,11 @@ Blocked
 - None.
 
 Phase 8 verification
-- Complete. Clean DB/API/auth, E2E, database My Work, worker integration, lint, typecheck, root tests, and build gates passed in the controller's stable environment.
-- Root tests passed twice consecutively: API 28/28, web 34/34, worker 28/28.
+- Complete. Post-fix clean DB passed with API 25/25 and auth 2/2, exit 0; E2E passed 8/8 after the KPI scope and harness fixes; database My Work passed 3/3; worker integration passed 28/28; lint, typecheck, and build passed.
+- Root tests passed twice consecutively: API 29/29, web 34/34, worker 28/28.
+- Latest fixes harden KPI team, assignee, and timestamp validation; enforce dashboard scope in the direct handler; and make E2E app binds parallel-safe (`cbbd082`, `e4c6700`).
 - Nonblocking: Next.js multi-lockfile warning and existing ESLint Pages warning.
+- Latest commits: `1e80d35`, `cbbd082`, `e0fc112`, `e4c6700`, `12251cb`, `e36ff22`, `d852eec`, `bcf8cff`, `5089855`, `18ac07b`.
 
 Open Decisions
 - See `docs/decisions/OPEN_DECISIONS.md`.

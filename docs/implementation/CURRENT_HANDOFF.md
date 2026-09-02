@@ -13,7 +13,9 @@ Phase 8 Dashboard, KPI Reporting & My Work complete. Phase 9 is not started.
 - None.
 
 ## Verification
-- Controller stable-environment verification passed after `5089855`: clean DB/API/auth 26 tests; E2E 8/8; My Work database integration 3/3; worker integration 28/28; lint; typecheck; root tests twice consecutively (API 28/28, web 34/34, worker 28/28); build.
+- Post-fix controller verification: clean DB API 25/25 plus auth 2/2, exit 0; E2E 8/8 after the KPI scope and harness fixes; My Work PostgreSQL 3/3; worker 28/28; lint, typecheck, and build PASS; two consecutive root `pnpm test` passes each reported API 29/29, web 34/34, and worker 28/28.
+- Latest fixes harden KPI team, assignee, and timestamp validation; enforce dashboard scope in the direct handler; and make E2E app binds parallel-safe (`cbbd082`, `e4c6700`).
+- Latest commits: `1e80d35`, `cbbd082`, `e0fc112`, `e4c6700`, `12251cb`, `e36ff22`, `d852eec`, `bcf8cff`, `5089855`, `18ac07b`.
 - Nonblocking: Next.js multi-lockfile warning and existing ESLint Pages warning.
 
 ## Next actions
