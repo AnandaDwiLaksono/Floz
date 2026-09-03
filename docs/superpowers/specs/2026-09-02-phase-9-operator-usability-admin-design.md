@@ -1,391 +1,986 @@
 # Phase 9 Design Proposal — P0 Operator Usability & Administration
 
-**Document status:** PROPOSAL / AWAITING APPROVAL  
+**Document status:** FINAL DESIGN / APPROVED FOR IMPLEMENTATION PLANNING  
 **Target phase:** Phase 9  
 **Gate label:** MUST BEFORE GATE A  
-**Baseline commit:** `fc76fbc` (canonical `master`)  
-**Input:** `docs/implementation/FLOZ_MASTER_GAP_AUDIT.md`  
+**Canonical state:** `master`, remote `origin/main`, HEAD `fc76fbc0e27794d03ac0634e10fe06a7e7672e43` at publication; local design draft commit may be ahead.  
+**Roadmap input:** `docs/implementation/FLOZ_MASTER_GAP_AUDIT.md`  
 
 ---
 
-## 1. Executive Summary & Current State Reconstruction
+## 1. Reconstructed Current State
 
-Floz has achieved a robust core operational foundation across Phases 0–8 (authentication, workspace isolation, task workflow/history/concurrency, Kanban, Calendar read projection, recurring tasks with worker outbox, notification center, My Work, member & manager dashboards, and KPI reporting).
+Phases 0–8 are complete. Phase 8 delivered My Work, member dashboard, manager dashboard, role-scoped reporting, and KPI projections. Phase 9 is not implemented.
 
-However, **Gate A (Core MVP/P0 Complete)** remains blocked because key operational and administrative workflows currently require manual database manipulation or developer intervention.
+Gate A remains open for verified P0 operator/admin usability gaps:
 
-### Reconstructed Current State & Verified Gaps
+1. Profile & personal preferences.
+2. Workspace administration.
+3. User / membership administration.
+4. Team administration and manager assignment.
+5. Multi-assignee task creation UX.
+6. Calendar edit / reschedule UX.
+7. Field Worker operational quick-status UX.
+8. Task List search/filter completion.
 
-| Domain | Implemented Baseline | Verified Gap | Required Phase 9 Scope |
+Phase 9 remains focused on operator usability and administration only. It does not absorb Approval, comments, mentions, workflow configuration, attachments, notification preferences, email/push, exports, offline mode, deployment, CI/CD, or Phase 10+ scope.
+
+### 1.1 Current Repository Evidence
+
+| Area | Current canonical behavior | Phase 9 design need |
+|---|---|---|
+| Auth | Better Auth email/password login is exposed through `POST /api/v1/auth/login`; logout through `POST /api/v1/auth/logout`; current user through `GET /api/v1/me`. No user-facing sign-up route or sign-up UI currently exists. | Add minimal safe account provisioning decision. |
+| Profile | `users` has `name`, `image`, `timezone`, `locale`, `is_active`; `/me` maps identity to web-facing profile fields. No `PATCH /me` exists. Current public avatar response is not backed by upload behavior. | Add own-profile update endpoint/UI for name/timezone/locale metadata; display read-only email; display current avatar/placeholder only. |
+| Workspace | `workspaces` has `name`, `slug`, `timezone`, `is_active`; list/detail reads exist. No workspace settings update UI or `PATCH /workspaces/:workspaceId` implementation exists. | Add ADMIN-only workspace settings endpoint/UI for current editable fields. |
+| Membership | `workspace_memberships` has `role_id`, `status`, unique `(workspace_id,user_id)`. Canonical statuses are `INVITED`, `ACTIVE`, `SUSPENDED`, `REMOVED`. Current API lists members only. No add/update lifecycle UI exists. | Add ADMIN-only member lifecycle API/UI aligned to canonical `POST /members` and `PATCH /members/:userId`. |
+| Team | API already has team create/update/read and team member add/remove. `teams.manager_user_id` is canonical and validates active `MANAGER`/`ADMIN` when assigned. `teams.is_active` exists but archive/restore is not operator-facing. | Build ADMIN team admin UI; extend team update to expose active/archive where needed. |
+| Manager dashboard | Manager scope is live PostgreSQL projection from active teams where `teams.manager_user_id` equals authenticated manager. | Preserve `manager_user_id`; ensure member lifecycle cannot silently invalidate configured active team managers. |
+| Multi-assignee | DB/API supports multiple unique assignees and max one primary. Task detail assignment replacement UI exists. Task create UI only emits zero or one primary assignee. | Replace create single-assignee select with multi-assignee picker preserving existing API contract. |
+| Calendar | Month/Week/Day read projection, filters, deadline-only tasks, workspace timezone behavior, and create-from-calendar handoff exist. Calendar card click opens task detail route only. | Add click-only accessible reschedule flow using task update + version. |
+| Field Worker | My Work Today/Upcoming/Overdue exists. My Work tasks currently lack status/version/transition details and no quick transition action exists. | Add server-authoritative, on-demand quick transition UX using current task detail + available transitions. |
+| Task filters | `TaskQueryDto` already supports `limit`, `sort`, `q`, `status_id`, `priority`, `team_id`, `assignee_id`, `bucket`, `due_from`, `due_to`, `cursor`. `bucket=active` and `bucket=completed` are already implemented. UI exposes only a subset consistently. | Do not add bucket backend. Expose/preserve canonical filters in UI. Add only `overdue=true` backend convenience if still justified. |
+
+---
+
+## 2. Gap-to-Design Mapping
+
+### 2.1 Profile & Personal Preferences
+
+**Gap:** No user-facing profile settings route and no `PATCH /me` endpoint.
+
+**Design:** Add Profile Settings at:
+
+```text
+/workspaces/:workspaceId/settings/profile
+```
+
+Accessible to all active workspace members.
+
+UI fields:
+- Full name / display name.
+- Timezone.
+- Locale/basic preference metadata, only described as formatting preference unless full localization is actually implemented.
+- Avatar display:
+  - If current profile has image/avatar URL, display it.
+  - Otherwise display initials/placeholder.
+  - No upload infrastructure.
+- Authenticated email identity, read-only.
+
+Explicit exclusions:
+- Email identity change.
+- Password reset.
+- Email verification.
+- Avatar upload/storage.
+- Notification preferences.
+
+API:
+
+```http
+PATCH /api/v1/me
+```
+
+Canonical external request contract:
+
+```json
+{
+  "full_name": "Jane Operator",
+  "timezone": "Asia/Jakarta",
+  "locale": "id-ID",
+  "avatar_url": null
+}
+```
+
+Mapping:
+- `full_name` → `users.name`
+- `avatar_url` → `users.image`
+
+Validation:
+- `full_name` required if provided, trimmed, non-empty.
+- `timezone` must be a valid IANA timezone.
+- `locale` must be one of explicitly supported metadata values, initially `id-ID` and `en-US`.
+- `avatar_url` is metadata only: nullable; if non-null, validate as an allowed URL shape; never fetch it server-side; no upload/storage is introduced.
+
+States:
+- Loading skeleton while `/me` loads.
+- Save disabled while unchanged or saving.
+- Inline success banner after save.
+- Inline validation errors.
+- API error banner.
+- Keyboard focus returns to first invalid field.
+
+### 2.2 Workspace Administration
+
+**Gap:** ADMIN cannot update workspace settings from UI.
+
+Route:
+
+```text
+/workspaces/:workspaceId/settings/workspace
+```
+
+ADMIN only.
+
+Fields:
+- Workspace name.
+- Workspace timezone.
+- Read-only slug.
+- Read-only workspace ID.
+
+API:
+
+```http
+PATCH /api/v1/workspaces/:workspaceId
+```
+
+Request:
+
+```json
+{
+  "name": "Floz Operations",
+  "timezone": "Asia/Jakarta"
+}
+```
+
+Rules:
+- Server-side authorization through ADMIN workspace membership.
+- Name must be non-empty after trim.
+- Timezone must be valid IANA timezone.
+- Slug remains read-only in Phase 9 unless existing API evidence proves safe mutation.
+- Workspace active/inactive lifecycle is not exposed unless already supported by canonical API.
+
+States:
+- Loading, success, validation error, forbidden, generic error.
+- Non-admin users do not see nav item; direct access receives a permission screen/403 handling.
+
+### 2.3 User / Membership Administration
+
+**Gap:** Member administration UI and lifecycle mutation endpoints are missing.
+
+Route:
+
+```text
+/workspaces/:workspaceId/settings/members
+```
+
+ADMIN only.
+
+Canonical distinction:
+- **User account lifecycle** is global identity (`users.is_active`) and auth-owned.
+- **Workspace membership lifecycle** is workspace-scoped (`workspace_memberships.status`).
+
+Canonical membership statuses:
+
+```text
+INVITED
+ACTIVE
+SUSPENDED
+REMOVED
+```
+
+Phase 9 may not create `INVITED` rows, but must preserve the canonical vocabulary in API/UI and not redefine it.
+
+#### Account Provisioning / Onboarding Decision
+
+Current master exposes login/logout/current-user only. There is no verified user-facing registration screen or registration endpoint. Therefore "user must create an account first" is not operationally sufficient unless Phase 9 adds a minimal account acquisition path.
+
+**Locked Phase 9 onboarding decision: ADMIN-provisioned account with temporary credentials.**
+
+Public self-registration is not safe for this pilot because email/password sign-up is enabled without email verification. An unauthenticated person could claim another person's email, then be added by an ADMIN who searches that email. Better Auth's technical `signUpEmail` capability does not establish email ownership.
+
+Phase 9 therefore does **not** expose unrestricted public registration.
+
+Provisioning API:
+
+```http
+POST /api/v1/workspaces/:workspaceId/accounts
+```
+
+Request:
+
+```json
+{
+  "email": "worker@example.com",
+  "full_name": "Field Worker"
+}
+```
+
+Provisioning flow:
+1. ADMIN opens `Provision Account` from Member Administration.
+2. ADMIN enters the user's email and display name.
+3. Server verifies the actor is an `ACTIVE ADMIN` of `:workspaceId`; the workspace parameter is authorization context only.
+4. Server generates a high-entropy temporary password and creates the Better Auth identity/account only, with no workspace creation and no membership.
+5. Server reveals the high-entropy temporary password exactly once over the authenticated ADMIN response; it remains valid until the user successfully changes it. Account creation must not forward the new user's session cookie, replace the ADMIN session, or change the authenticated ADMIN identity. No password or temporary credential may appear in application logs.
+6. ADMIN gives the credential to the intended user through an identity-confirmed out-of-band channel.
+7. User signs in and changes the temporary password through authenticated `PATCH /api/v1/me/password` using current and new password.
+8. ADMIN separately adds the existing account to the workspace using the canonical member-add flow.
+
+Password-change API:
+
+```http
+PATCH /api/v1/me/password
+```
+
+Canonical request:
+
+```json
+{
+  "current_password": "...",
+  "new_password": "..."
+}
+```
+
+Requirements:
+- Authenticated user only.
+- Current password must verify.
+- Use Better Auth/provider-owned password-change behavior; Floz business code never writes password hashes directly.
+- After success, old password no longer authenticates and new password authenticates.
+- Exact session retention/revocation behavior must be defined during implementation planning using supported Better Auth behavior.
+
+Credentials lifecycle:
+- Better Auth hashes the generated temporary password; plaintext exists only in the one provisioning response.
+- Floz does not store a recoverable copy or temporary-password flag.
+- The user can authenticate with it until successful password change; successful change invalidates the old credential.
+- Forced first-login password change is not claimed because the current schema has no temporary-password state and Phase 9 adds no schema migration.
+- Workspace ADMIN cannot generally reset an existing global account password.
+- Lost pre-claim temporary credentials are a known Phase 9 pilot limitation pending a later verified account-recovery mechanism.
+
+Authorization/security:
+- Account provisioning is workspace-ADMIN-only and server-authorized.
+- `:workspaceId` scopes authorization only; provisioning never creates membership or assigns a role.
+- Email is an account identifier, not proof of ownership.
+- Duplicate email returns conflict only to authenticated ADMIN callers.
+
+A provisioned user with no active workspace sees `No workspace access yet` after login, not an error loop.
+
+Future migration path: verified-email invitations or verified self-registration may replace this flow without changing workspace membership semantics. Email invitation tokens and email delivery remain excluded from Phase 9.
+
+#### Member Add / Lifecycle API
+
+Prefer canonical API Specification naming:
+
+```http
+POST /api/v1/workspaces/:workspaceId/members
+```
+
+Request:
+
+```json
+{
+  "email": "worker@example.com",
+  "role": "FIELD_WORKER"
+}
+```
+
+Semantics:
+- Finds an existing registered user by normalized email.
+- If user does not exist, return a clear account-not-found error and direct the operator to the ADMIN-only account provisioning flow.
+- If membership does not exist, create `workspace_memberships` with `status='ACTIVE'`.
+- If membership exists with `INVITED`, `SUSPENDED`, or `REMOVED`, ADMIN can reactivate by PATCHing status to `ACTIVE` and role as needed.
+- If already active, return conflict.
+
+Do not invent email invitation infrastructure.
+
+Accepted workspace role values remain the canonical role set:
+
+```text
+ADMIN
+MANAGER
+MEMBER
+FIELD_WORKER
+```
+
+Lifecycle mutation uses one canonical endpoint:
+
+```http
+PATCH /api/v1/workspaces/:workspaceId/members/:userId
+```
+
+Request:
+
+```json
+{
+  "role": "MANAGER",
+  "status": "ACTIVE"
+}
+```
+
+Accepted membership status values remain:
+
+```text
+INVITED
+ACTIVE
+SUSPENDED
+REMOVED
+```
+
+Removal is modeled by:
+
+```json
+{
+  "status": "REMOVED"
+}
+```
+
+No redundant DELETE member endpoint is required for Phase 9.
+
+#### Atomic Membership Invariants
+
+Every member role/status mutation must be transactionally validated server-side:
+
+1. Resulting workspace must contain at least one `ACTIVE ADMIN`.
+   - Applies to self and other-admin mutations.
+   - Applies to demotion, suspension, removal, and any combined role/status update.
+   - Must be enforced atomically with row locks/transactional checks.
+
+2. A user referenced by active `teams.manager_user_id` must not silently become invalid.
+   - Before changing an active manager/admin to `MEMBER`, `FIELD_WORKER`, `SUSPENDED`, or `REMOVED`, check active teams managed by that user.
+   - If any active teams exist, reject with conflict/state error.
+   - ADMIN must reassign or clear those team managers first.
+   - Do not silently clear `teams.manager_user_id`.
+
+Member UI:
+- List/search by name/email.
+- Role selector.
+- Status selector/actions.
+- Add existing account by email.
+- Clear empty state.
+- Permission screen for non-admin direct access.
+- Row-level loading state for role/status mutation.
+- Conflict error messages for last-active-admin and managed-team constraints.
+
+### 2.4 Team Administration
+
+**Gap:** API foundation exists, but operator-facing team administration UI is missing. Archive/restore behavior is not exposed.
+
+Route:
+
+```text
+/workspaces/:workspaceId/settings/teams
+```
+
+ADMIN only.
+
+Capabilities:
+- Team list with active/archived filter.
+- Create team.
+- Edit name/description.
+- Archive/deactivate via `teams.is_active=false`.
+- Restore/reactivate via `teams.is_active=true` if exposed through team update.
+- Manage team members.
+- Assign/clear manager.
+
+API:
+- Reuse existing team endpoints.
+- Extend existing `PATCH /workspaces/:workspaceId/teams/:teamId` to accept `is_active?: boolean` if needed.
+- Preserve `manager_user_id` contract.
+
+Manager assignment validation:
+- Target manager must be an `ACTIVE` workspace member.
+- Target role must be `ADMIN` or `MANAGER`.
+- `manager_user_id: null` clears manager.
+- Cross-workspace references rejected server-side.
+
+Archived team behavior:
+- New Task/team selectors show active teams only.
+- New team membership additions to an archived team are rejected; restore team first.
+- Existing Task references to archived teams are preserved.
+- When an existing Task references an archived team:
+  - Show current team as `Archived`.
+  - Do not silently clear `team_id`.
+  - Allow authorized reassignment to an active team.
+- Manager dashboard scope ignores inactive teams through existing live projection behavior.
+
+Permission boundaries:
+- ADMIN manages all teams.
+- MANAGER has read/report scope only in Phase 9, unless a currently implemented endpoint already allows more.
+- MEMBER/FIELD_WORKER read team names only where needed for task/filter display.
+
+States:
+- Loading team list.
+- Empty active teams.
+- Empty archived teams.
+- Duplicate team name validation.
+- Invalid manager conflict.
+- Archived-team mutation disabled states.
+
+### 2.5 Multi-Assignee Task Creation
+
+**Gap:** Backend and detail edit support multiple assignees; task create UI only supports single primary assignee.
+
+Task create form design:
+- Replace single primary assignee select with multi-assignee picker.
+- Only show active workspace members.
+- Allow zero or more unique assignees, preserving current API behavior that unassigned tasks are valid.
+- Allow maximum one primary assignee.
+- Primary must be one of the selected assignees.
+- If selected primary is removed, clear primary automatically.
+
+Payload remains canonical:
+
+```json
+{
+  "assignees": [
+    { "user_id": "usr_1", "is_primary": true },
+    { "user_id": "usr_2", "is_primary": false }
+  ]
+}
+```
+
+Validation:
+- Client prevents duplicate selected users.
+- Server remains authoritative for active membership and max-one-primary validation.
+- Cross-workspace/inactive member errors shown inline.
+
+Responsive behavior:
+- Desktop: searchable checkbox list or combobox plus selected chips.
+- Mobile: full-screen picker or stacked checkbox list with 44px minimum touch targets.
+- Keyboard: picker is tab-navigable; primary radio group uses arrow keys.
+
+No schema cardinality changes.
+
+### 2.6 Calendar Edit / Reschedule
+
+**Gap:** Calendar read projection is complete, but mutation UX is missing.
+
+Decision:
+- Use click-only contextual action.
+- Reuse existing Task Detail modal and `PATCH /tasks/:taskId` update semantics.
+- No drag-to-reschedule.
+
+Route behavior:
+
+```text
+/workspaces/:workspaceId/calendar
+/workspaces/:workspaceId/tasks?selected_task_id=:taskId&edit_schedule=1
+```
+
+`edit_schedule=1` is ephemeral UI mode only:
+- It opens Task Detail in edit mode.
+- It focuses schedule fields.
+- It should not be a persisted domain concept.
+
+Success flow must guarantee Calendar freshness:
+1. Calendar card action stores structured calendar context: `view`, `date`, `team_id`, `assignee_id`.
+2. Task Detail schedule save sends `PATCH /tasks/:taskId` with `version`, `start_at`, and/or `due_at`.
+3. On success, UI offers `Return to Calendar` and reconstructs the same-workspace Calendar URL from that preserved context.
+4. If any `return_to` mechanism exists in implementation, it must only accept the canonical Calendar path for the same workspace and must not permit external or open redirects.
+5. After navigation, Calendar explicitly refetches/revalidates the projection using the normal application data-refresh mechanism. Browser Back is not the freshness mechanism.
+
+Validation:
+- Server enforces `start_at <= due_at` when both exist.
+- Workspace timezone conversion remains canonical for `datetime-local` inputs.
+- Start-only tasks remain unsupported in current projections.
+- Deadline-only tasks (`start_at = null`, `due_at != null`) remain supported.
+- Version conflict uses standard `VERSION_CONFLICT` reload UX.
+
+Accessibility:
+- Reschedule action is a real button/link with accessible name.
+- Edit mode focus lands on first schedule field.
+- Save/conflict banners announced via live region.
+
+### 2.7 Field Worker Operational UX
+
+**Gap:** My Work exists, but no one-tap server-authoritative quick status action exists.
+
+Design principles:
+- Do not encode workflow rules in React.
+- Server-provided transition list is authoritative.
+- Preserve version checks and `VERSION_CONFLICT` handling.
+- Avoid N+1 prefetch.
+
+Interaction:
+1. My Work card renders task summary and a generic `Status action` button.
+2. When user invokes quick action, web lazily fetches:
+   - `GET /workspaces/:workspaceId/tasks/:taskId`
+   - `GET /workspaces/:workspaceId/tasks/:taskId/available-transitions`
+3. UI presents server-provided transitions.
+   - If exactly one transition exists, button label may use friendly text derived from transition name/code.
+   - If multiple transitions exist, show accessible action menu.
+4. User selects transition.
+5. Web sends:
+
+```http
+POST /api/v1/workspaces/:workspaceId/tasks/:taskId/transitions
+```
+
+with:
+
+```json
+{
+  "to_status_id": "status_uuid",
+  "version": 3
+}
+```
+
+6. On success:
+   - Refetch My Work summary.
+   - Refresh card state.
+   - Announce success.
+7. On `VERSION_CONFLICT`:
+   - Show conflict banner/action sheet state.
+   - Offer `Reload latest`.
+
+Mobile-first task flow:
+
+```text
+My Work
+→ Today / Upcoming / Overdue
+→ Task card
+→ Status action / Details
+→ Allowed server transition
+→ Completion feedback
+```
+
+No separate Field Worker business model.
+
+### 2.8 Task Search / Filter Completion
+
+**Gap:** API implements many canonical filters, but Task List UI exposes/preserves them inconsistently. `overdue=true` is the only missing convenience filter candidate.
+
+Current `TaskQueryDto` fields:
+
+```text
+limit
+sort
+q
+status_id
+priority
+team_id
+assignee_id
+bucket
+due_from
+due_to
+cursor
+```
+
+Already implemented canonical backend behavior:
+- `bucket=active`:
+  - `deleted_at IS NULL`
+  - current status is non-terminal
+  - current status category is not `CANCELLED`
+- `bucket=completed`:
+  - `completed_at IS NOT NULL`
+- `status_id` single status filter.
+- comma-separated `priority` filter.
+- `team_id` filter.
+- `assignee_id` filter.
+- `due_from` / `due_to` range.
+- cursor pagination.
+- supported sort options.
+
+Phase 9 UI must expose/preserve:
+- task key/title search (`q`).
+- `status_id` selector, not invented status array.
+- priority filter using existing comma-separated API contract.
+- assignee filter.
+- team filter.
+- due range (`due_from`, `due_to`).
+- `bucket=active|completed` tabs.
+- sort.
+- pagination cursor behavior.
+- URL state roundtrip on refresh/navigation/back.
+
+Optional backend addition:
+
+```http
+GET /tasks?overdue=true
+```
+
+Only `overdue=true` is needed. `overdue=false` adds no useful UI semantic for Phase 9.
+
+Canonical overdue predicate:
+
+```sql
+deleted_at IS NULL
+AND current status is non-terminal
+AND current status category <> 'CANCELLED'
+AND due_at < evaluation_at
+```
+
+Implementation must resolve exactly once per Task List request: `evaluationAt = ReportingClock.now()`, then pass that instant into the overdue predicate. Do not introduce a separate wall-clock source or scatter `NOW()`/`new Date()` calls through query code; this preserves Phase 8 deterministic test behavior.
+
+Saved views remain excluded.
+
+---
+
+## 3. Settings Route Hierarchy
+
+Use exactly:
+
+```text
+/workspaces/:workspaceId/settings
+/workspaces/:workspaceId/settings/profile
+/workspaces/:workspaceId/settings/workspace
+/workspaces/:workspaceId/settings/members
+/workspaces/:workspaceId/settings/teams
+```
+
+Routing:
+
+```text
+/workspaces/:workspaceId/settings
+→ /workspaces/:workspaceId/settings/profile
+```
+
+Navigation:
+- Add `Settings` to desktop sidebar and mobile drawer.
+- Settings shell contains tabs.
+- Non-admin users see Profile only.
+- Direct access to admin tabs by non-admins receives forbidden handling, not hidden failure.
+
+---
+
+## 4. API / Schema Implications
+
+### 4.1 Database Schema
+
+The currently approved Phase 9 design requires zero database schema migrations. Phase 9 still requires API and Web changes.
+
+Evidence:
+- `users` already has profile/preference fields.
+- `workspaces` already has name/timezone/activity fields.
+- `workspace_memberships` already has status/role relationship.
+- `roles` already contains workspace role model.
+- `teams` already has `manager_user_id` and `is_active`.
+- `team_memberships` already supports active membership via `left_at`.
+- `tasks` and `task_assignees` already support required schedule/version/assignment semantics.
+
+Do not add UI-state tables. Do not create parallel admin tables. PostgreSQL remains canonical.
+
+### 4.2 API Additions / Extensions
+
+Required:
+- ADMIN-only account provisioning endpoint for identity only, with temporary credentials and no membership creation.
+- `PATCH /api/v1/me`.
+- `PATCH /api/v1/workspaces/:workspaceId`.
+- `POST /api/v1/workspaces/:workspaceId/members`.
+- `PATCH /api/v1/workspaces/:workspaceId/members/:userId`.
+- Extend existing team update to expose `is_active` if archive/restore is not already supported.
+- Optionally add `overdue=true` to task list query.
+- Add/verify server-side `start_at <= due_at` validation for task create/update.
+
+Prefer extending existing canonical endpoints over parallel endpoints.
+
+### 4.3 API Contract Drift to Preserve/Resolve
+
+Implementation planning must explicitly account for differences between current code and documentation:
+
+| Concern | Current code | Canonical/spec direction | Phase 9 decision |
 |---|---|---|---|
-| **1. Profile & Preferences** | `users` table has `name`, `image`, `timezone`, `locale`, `is_active`. `GET /me` returns user info. | No `PATCH /me` endpoint. No web settings/profile page. Avatar is hardcoded `null`. | Add `PATCH /me`, build Profile Settings UI with name, timezone, locale, authenticated email display, avatar placeholder. |
-| **2. Workspace Admin** | `workspaces` table has `name`, `slug`, `timezone`, `is_active`. `GET /workspaces/:id` returns workspace. | No `PATCH /workspaces/:id` endpoint. No workspace settings page. | Add `PATCH /workspaces/:id` (ADMIN only), build Workspace Settings UI (name, timezone). |
-| **3. Membership Admin** | `workspace_memberships` table has `role_id`, `status`. `GET /members` lists members. | No endpoint to add, update role, suspend/activate, or remove members. No member management UI. | Add `POST /members` (add existing account by email), `PATCH /members/:uid` (role/status), `DELETE /members/:uid`. Build Member Management UI. |
-| **4. Team Admin & Manager** | `teams` has `name`, `description`, `manager_user_id`, `is_active`. Team CRUD and team member endpoints exist in API. | No team management UI. `teams.manager_user_id` cannot be managed by operators in UI. Team archive toggle not exposed. | Build Teams & Team Detail Admin UI (create, edit, archive toggle, manager assignment select, member add/remove). |
-| **5. Multi-Assignee Task Creation** | DB `task_assignees` supports many assignees with max 1 primary. API accepts `assignees: [...]`. Detail edit supports assignment replacement. | Web task create form only has single "Primary Assignee" select and emits 1-item array. | Redesign task create form assignee picker: multi-member selection + zero/one primary selector. |
-| **6. Calendar Edit / Reschedule** | Month/Week/Day projection, range calculation, timezone grouping, deadline-only support, and create-from-calendar exist. | Clicking calendar task only navigates to task page; no contextual schedule update affordance. | Add explicit "Reschedule" / "Edit Schedule" action on calendar event cards deep-linking to task detail modal in edit mode; ensure calendar projection refetches on return. |
-| **7. Field Worker Operational UX** | My Work lists Today / Upcoming / Overdue. Responsive layout and drilldown exist. | No quick-status action on task cards (requires full task detail modal navigation). No mobile-optimized task action flow. | Add allowed quick-status transition buttons directly on My Work cards; mobile-first execution interaction. |
-| **8. Task Search & Filter Completion** | API `tasks.list` supports `q`, `status`, `priority`, `team_id`, `assignee_id`, `due_from`, `due_to`, `sort`. UI has partial filters. | Web UI lacks assignee filter, due range filters, overdue toggle, active/completed bucket tabs. Search `q` lacks debounce. Backend lacks explicit `overdue` and `bucket` query handling. | Complete Task List filter bar with assignee, due date, overdue toggle, bucket tabs; debounce search; add `overdue` & `bucket` query params in API. Preserve filter state in URL. |
+| Task status filter | `status_id` | Some docs imply status filter generically | Preserve `status_id` unless API spec/code requires migration. |
+| Task bucket | Already implemented | Required as canonical filter | Do not redesign/add backend; expose in UI. |
+| Overdue filter | Not implemented in task list | API spec includes `overdue=true` | Add only `overdue=true` convenience if still justified. |
+| Member role field | API spec uses `role` | No current member mutation API | Use `role`. |
+| Member removal | API spec uses PATCH status `REMOVED` | No current delete API | Use PATCH lifecycle; no redundant DELETE. |
+| Profile name | DB uses `name`; web public DTO uses `full_name` | API spec may expose profile DTO | Use request contract intentionally; map cleanly server-side. |
+| Avatar | DB has `image`; current public response may be `avatar_url` | No upload/storage | Display existing; no upload. |
 
 ---
 
-## 2. Explicit Architecture & Operational Decisions
+## 5. Authorization Model
 
-### 2.1 Settings & Administration Information Architecture (IA)
+Server-side authorization remains canonical. React may hide unavailable UI but must not enforce business rules.
 
-- **Navigation:** Add a `Settings` navigation item to `Shell` sidebar and mobile drawer.
-- **Route Hierarchy:**
-  - `/workspaces/:workspaceId/settings` -> redirects to `/settings/profile`
-  - `/workspaces/:workspaceId/settings/profile` — Profile & personal preferences (accessible to **all active members**).
-  - `/workspaces/:workspaceId/settings/workspace` — Workspace identity & timezone (accessible to **ADMIN only**; hidden/gated with 403 for others).
-  - `/workspaces/:workspaceId/settings/members` — Member directory, role management, status toggle, add member (accessible to **ADMIN only**).
-  - `/workspaces/:workspaceId/settings/teams` — Team list, create team, archive toggle, manager assignment, team members (accessible to **ADMIN only**).
-- **Sub-navigation:** Clean tabbed navigation inside the Settings shell: `[Profile] [Workspace] [Members] [Teams]`. Non-admin users only see the `[Profile]` tab.
+| Capability | ADMIN | MANAGER | MEMBER | FIELD_WORKER |
+|---|:---:|:---:|:---:|:---:|
+| Provision new account identity | Yes | No | No | No |
+| Public account provisioning | No | No | No | No |
+| Login/logout/session | Yes | Yes | Yes | Yes |
+| Update own profile | Yes | Yes | Yes | Yes |
+| View workspace settings | Yes | No | No | No |
+| Update workspace settings | Yes | No | No | No |
+| List members | Yes | Yes | Yes | Yes |
+| Add/update member lifecycle | Yes | No | No | No |
+| List teams | Yes | Yes | Yes | Yes |
+| Create/edit/archive teams | Yes | No | No | No |
+| Assign/clear team manager | Yes | No | No | No |
+| Manage team members | Yes | No | No | No |
+| Create task | Yes | Yes | Yes | Yes |
+| Assign/reassign task | Yes | Yes | Yes | No |
+| Transition task status | Yes | Yes | Yes | Yes |
+| Delete task | Yes | Yes | No | No |
+| Manager dashboard | All workspace/team scope | Managed active teams only | No | No |
 
-### 2.2 Authorization & Role Policy (ADMIN vs MANAGER vs MEMBER vs FIELD_WORKER)
-
-| Action | ADMIN | MANAGER | MEMBER | FIELD_WORKER | Notes |
-|---|:---:|:---:|:---:|:---:|---|
-| **View Profile / Update Profile (`/me`)** | Yes | Yes | Yes | Yes | Own profile only |
-| **View Workspace Settings** | Yes | No | No | No | Gated by `admin(req, wid)` |
-| **Update Workspace Settings** | Yes | No | No | No | Gated by `admin(req, wid)` |
-| **List Workspace Members** | Yes | Yes | Yes | Yes | Needed across app for assignees |
-| **Add Member (by email)** | Yes | No | No | No | Gated by `admin(req, wid)` |
-| **Update Member Role / Status** | Yes | No | No | No | Gated by `admin(req, wid)` |
-| **Remove Member** | Yes | No | No | No | Gated by `admin(req, wid)` |
-| **List Teams** | Yes | Yes | Yes | Yes | Needed for filter dropdowns |
-| **Create / Edit / Archive Team** | Yes | No | No | No | Gated by `admin(req, wid)` |
-| **Assign Team Manager** | Yes | No | No | No | Target must be `ADMIN` or `MANAGER` |
-| **Add / Remove Team Members** | Yes | No | No | No | Gated by `admin(req, wid)` |
-| **Create Task** | Yes | Yes | Yes | Yes | Any active member |
-| **Assign / Reassign Task** | Yes | Yes | Yes | No | `TaskPolicy.canAssign` excludes FIELD_WORKER |
-| **Mutate Task Status (Transitions)** | Yes | Yes | Yes | Yes | `TaskPolicy.canMutate` |
-| **Delete Task (Soft Delete)** | Yes | Yes | No | No | `TaskPolicy.canDelete` |
-| **Manager Dashboard & KPI Scoping** | Yes (all) | Yes (managed) | No | No | Scoped to `teams.manager_user_id == user.id` |
-
-### 2.3 User Account Lifecycle vs Workspace Membership Lifecycle
-
-- **User Account (`users.isActive`):** Owned by authentication layer (Better Auth). If `isActive === false`, the user is denied at global session guard with `403 ACCOUNT_INACTIVE`. Global deactivate is an out-of-band/system action.
-- **Workspace Membership (`workspace_memberships.status`):** Workspace-scoped lifecycle with three canonical statuses:
-  - `ACTIVE`: Normal member access, can log into workspace, be assigned tasks, transition tasks.
-  - `SUSPENDED`: Temporarily deactivated in this workspace. `member(req, wid)` guard throws `403 MEMBERSHIP_SUSPENDED`. Excluded from active assignee selectors and team member selectors. Existing task assignments remain intact for audit history.
-  - `REMOVED`: Soft-deleted membership (`left_at` or `status = 'REMOVED'`). Denied workspace access.
-- **Self-Demotion / Last Admin Guard:** An administrator cannot remove themselves or demote their own role if they are the last remaining `ACTIVE` administrator in the workspace.
-
-### 2.4 Onboarding Semantics: Add Existing Account by Email
-
-- **Decision:** Floz operates on the free bootstrap topology without email dispatch infrastructure (Resend is optional/future).
-- **Semantics:** "Add Member" takes `email` and `role_id` (or `role_code`):
-  1. API searches `users` by normalized email (`LOWER(email)`).
-  2. If user does not exist: returns `404 USER_NOT_FOUND` with message `"No registered account found with this email. The user must create an account first."`
-  3. If user exists and already has active membership in workspace: returns `409 ALREADY_MEMBER`.
-  4. If user exists and was previously suspended/removed: reactivates membership and updates role.
-  5. If user exists and has no membership: inserts `workspace_memberships` row with status `ACTIVE`.
-- **True Invitation (Email tokens):** Explicitly excluded until Gate B / Gate C email infrastructure.
-
-### 2.5 Team Archive & Deactivation Behavior
-
-- **Mechanism:** Uses existing canonical `teams.isActive: boolean` column.
-- **Archive Action:** Sets `is_active = false`.
-- **Effects:**
-  - Archived teams are excluded from task create/edit team dropdowns.
-  - Archived teams are excluded from active filter dropdowns by default.
-  - Excluded from Manager Dashboard scope (`managerDashboard` endpoint already checks `team.isActive`).
-  - Existing tasks linked to archived teams retain their `team_id` (foreign key intact, historical integrity preserved).
-  - Admin Teams UI provides a toggle: `"Show active teams"` vs `"Show archived teams"` with a 1-click `"Restore team"` action.
-
-### 2.6 Manager Assignment & Manager Dashboard Scope
-
-- **Mechanism:** Uses existing canonical `teams.managerUserId: uuid` column (indexed by `teams_workspace_manager_idx`).
-- **Validation:** When `manager_user_id` is provided (not null):
-  1. Target user must be an active member of the same workspace (`workspace_memberships.status = 'ACTIVE'`).
-  2. Target user's workspace role must be `MANAGER` or `ADMIN`. (Assigning `MEMBER` or `FIELD_WORKER` returns `400 INVALID_MANAGER`).
-- **Clear Manager:** Passing `manager_user_id: null` clears the assignment.
-- **Reporting Integration:** Changing `teams.manager_user_id` immediately updates `GET /workspaces/:id/dashboard/manager` and `GET /workspaces/:id/reports/kpis` for that manager without requiring cache invalidation (since reporting queries are live PostgreSQL projections).
-
-### 2.7 Multi-Assignee Task Creation UX
-
-- **Form Redesign:** Replace single `<select id="primary_assignee">` with a multi-assignee selector:
-  - List of active workspace members with checkboxes.
-  - When members are checked, they appear as selected badge chips.
-  - A "Primary" selector (radio button / star icon) allows designating at most one of the selected members as `is_primary: true`.
-  - Deselecting a member who is marked primary automatically unsets the primary assignment.
-  - Zero assignees is valid (`assignees = []`).
-  - Multiple assignees without a primary is valid (`assignees = [{ user_id, is_primary: false }, ...]`).
-- **Payload:** Emits canonical `assignees: Array<{ user_id: string; is_primary: boolean }>`.
-- **Validation:** Client-side check ensures at most one item has `is_primary === true` and all `user_id`s are unique.
-
-### 2.8 Calendar Rescheduling Interaction
-
-- **Decision:** Click-only contextual reschedule flow reusing existing Task Detail modal with optimistic concurrency.
-- **Interaction Flow:**
-  1. Calendar event card displays a clear, accessible `"Edit / Reschedule"` action button (plus clicking the card title).
-  2. Action navigates to `/workspaces/:workspaceId/tasks?selected_task_id=:taskId&edit_schedule=1`.
-  3. Tasks page detects `selected_task_id` + `edit_schedule=1`, automatically opens Task Detail modal in Edit Mode, and sets keyboard focus to `Start Date` / `Due Date` fields.
-  4. Operator adjusts `start_at` / `due_at` and clicks `"Save Changes"`.
-  5. Request sends `PATCH /workspaces/:workspaceId/tasks/:taskId` with updated dates and current `version`.
-  6. On success, navigating back to Calendar remounts the view and refetches the live range projection.
-- **Drag-to-Reschedule:** Explicitly excluded (per Wireframe open decision L743, accessibility guidelines, and YAGNI).
-- **Start-Only Limitation:** Preserved (projection excludes tasks with `start_at != null && due_at == null`).
-
-### 2.9 Version Conflict UX (Optimistic Concurrency)
-
-- **Trigger:** Server returns `409 Conflict` with error code `VERSION_CONFLICT`.
-- **UI Treatment:**
-  - Standardized across Task Detail, Schedule Edit, Assignment Replacement, and Quick-Status Transitions.
-  - Prominent amber banner: `"Conflict: This task was modified by another operator. Please reload latest state."`
-  - Explicit `"Reload Latest"` button that immediately refetches fresh task data, updates the local form/state, and bumps the tracked `version`.
-  - Disables save button until fresh state is loaded to prevent accidental overwrites.
-
-### 2.10 Field Worker Quick-Status Interaction
-
-- **Mobile-First UX on My Work (`/workspaces/:workspaceId/my-work`):**
-  - Task cards in "Due today", "Upcoming", and "Overdue" sections expose one-tap status transition buttons for valid next transitions (e.g., `[Start]` if TODO, `[Complete]` if IN_PROGRESS).
-  - Tapping transition sends `POST /workspaces/:workspaceId/tasks/:taskId/transitions` with `{ to_status_id, version }`.
-  - If multiple valid transitions exist, a compact action sheet / dropdown appears with touch targets >= 44px.
-  - Immediate optimistic/local UI update with refetch of My Work summary.
-  - Tapping the card title/body opens essential task details with a direct link to full task list.
-
-### 2.11 Task Search & Filter Completion
-
-- **Audit of Implemented vs Missing:**
-  - *API Supported:* `q` (title/key), `status` (array), `priority` (array), `team_id`, `assignee_id`, `due_from`, `due_to`, `sort`.
-  - *API Gaps to close:* Add `overdue: boolean` and `bucket: 'active' | 'completed'` filter parameters to `TaskService.list` SQL WHERE clause.
-  - *UI Gaps to close:*
-    - Add `Assignee` filter dropdown (populated with active members).
-    - Add `Due Date Range` picker (`due_from`, `due_to`).
-    - Add `Overdue Only` checkbox/toggle.
-    - Add `Active` vs `Completed` tab selector (mapping to `bucket=active` / `bucket=completed`).
-    - Add 300ms debounce to search query input (`q`) to prevent rapid router pushes per keystroke.
-    - Synchronize all filter controls bidirectionally with URL query parameters so filters survive refresh and back-navigation.
+Membership mutations must additionally preserve:
+- At least one `ACTIVE ADMIN`.
+- Active team managers remain valid.
 
 ---
 
-## 3. Detailed API & Schema Specifications
+## 6. Edge Cases
 
-### 3.1 Schema Changes
+### Profile
+- Invalid timezone rejected.
+- Locale selection clearly described as formatting/preference metadata unless full app localization exists.
+- Missing avatar uses initials placeholder.
+- Email cannot be changed.
 
-**Evidence:** Inspection of `database/src/schema.ts` confirms that all required columns, foreign keys, and indexes already exist in the database:
-- `users`: `id`, `email`, `name`, `image`, `timezone`, `locale`, `is_active`.
-- `workspaces`: `id`, `name`, `slug`, `timezone`, `is_active`.
-- `workspace_memberships`: `id`, `workspace_id`, `user_id`, `role_id`, `status`, `joined_at`.
-- `roles`: `id`, `code` (`ADMIN`, `MANAGER`, `MEMBER`, `FIELD_WORKER`), `name`.
-- `teams`: `id`, `workspace_id`, `name`, `description`, `manager_user_id`, `is_active`.
-- `team_memberships`: `id`, `team_id`, `user_id`, `membership_role`, `joined_at`, `left_at`.
-- `tasks`: `id`, `version`, `start_at`, `due_at`, `priority`, `team_id`, `status_id`.
-- `task_assignees`: `id`, `task_id`, `user_id`, `is_primary`.
+### Onboarding
+- Provisioned user with no workspace sees no-workspace state.
+- Add-member by email fails clearly if account does not exist.
+- No silent workspace creation.
+- No email invitation token or delivery.
 
-**Conclusion:** **ZERO new database tables or schema migrations required.** Existing database structures are 100% sufficient.
+### Membership
+- Cannot leave workspace with zero active admins.
+- Cannot demote/suspend/remove user who manages active teams.
+- `INVITED` status remains representable even if Phase 9 does not create it.
+- Removed/suspended members excluded from active assignee/team-add selectors.
+- Historical tasks/assignments are preserved.
 
-### 3.2 Required New & Extended API Endpoints
+### Teams
+- Archived teams cannot receive new members until restored.
+- Existing archived-team task references are shown as archived and preserved.
+- Reassignment to active team is allowed where authorized.
+- Team name duplicate errors shown inline.
+- Manager clearing is explicit.
 
-#### Profile & Personal Preferences
-- **`PATCH /api/v1/me`**
-  - *Auth:* Authenticated user.
-  - *Request Body:* `{ full_name?: string; timezone?: string; locale?: string; avatar_url?: string | null }`
-  - *Validation:* `timezone` must be valid IANA identifier; `locale` must be supported string (`id-ID`, `en-US`); `full_name` min 1 char.
-  - *Response:* `200 OK` `{ data: PublicUserDto }`
+### Task Assignment
+- Zero assignees remains valid per current API.
+- Max one primary.
+- Primary must be selected assignee.
+- Server rejects inactive/cross-workspace assignee.
 
-#### Workspace Administration
-- **`PATCH /api/v1/workspaces/:workspaceId`**
-  - *Auth:* Workspace `ADMIN` only.
-  - *Request Body:* `{ name?: string; timezone?: string }`
-  - *Validation:* `name` min 1 char; `timezone` valid IANA identifier.
-  - *Response:* `200 OK` `{ data: WorkspaceDto }`
+### Calendar
+- Deadline-only tasks remain supported.
+- Start-only tasks remain unsupported in current projections.
+- Calendar refetch is explicit after successful schedule mutation.
+- Version conflict reload path avoids overwrite.
 
-#### Member Administration
-- **`POST /api/v1/workspaces/:workspaceId/members`**
-  - *Auth:* Workspace `ADMIN` only.
-  - *Request Body:* `{ email: string; role_code: 'ADMIN' | 'MANAGER' | 'MEMBER' | 'FIELD_WORKER' }`
-  - *Validation:* `email` valid format; user must exist in `users` table; user not already active member.
-  - *Response:* `201 Created` `{ data: MemberDto }`
-- **`PATCH /api/v1/workspaces/:workspaceId/members/:userId`**
-  - *Auth:* Workspace `ADMIN` only.
-  - *Request Body:* `{ role_code?: string; status?: 'ACTIVE' | 'SUSPENDED' | 'REMOVED' }`
-  - *Validation:* Last active admin cannot demote self or change own status to non-ACTIVE.
-  - *Response:* `200 OK` `{ data: MemberDto }`
-- **`DELETE /api/v1/workspaces/:workspaceId/members/:userId`**
-  - *Auth:* Workspace `ADMIN` only.
-  - *Behavior:* Sets membership status to `REMOVED`. Last active admin cannot remove self.
-  - *Response:* `204 No Content`
+### Field Worker
+- Quick action loads transitions on demand.
+- If no available transitions exist, show disabled `No available actions` state.
+- If task changed after card load, conflict path reloads latest.
 
-#### Team Administration
-- **`PATCH /api/v1/workspaces/:workspaceId/teams/:teamId`** *(extend existing)*
-  - *Auth:* Workspace `ADMIN` only.
-  - *Request Body:* `{ name?: string; description?: string | null; manager_user_id?: string | null; is_active?: boolean }`
-  - *Validation:* `manager_user_id` must reference active workspace member with role `ADMIN` or `MANAGER`.
-  - *Response:* `200 OK` `{ data: TeamDto }`
-
-#### Task List Filter Extensions
-- **`GET /api/v1/workspaces/:workspaceId/tasks`** *(extend existing query parser)*
-  - *New Query Params:*
-    - `overdue?: 'true' | 'false'` -> filters `due_at < NOW() AND status.category != 'DONE'`
-    - `bucket?: 'active' | 'completed'` -> `active` filters non-terminal statuses; `completed` filters `completed_at IS NOT NULL`.
+### Task Filters
+- Unknown query params ignored or normalized.
+- Invalid IDs show validation error or reset UI state.
+- Pagination cursor resets when filters change.
+- URL remains source of truth for list filters.
 
 ---
 
-## 4. Web UI & UX Specifications
+## 7. Responsive & Accessibility Requirements
 
-### 4.1 Settings Shell & Profile Settings (`/settings/profile`)
-- Header with user display info: authenticated email (read-only with badge `"Managed via Login"`), user ID.
-- Form fields:
-  - `Full Name` text input.
-  - `Timezone` searchable select (prefilled with user's timezone or system default).
-  - `Locale / Language` select (`id-ID (Bahasa Indonesia)`, `en-US (English)`).
-  - `Avatar` display with placeholder initials and note `"Custom photo upload available in cloud edition"`.
-- Loading spinner on save, inline green success banner on save, inline error banner on failure.
-
-### 4.2 Workspace Settings (`/settings/workspace`)
-- Accessible only to `ADMIN` (other roles see standard 403 screen or redirected).
-- Form fields:
-  - `Workspace Name` text input.
-  - `Workspace Timezone` select (used for all reporting and calendar calculations).
-  - Read-only details: Workspace Slug, Created At, Workspace ID.
-- Save button with confirmation toast/banner.
-
-### 4.3 Member Administration (`/settings/members`)
-- Header with `+ Add Member` button (opens Add Member dialog).
-- Member Table:
-  - Columns: Name & Email, Role badge (`ADMIN`, `MANAGER`, `MEMBER`, `FIELD_WORKER`), Status badge (`ACTIVE` green, `SUSPENDED` yellow, `REMOVED` gray), Joined Date, Actions menu.
-  - Search filter input by member name / email.
-- Add Member Dialog:
-  - Input: User Email.
-  - Select: Role (`ADMIN`, `MANAGER`, `MEMBER`, `FIELD_WORKER`).
-  - Explanatory note: `"User must have an existing Floz account. If they haven't registered yet, please have them sign up first."`
-- Member Row Actions:
-  - `Change Role` dropdown.
-  - `Suspend Member` / `Reactivate Member` toggle.
-  - `Remove from Workspace` with confirmation modal.
-  - Last-admin protection: disable demote/remove actions on the current user if they are the sole admin.
-
-### 4.4 Team Administration (`/settings/teams`)
-- Header with `+ Create Team` button and `[Active Teams / Archived Teams]` tab toggle.
-- Team Card / Table list:
-  - Team Name, Description, Manager Name (or `"No manager assigned"`), Member Count, Status (`Active` / `Archived`).
-  - Actions: Edit Team, Manage Members, Archive / Restore.
-- Create / Edit Team Modal:
-  - Team Name (required), Description (optional).
-  - Manager select: list of workspace members with role `ADMIN` or `MANAGER` + `"None"`.
-- Team Members Modal:
-  - List current members with `Remove` button.
-  - `Add Member` select from active workspace members.
-
-### 4.5 Multi-Assignee Task Create UX (`/tasks`)
-- Replace single select in task create modal with:
-  - Assignees Section:
-    - Member picker (multi-select / checkbox list).
-    - Selected members rendered as badges.
-    - Each selected member has a star icon / `"Primary"` radio to designate the primary assignee.
-    - Helper text: `"Select one or more assignees. Optionally designate one as primary."`
-
-### 4.6 Calendar Contextual Reschedule UX (`/calendar`)
-- Calendar task items render title, priority, primary assignee, and a contextual `"Reschedule"` link/icon.
-- Clicking `"Reschedule"` navigates to `/tasks?selected_task_id=:id&edit_schedule=1`.
-- Task Detail opens in Edit Mode focusing date inputs.
-- After saving changes, browser back navigation or clicking `"Return to Calendar"` returns to the calendar with updated timestamps.
-
-### 4.7 Field Worker Quick Status Flow (`/my-work`)
-- Card layout on mobile:
-  - Prominent title, priority badge, due time.
-  - Direct action button: `[Start Task]` (transitions TODO -> IN_PROGRESS), `[Complete Task]` (transitions IN_PROGRESS -> DONE).
-  - If multiple transitions exist: compact dropdown select.
-  - Tap card body: opens lightweight detail view.
-
-### 4.8 Task List Filters (`/tasks`)
-- Enhanced filter toolbar:
-  - `Search` input with 300ms debounce.
-  - `Status` multi/single select.
-  - `Priority` select.
-  - `Team` select.
-  - `Assignee` select (new).
-  - `Due Date` range (`From`, `To`) (new).
-  - `Overdue Only` checkbox toggle (new).
-  - `Active` / `Completed` tab bar (new).
-  - `Sort` order select.
-  - All state serialized to URL query parameters.
+All Phase 9 screens must include:
+- Loading, empty, success, error, forbidden, and disabled states.
+- Keyboard navigation for tabs, dialogs, menus, comboboxes, checkboxes, radio groups, date/time inputs.
+- Focus management on modal open/close and error states.
+- Screen-reader labels for icon-only actions.
+- Touch targets >= 44px for mobile primary actions.
+- Mobile layout:
+  - Settings tabs collapse to stacked pills or horizontal scroll.
+  - Member/team tables become cards/lists.
+  - Filters collapse into drawer or stacked controls.
+  - Task create/edit modals become full-screen or near-full-screen where needed.
+- No drag-only interactions.
 
 ---
 
-## 5. Edge Cases & Resilience
+## 8. Testing Strategy
 
-1. **Last Admin Protection:**
-   - Database/API validation prevents updating status or role of the last remaining `ACTIVE` `ADMIN` in a workspace.
-2. **Manager Assignment Invariant:**
-   - API verifies `manager_user_id` belongs to `workspace_memberships` with status `ACTIVE` and role in `['ADMIN', 'MANAGER']`.
-   - If an existing team manager has their workspace role demoted to `MEMBER` or is suspended, team management queries handle this gracefully and highlight `"Manager role invalid — please reassign"` in admin UI.
-3. **Cross-Workspace Data Leakage:**
-   - All member additions, team creations, and task assignments validate workspace boundaries server-side using parameterized queries.
-4. **Optimistic Concurrency Collision:**
-   - Any concurrent update to task fields, schedule, assignees, or status triggers `409 VERSION_CONFLICT`. UI displays reload prompt and does not overwrite remote changes.
-5. **Start Date vs Due Date Order:**
-   - Task create/update enforces `start_at <= due_at` when both timestamps are present.
+### 8.1 Database/API Coverage
+
+Add tests for:
+
+1. **Account provisioning**
+   - ADMIN provisions identity only with temporary credential.
+   - Provisioned user has no workspace access until added.
+   - Login works before membership exists and lands on `No workspace access yet`.
+   - Password change replaces the temporary credential; old password no longer authenticates.
+
+2. **Profile**
+   - `PATCH /me` updates name/timezone/locale.
+   - Invalid timezone/locale rejected.
+   - Email cannot be changed through profile patch.
+
+3. **Workspace admin**
+   - ADMIN updates workspace name/timezone.
+   - MANAGER/MEMBER/FIELD_WORKER receive 403.
+
+4. **Membership lifecycle**
+   - ADMIN adds existing account by email.
+   - Non-existent email returns account-not-found.
+   - PATCH updates role/status using canonical `role` and `status`.
+   - `INVITED`, `ACTIVE`, `SUSPENDED`, `REMOVED` vocabulary accepted/represented per canonical contract.
+   - Last-active-admin invariant enforced atomically.
+   - Managed-active-team manager cannot be demoted/suspended/removed until manager assignment cleared/reassigned.
+
+5. **Team admin**
+   - Create/edit team.
+   - Assign manager only if active role `ADMIN`/`MANAGER`.
+   - Clear manager.
+   - Archive/restore through `is_active`.
+   - Reject adding member to archived team.
+
+6. **Manager dashboard scope**
+   - Assignment changes manager dashboard scope.
+   - Archived teams are excluded from manager scope.
+
+7. **Task filters**
+   - Existing `bucket=active` and `bucket=completed` regression tests.
+   - `status_id` filter regression.
+   - `overdue=true` if added, using one captured evaluation instant and canonical operational-active predicate.
+
+8. **Schedule validation/concurrency**
+   - `start_at <= due_at` enforced on create/update when both provided.
+   - Schedule update requires version.
+   - Stale version returns `VERSION_CONFLICT`.
+
+### 8.2 Web Unit / Component Coverage
+
+Add tests for:
+- Settings route/tab visibility by role.
+- Profile form loading/save/error states.
+- Workspace settings forbidden state.
+- Member list search, add-member dialog, lifecycle mutation, conflict banners.
+- Team list active/archived views, manager selector, archived-team behavior.
+- Multi-assignee picker uniqueness and primary selection.
+- Task filter URL roundtrip for `q`, `status_id`, `priority`, `team_id`, `assignee_id`, `bucket`, `due_from`, `due_to`, sort, cursor reset.
+- My Work quick action lazy-load behavior.
+- Version conflict banner and reload behavior.
+
+### 8.3 Playwright E2E Coverage
+
+E2E must include at least:
+
+1. **Admin edits workspace settings**
+   - Admin logs in, opens settings, updates workspace name/timezone, sees persistence.
+
+2. **Admin manages member**
+   - Admin provisions brand-new user identity only with temporary credential.
+   - User logs in and sees `No workspace access yet` before membership.
+   - Admin adds that user by email.
+   - Admin changes role/status.
+   - Last-active-admin and managed-team conflict paths covered.
+
+3. **Admin creates/updates team**
+   - Create team.
+   - Edit name/description.
+   - Archive/restore.
+
+4. **Admin assigns manager**
+   - Promote/add manager.
+   - Assign to team.
+   - Clear/reassign manager.
+
+5. **Manager dashboard scope reflects assignment**
+   - Manager sees assigned team work.
+   - Manager loses scope after clear/archive.
+
+6. **User creates task with multiple assignees**
+   - Select two active members.
+   - Mark one primary.
+   - Verify detail display.
+
+7. **Calendar task is rescheduled**
+   - Open Calendar.
+   - Invoke Reschedule.
+   - Task detail opens in schedule edit mode.
+   - Save new due/start.
+   - Return to Calendar with guaranteed refetch.
+   - Verify task appears on new date.
+
+8. **Field Worker completes work through mobile flow**
+   - Mobile viewport.
+   - My Work -> task card -> quick action -> server transition -> completion feedback.
+
+9. **Task search/filter survives navigation**
+   - Apply search, `status_id`, assignee, team, due range, bucket, sort.
+   - Navigate away/back.
+   - URL and UI state preserved.
+
+Regression gates:
+- Existing Phase 0–8 API tests.
+- Existing clean DB tests.
+- Existing Playwright flows.
+- Lint, typecheck, build.
+- Role/isolation tests for cross-workspace references.
+- Keyboard/accessibility tests for settings, dialogs, filters, quick actions.
 
 ---
 
-## 6. Testing & Verification Strategy
+## 9. Migration & Compatibility Concerns
 
-### 6.1 Database & Integration Tests (`@floz/database`, `@floz/api`)
-- `PATCH /me`: updates full_name, timezone, locale; validates input; rejects unauthenticated.
-- `PATCH /workspaces/:id`: updates workspace name, timezone; rejects non-ADMIN (403).
-- Member lifecycle:
-  - `POST /members`: adds existing user by email; rejects non-existent email (404); rejects duplicate (409); rejects non-ADMIN (403).
-  - `PATCH /members/:uid`: updates role; suspends member; prevents last-admin self-demotion/removal (400).
-- Team admin & manager assignment:
-  - `POST /teams` and `PATCH /teams/:id`: assigns valid manager; rejects member with role `MEMBER` or `FIELD_WORKER` (400); clears manager with `null`.
-  - Team archive: sets `is_active = false`; verifies exclusion from manager dashboard.
-- Task search/filters:
-  - `GET /tasks?assignee_id=...&overdue=true&bucket=active`: verifies correct WHERE predicate generation and count.
-
-### 6.2 Web Unit & Component Tests (`@floz/web`)
-- `ProfileSettings`: renders user data, updates preferences, handles API error.
-- `WorkspaceSettings`: renders workspace info, gates non-admin access.
-- `MemberAdmin`: renders member list, add member form, role change, status toggle.
-- `TeamAdmin`: renders team list, create/edit modal, manager select, archive toggle.
-- `MultiAssigneePicker`: selecting/unselecting members, setting single primary, unsetting primary.
-- `MyWorkQuickStatus`: renders allowed transition buttons, fires transition API call.
-- `TaskListFilters`: debounced search, URL param serialization, assignee and date filters.
-
-### 6.3 Playwright E2E Verification Scenarios (`apps/web/e2e/flow.spec.ts`)
-1. **Admin Workspace & Profile Flow:**
-   - Admin logs in -> navigates to Settings -> updates profile timezone & name -> verifies save.
-   - Admin navigates to Workspace Settings -> updates workspace name -> verifies updated in sidebar.
-2. **Admin Member Management Flow:**
-   - Admin navigates to Member Settings -> adds existing user by email as `MEMBER` -> verifies listed.
-   - Admin changes role to `MANAGER` -> verifies role badge updates.
-   - Admin suspends member -> verifies `SUSPENDED` status badge.
-3. **Admin Team Management & Manager Dashboard Flow:**
-   - Admin creates new team -> assigns the newly promoted `MANAGER` as team manager.
-   - Manager logs in -> opens Manager Dashboard -> verifies newly assigned team is in scope.
-4. **Multi-Assignee Task Creation Flow:**
-   - Operator creates task -> selects 2 assignees -> marks 1 as primary -> submits.
-   - Task detail modal verifies both assignees listed with primary highlighted.
-5. **Calendar Reschedule Flow:**
-   - User opens Calendar -> clicks "Reschedule" on task -> opens detail in edit mode -> changes due date -> saves -> returns to Calendar -> verifies task shifted to new date.
-6. **Field Worker Quick Status Flow:**
-   - Field worker logs in -> opens My Work -> clicks `[Start Task]` quick action -> verifies card moves to IN_PROGRESS.
-7. **Task Search & Filter Navigation Flow:**
-   - User filters task list by Assignee and Overdue -> navigates away to Dashboard -> clicks back -> verifies filter state preserved in URL.
+- **Database schema migrations:** none required by current approved Phase 9 design.
+- **Data migration:** none required.
+- **API/Web changes:** required; zero database migrations does not mean zero implementation work.
+- **Existing memberships:** preserve existing status values. If legacy data only contains `ACTIVE`, no migration needed.
+- **Existing teams:** existing `manager_user_id` values remain valid; lifecycle mutation rules prevent future invalidation.
+- **Existing tasks assigned to archived teams:** preserve references.
+- **API compatibility:** Existing endpoints remain backward-compatible. New endpoints fill missing canonical API surface. Existing `bucket` semantics must not regress.
+- **Task list pagination:** filter changes reset cursor.
+- **Calendar refetch:** must not rely solely on browser back/remount behavior.
 
 ---
 
-## 7. Explicit Exclusions (Preserved for Phase 10+)
+## 10. Implementation Risks
 
-The following capabilities are strictly excluded from Phase 9 to maintain sharp focus on P0 Operator Usability:
-- Approval workflows, requests, and `pending_approvals` (Phase 10).
-- Comments, mentions, and activity feed (Phase 10).
-- Workflow and custom status configuration (Phase 11).
-- File attachments and Cloudflare R2 upload (Post-Pilot).
-- Email invitation dispatch & password reset emails (Requires email infrastructure).
-- Notification preferences UI and push notifications (Post-Pilot).
-- Historical KPI snapshot tables / exports / CSV download (Post-Pilot).
-- `CUSTOM` recurrence grammar (Future).
-- Calendar start-only task projection (Accepted limitation).
-- Production infrastructure / Docker deployment (Phase 12).
+1. **Account provisioning security:** Better Auth sign-up exists as library capability, but public self-registration without email verification is unsafe for this pilot. Phase 9 uses ADMIN-only identity provisioning and must protect temporary credentials from logs/retrieval.
+2. **API/docs drift:** Current code uses `status_id` and `bucket`; docs sometimes describe generic status/overdue filters. Implementation must preserve actual contracts unless deliberately changed.
+3. **Membership invariants:** Last-active-admin and managed-team-manager constraints must be transactional. Non-atomic checks risk race conditions.
+4. **Field Worker quick actions:** My Work summary lacks version/transitions. Lazy detail+transition fetch avoids N+1 but needs careful loading state.
+5. **Calendar freshness:** Browser history alone is insufficient. Success navigation must trigger explicit refetch.
+6. **Archived-team UX:** Operators must see archived historical references without accidentally selecting archived teams for new work.
+7. **No business logic duplication in React:** React can format labels and hide controls, but server validates roles, transitions, membership, team scope, and task constraints.
 
 ---
 
-## 8. Migration, Compatibility & Rollback Plan
+## 11. Explicit Exclusions
 
-- **Database Migrations:** Zero schema migrations required. All tables and columns exist.
-- **API Backward Compatibility:** All existing endpoints (`GET /members`, `GET /teams`, `POST /tasks`, etc.) retain identical response shapes and contracts. New query parameters on `GET /tasks` are strictly optional.
-- **Rollback:** In the event of an issue, reverting the application code cleanly restores Phase 8 behavior without database rollback or data loss.
+Phase 9 excludes:
+- Approval.
+- Comments.
+- Mentions.
+- Workflow Configuration.
+- Attachments.
+- Notification preferences.
+- Email/push delivery.
+- Password reset/email verification.
+- Historical KPI/export/scheduled reporting.
+- Saved views.
+- `CUSTOM` recurrence.
+- Start-only Calendar projection.
+- Offline mode.
+- Production infrastructure.
+- CI/CD/deployment automation.
+- Phase 10+ work.
+
+---
+
+## 12. Self-Review Against Canonical Inputs
+
+Reviewed against:
+- Current master repository behavior.
+- Final Master Outstanding / Gap Audit.
+- API Specification.
+- ERD.
+- Wireframe/UI Specification.
+- Technical Architecture.
+- Phase 8 reporting/task-filter semantics.
+
+Corrections applied:
+- `bucket=active|completed` reclassified as existing canonical backend functionality.
+- `status_id` preserved as current status filter contract.
+- `overdue=true` limited to optional missing convenience filter with canonical operational-active predicate and single evaluation instant.
+- Membership statuses restored to `INVITED`, `ACTIVE`, `SUSPENDED`, `REMOVED`.
+- Member removal aligned to `PATCH { status: "REMOVED" }`, no redundant delete endpoint.
+- Member role request field aligned to API Spec `role`.
+- Account provisioning locked to ADMIN-only identity creation with a high-entropy temporary password revealed exactly once; public self-registration excluded without email verification.
+- Team manager invariant enforced before role/status/removal changes.
+- Last-active-admin invariant widened to every membership mutation.
+- Field Worker quick status made server-authoritative via available transitions.
+- Profile avatar/product-edition language removed.
+- Locale described as preference metadata unless full localization exists.
+- Calendar refetch made explicit after successful schedule mutation.
+- Archived-team behavior defined for existing task references and selectors.
+- Settings route hierarchy normalized.
+- Schema conclusion narrowed: current approved Phase 9 design requires zero schema migrations.
+
+---
+
+## 13. Final Design Position
+
+Phase 9 closes Gate A P0 operator usability by making existing canonical capabilities operable by real administrators, managers, members, and field workers without manual database intervention.
+
+It does this by adding minimal Settings/Admin UX and missing API surfaces around already-existing domain concepts, while preserving PostgreSQL as canonical source, server-side authorization, workspace isolation, optimistic concurrency, Phase 0–8 behavior, and all explicit Phase 10+ exclusions.
