@@ -244,6 +244,8 @@ export const api = {
         method: 'POST',
       }),
     me: () => apiFetch<{ data: CurrentUser }>('/me'),
+    updateProfile: (body: { full_name?: string; timezone?: string; locale?: string; avatar_url?: string | null }) => apiFetch<{ data: CurrentUser }>('/me', { method: 'PATCH', body: JSON.stringify(body) }),
+    changePassword: (body: { current_password: string; new_password: string }) => apiFetch<void>('/me/password', { method: 'PATCH', body: JSON.stringify(body) }),
   },
   workspaces: {
     myWork: (workspaceId: string, date: string) => apiFetch<{ data: MyWorkSummary; meta: { date: string; timezone: string } }>(`/workspaces/${workspaceId}/my-work?date=${encodeURIComponent(date)}`),
@@ -257,6 +259,7 @@ export const api = {
       ),
     members: (workspaceId: string) =>
       apiFetch<{ data: WorkspaceMember[] }>(`/workspaces/${workspaceId}/members`),
+    provisionAccount: (workspaceId: string, body: { email: string; full_name: string }) => apiFetch<{ data: { user: User; temporary_password: string } }>(`/workspaces/${workspaceId}/accounts`, { method: 'POST', body: JSON.stringify(body) }),
     teams: (workspaceId: string) =>
       apiFetch<{ data: Team[] }>(`/workspaces/${workspaceId}/teams`),
     workflows: (workspaceId: string) =>

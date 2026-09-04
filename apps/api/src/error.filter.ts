@@ -10,7 +10,8 @@ const messages: Record<string, string> = {
   VALIDATION_ERROR: 'One or more fields are invalid.',
   CROSS_WORKSPACE_REFERENCE: 'Referenced resource does not belong to the current workspace.',
   INVALID_TRANSITION: 'The requested status change is not allowed.',
-  VERSION_CONFLICT: 'Task modified by another user.'
+  VERSION_CONFLICT: 'Task modified by another user.',
+  DUPLICATE_EMAIL: 'An account with this email already exists.'
 };
 
 @Catch()

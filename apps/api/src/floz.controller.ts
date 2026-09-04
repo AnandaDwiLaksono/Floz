@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth';
 import { FlozService } from './floz.service';
@@ -11,6 +12,8 @@ import { ReportingClock } from './reporting-clock';
 
 const ok = <T>(data: T) => ({ data });
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const localePattern = /^(id-ID|en-US)$/;
+const urlPattern = /^https?:\/\/.+/i;
 
 @Controller()
 export class FlozController {
@@ -32,6 +35,21 @@ export class FlozController {
     return ok({ user: this.publicUser(user) });
   }
 
+  @Post('workspaces/:workspaceId/accounts')
+  async provisionAccount(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: { email?: string; full_name?: string }, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    await this.admin(req, wid);
+    if (!body.email || !body.full_name?.trim()) throw new BadRequestException('VALIDATION_ERROR');
+    const existing = await this.floz.userByEmail(body.email);
+    if (existing) throw new ConflictException('DUPLICATE_EMAIL');
+    const temporaryPassword = randomBytes(24).toString('base64url');
+    const result = await this.auth.api.signUpEmail({ body: { email: body.email, password: temporaryPassword, name: body.full_name.trim() } });
+    if (!result.user?.id || result.token) throw new BadRequestException('VALIDATION_ERROR');
+    const user = await this.floz.user(result.user.id);
+    if (!user) throw new BadRequestException('VALIDATION_ERROR');
+    return ok({ user: this.publicUser(user), temporary_password: temporaryPassword });
+  }
+
   @Post('auth/logout')
   @HttpCode(204)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
@@ -42,6 +60,26 @@ export class FlozController {
 
   @Get('me')
   async me(@Req() req: Request) { const user = await this.current(req); return ok({ ...this.publicUser(user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, role: w.role, membership_status: w.membershipStatus })) }); }
+  @Patch('me')
+  async updateMe(@Req() req: Request, @Body() body: { full_name?: string; timezone?: string; locale?: string; avatar_url?: string | null }) {
+    const user = await this.current(req);
+    if (body.full_name !== undefined && !body.full_name.trim()) throw new BadRequestException('VALIDATION_ERROR');
+    if (body.timezone !== undefined) try { new Intl.DateTimeFormat('en-US', { timeZone: body.timezone }); } catch { throw new BadRequestException('VALIDATION_ERROR'); }
+    if (body.locale !== undefined && !localePattern.test(body.locale)) throw new BadRequestException('VALIDATION_ERROR');
+    if (body.avatar_url !== undefined && body.avatar_url !== null && !urlPattern.test(body.avatar_url)) throw new BadRequestException('VALIDATION_ERROR');
+    const updated = await this.floz.updateUser(user.id, { name: body.full_name?.trim(), timezone: body.timezone, locale: body.locale, image: body.avatar_url });
+    return ok({ ...this.publicUser(updated ?? user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, role: w.role, membership_status: w.membershipStatus })) });
+  }
+  @Patch('me/password')
+  @HttpCode(204)
+  async changePassword(@Req() req: Request, @Body() body: { current_password?: string; new_password?: string }) {
+    await this.current(req);
+    if (!body.current_password || !body.new_password) throw new BadRequestException('VALIDATION_ERROR');
+    const result = await this.auth.api.changePassword({ headers: req.headers as HeadersInit, body: { currentPassword: body.current_password, newPassword: body.new_password, revokeOtherSessions: false }, asResponse: true });
+    if (!result.ok) throw new UnauthorizedException('INVALID_CREDENTIALS');
+    const revoked = await this.auth.api.revokeOtherSessions({ headers: req.headers as HeadersInit, asResponse: true });
+    if (!revoked.ok) throw new UnauthorizedException('INVALID_CREDENTIALS');
+  }
   @Get('workspaces')
   async listWorkspaces(@Req() req: Request) { const user = await this.current(req); return ok((await this.floz.workspacesFor(user.id, true)).map((w) => ({ id: w.id, name: w.name, slug: w.slug, timezone: w.timezone, role: w.role, membership_status: w.membershipStatus }))); }
   @Get('workspaces/:workspaceId')
@@ -114,5 +152,5 @@ export class FlozController {
   private async current(req: Request) { const session = await this.auth.api.getSession({ headers: req.headers as HeadersInit }); if (!session) throw new UnauthorizedException('UNAUTHENTICATED'); const user = await this.floz.user(session.user.id); if (!user) throw new UnauthorizedException('UNAUTHENTICATED'); if (!user.isActive) throw new ForbiddenException('ACCOUNT_INACTIVE'); return user; }
   private async member(req: Request, wid: string) { const user = await this.current(req); const membership = await this.floz.membership(user.id, wid); if (!membership) throw new NotFoundException('NOT_FOUND'); return { user, membership }; }
   private async admin(req: Request, wid: string) { const ctx = await this.member(req, wid); if (ctx.membership.role !== 'ADMIN') throw new ForbiddenException('FORBIDDEN'); return ctx; }
-  private publicUser(user: { id: string; email: string; name: string; timezone: string; locale: string; isActive: boolean }) { return { id: user.id, email: user.email, full_name: user.name, avatar_url: null, timezone: user.timezone, locale: user.locale, is_active: user.isActive }; }
+  private publicUser(user: { id: string; email: string; name: string; image: string | null; timezone: string; locale: string; isActive: boolean }) { return { id: user.id, email: user.email, full_name: user.name, avatar_url: user.image, timezone: user.timezone, locale: user.locale, is_active: user.isActive }; }
 }

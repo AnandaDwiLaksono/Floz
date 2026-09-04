@@ -20,7 +20,7 @@ export class AuthService implements OnModuleDestroy {
       secret: process.env.BETTER_AUTH_SECRET,
       baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3001',
       trustedOrigins: [process.env.ALLOWED_ORIGIN ?? 'http://localhost:3000'],
-      emailAndPassword: { enabled: true },
+      emailAndPassword: { enabled: true, autoSignIn: false },
       user: { modelName: 'user' },
       session: { modelName: 'session' },
       account: { modelName: 'account' },

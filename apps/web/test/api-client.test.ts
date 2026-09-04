@@ -30,6 +30,18 @@ describe('apiFetch client', () => {
     expect(result).toEqual({ data: 'ok' });
   });
 
+  it('calls profile, password, and provisioning endpoints', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: {} }) } as Response);
+    await api.auth.updateProfile({ full_name: 'Worker', timezone: 'UTC', locale: 'en-US', avatar_url: null });
+    await api.auth.changePassword({ current_password: 'old-password', new_password: 'new-password' });
+    await api.workspaces.provisionAccount('workspace-1', { email: 'worker@example.com', full_name: 'Worker' });
+    expect(fetchSpy.mock.calls.map(([url, options]) => [String(url), options?.method])).toEqual([
+      [expect.stringContaining('/api/v1/me'), 'PATCH'],
+      [expect.stringContaining('/api/v1/me/password'), 'PATCH'],
+      [expect.stringContaining('/api/v1/workspaces/workspace-1/accounts'), 'POST'],
+    ]);
+  });
+
   it('creates recurring tasks with the idempotency header', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,

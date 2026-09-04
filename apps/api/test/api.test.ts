@@ -94,6 +94,59 @@ describe('API', () => {
     await request(app!.getHttpServer()).get('/api/v1/health').expect(200).expect(({ body }) => expect(body).toEqual({ data: { status: 'ok', service: 'api' } }));
   });
 
+  it('provisions an identity without membership, session, cookie forwarding, or admin session replacement', async () => {
+    const f = await fixture(app!);
+    const before = await request(app!.getHttpServer()).get('/api/v1/me').set('Cookie', f.adminCookie).expect(200);
+    const provisioned = await request(app!.getHttpServer())
+      .post(`/api/v1/workspaces/${f.workspaceId}/accounts`)
+      .set('Cookie', f.adminCookie)
+      .send({ email: 'worker@example.com', full_name: 'Worker User' })
+      .expect(201);
+    expect(provisioned.headers['set-cookie']).toBeUndefined();
+    expect(provisioned.headers['cache-control']).toContain('no-store');
+    expect(provisioned.body.data.user.email).toBe('worker@example.com');
+    expect(typeof provisioned.body.data.temporary_password).toBe('string');
+    expect(provisioned.body.data.temporary_password.length).toBeGreaterThanOrEqual(24);
+    const after = await request(app!.getHttpServer()).get('/api/v1/me').set('Cookie', f.adminCookie).expect(200);
+    expect(after.body.data.id).toBe(before.body.data.id);
+    const { sql } = createDatabase(databaseUrl);
+    const userId = String(provisioned.body.data.user.id);
+    const memberships = await sql`SELECT COUNT(*)::int AS count FROM workspace_memberships WHERE user_id = ${userId}`;
+    const workspaces = await sql`SELECT COUNT(*)::int AS count FROM workspaces WHERE created_by = ${userId}`;
+    const userSessions = await sql`SELECT COUNT(*)::int AS count FROM sessions WHERE user_id = ${userId}`;
+    expect(memberships[0].count).toBe(0);
+    expect(workspaces[0].count).toBe(0);
+    expect(userSessions[0].count).toBe(0);
+    await sql.end();
+  });
+
+  it('rejects provisioning for public, non-admin, and duplicate email requests', async () => {
+    const f = await fixture(app!);
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/accounts`).send({ email: 'anon@example.com', full_name: 'Anon' }).expect(401);
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/accounts`).set('Cookie', f.memberCookie).send({ email: 'denied@example.com', full_name: 'Denied' }).expect(403);
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/accounts`).set('Cookie', f.adminCookie).send({ email: 'admin@example.com', full_name: 'Duplicate' }).expect(409);
+  });
+
+  it('updates the authenticated profile without changing email identity', async () => {
+    const f = await fixture(app!);
+    await request(app!.getHttpServer()).patch('/api/v1/me').set('Cookie', f.memberCookie).send({ full_name: 'Updated Member', timezone: 'UTC', locale: 'en-US', avatar_url: null, email: 'evil@example.com' }).expect(200).expect(({ body }) => {
+      expect(body.data.full_name).toBe('Updated Member');
+      expect(body.data.email).toBe('member@example.com');
+      expect(body.data.timezone).toBe('UTC');
+      expect(body.data.locale).toBe('en-US');
+      expect(body.data.avatar_url).toBeNull();
+    });
+    await request(app!.getHttpServer()).patch('/api/v1/me').set('Cookie', f.memberCookie).send({ timezone: 'Not/AZone' }).expect(400);
+  });
+
+  it('shows no workspace access for provisioned users without memberships', async () => {
+    const f = await fixture(app!);
+    const provisioned = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/accounts`).set('Cookie', f.adminCookie).send({ email: 'noworkspace@example.com', full_name: 'No Workspace' }).expect(201);
+    const loginRes = await request(app!.getHttpServer()).post('/api/v1/auth/login').send({ email: 'noworkspace@example.com', password: provisioned.body.data.temporary_password }).expect(200);
+    const cookie = loginRes.headers['set-cookie'][0].split(';')[0];
+    await request(app!.getHttpServer()).get('/api/v1/me').set('Cookie', cookie).expect(200).expect(({ body }) => expect(body.data.workspaces).toEqual([]));
+  });
+
   it('validates manager authority and supports explicit manager clearing', async () => {
     const f = await fixture(app!);
     const { sql } = createDatabase(databaseUrl);
