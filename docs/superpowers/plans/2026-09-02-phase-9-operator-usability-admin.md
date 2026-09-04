@@ -23,6 +23,8 @@
 - No Phase 10+ scope.
 - Public self-registration is out of scope.
 - ADMIN-only account provisioning only.
+- Better Auth core `auth.api.signUpEmail` is the approved provisioning primitive with global `emailAndPassword: { enabled: true, autoSignIn: false }`.
+- Do not mount a generic Better Auth public signup handler; public signup HTTP routes remain unavailable.
 - `PATCH /api/v1/me/password` is required.
 - `bucket=active` and `bucket=completed` are canonical existing task semantics.
 - `status_id` remains the task status filter contract.
@@ -62,11 +64,13 @@ Before Task 1:
 - Consumes: Better Auth password/session primitives already used by login/logout.
 - Produces: `POST /api/v1/workspaces/:workspaceId/accounts`, `PATCH /api/v1/me`, `PATCH /api/v1/me/password`, no-workspace UX, admin session-preserving provisioning flow.
 
-- [ ] **Step 1: Prove Better Auth provisioning feasibility before coding**
-  - Identify the exact Better Auth/provider-owned server API that creates an email/password identity.
-  - Prove it works without Admin plugin schema additions, database migration, direct password-hash writes, public registration, workspace/membership creation, ADMIN-session replacement, or forwarding a created-user cookie.
-  - Do not automatically introduce the Better Auth Admin plugin.
-  - If no supported zero-migration path satisfies every condition: **STOP, report design contradiction, and wait for explicit approval.** Do not improvise identity/account SQL writes.
+- [ ] **Step 1: Apply the approved Better Auth feasibility resolution before product code**
+  - Configure Better Auth core email/password as `emailAndPassword: { enabled: true, autoSignIn: false }`.
+  - Use documented server-side `auth.api.signUpEmail` for provisioning after ACTIVE ADMIN authorization.
+  - Verify it creates provider-owned user/account records with password hashing, no session/token/cookie, no workspace/membership, and no ADMIN-session replacement.
+  - Verify `POST /api/v1/auth/sign-up/email` and equivalent public signup routes remain unavailable because no generic Better Auth handler is mounted.
+  - Do not add the Admin plugin, schema migration, direct auth-table writes, or direct password hashing.
+  - Audit all repository `signUpEmail` fixture calls; none may assume signup produces a token/session. Authenticated fixture flows must use canonical `POST /api/v1/auth/login` explicitly.
 
 - [ ] **Step 2: Write the failing API tests**
 
@@ -86,7 +90,9 @@ it('provisions identity only and preserves ADMIN identity and session', async ()
 });
 ```
 
-Add failing tests for non-admin/public rejection, duplicate email conflict, no membership/workspace creation, non-cacheable credential response, no credential logging, wrong current password, successful password change, old password failure, new password login, current session retention, and revocation of another prior session.
+Add failing tests for non-admin/public rejection, duplicate email conflict, no membership/workspace creation, zero `sessions` rows for the provisioned user, non-cacheable credential response, no credential logging, wrong current password, successful password change, old password failure, new password login, current session retention, and revocation of another prior session.
+
+Add regression tests for `autoSignIn=false`: direct `auth.api.signUpEmail` fixture identity creates user/account and zero sessions; fixture login through `POST /api/v1/auth/login` creates the expected session; unauthenticated `POST /api/v1/auth/sign-up/email` remains unavailable/not routed.
 
 - [ ] **Step 3: Run the tests and confirm they fail**
 
@@ -95,7 +101,8 @@ Run: `pnpm --filter @floz/api test -- auth.test.ts api.test.ts`
 Expected: fail because the new endpoints and password-change behavior are not implemented yet.
 
 - [ ] **Step 4: Implement minimal backend support**
-  - Add ADMIN-only provisioning endpoint that creates identity only and reveals a high-entropy temporary password exactly once.
+  - Set global `emailAndPassword.autoSignIn=false` and use `auth.api.signUpEmail` only after ACTIVE ADMIN authorization.
+  - Add ADMIN-only provisioning endpoint that creates identity/account only and reveals a high-entropy temporary password exactly once.
   - Return `Cache-Control: no-store` on the provisioning response; never log the credential, cookie, or request body.
   - Ensure provisioning does not emit a created-user `Set-Cookie`, forward it to the ADMIN client, replace the ADMIN session, or create workspace/membership.
   - Add `PATCH /api/v1/me/password` using supported Better Auth/provider-owned password behavior only.

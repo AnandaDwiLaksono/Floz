@@ -189,6 +189,28 @@ Public self-registration is not safe for this pilot because email/password sign-
 
 Phase 9 therefore does **not** expose unrestricted public registration.
 
+Feasibility gate result: Better Auth 1.7.1 core `auth.api.signUpEmail` is the approved provisioning primitive, but only with global email/password auto-sign-in disabled:
+
+```ts
+emailAndPassword: {
+  enabled: true,
+  autoSignIn: false
+}
+```
+
+Rationale:
+- documented Better Auth core API;
+- provider-owned password hashing;
+- zero schema migrations;
+- no Admin plugin;
+- no direct auth-table/password-hash writes;
+- no signup session row/token;
+- no signup `Set-Cookie`;
+- ADMIN browser session cannot be replaced by the provisioned identity;
+- Floz does not expose public self-registration.
+
+This is a deliberate Phase 9 auth behavior change. Do not mount the generic Better Auth signup handler; public signup routes such as `POST /api/v1/auth/sign-up/email` must remain unavailable.
+
 Provisioning API:
 
 ```http
@@ -208,8 +230,8 @@ Provisioning flow:
 1. ADMIN opens `Provision Account` from Member Administration.
 2. ADMIN enters the user's email and display name.
 3. Server verifies the actor is an `ACTIVE ADMIN` of `:workspaceId`; the workspace parameter is authorization context only.
-4. Server generates a high-entropy temporary password and creates the Better Auth identity/account only, with no workspace creation and no membership.
-5. Server reveals the high-entropy temporary password exactly once over the authenticated ADMIN response; it remains valid until the user successfully changes it. Account creation must not forward the new user's session cookie, replace the ADMIN session, or change the authenticated ADMIN identity. No password or temporary credential may appear in application logs.
+4. Server generates a high-entropy temporary password and calls `auth.api.signUpEmail` with global `emailAndPassword.autoSignIn=false`, creating Better Auth user/account records only, with no workspace creation, no membership, no session row/token, and no signup `Set-Cookie`.
+5. Server reveals the high-entropy temporary password exactly once over the authenticated ADMIN response; it remains valid until the user successfully changes it. Account creation must not forward any created-user cookie, replace the ADMIN session, or change the authenticated ADMIN identity. No password or temporary credential may appear in application logs.
 6. ADMIN gives the credential to the intended user through an identity-confirmed out-of-band channel.
 7. User signs in and changes the temporary password through authenticated `PATCH /api/v1/me/password` using current and new password.
 8. ADMIN separately adds the existing account to the workspace using the canonical member-add flow.
