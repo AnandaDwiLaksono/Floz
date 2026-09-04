@@ -11,7 +11,9 @@ const messages: Record<string, string> = {
   CROSS_WORKSPACE_REFERENCE: 'Referenced resource does not belong to the current workspace.',
   INVALID_TRANSITION: 'The requested status change is not allowed.',
   VERSION_CONFLICT: 'Task modified by another user.',
-  DUPLICATE_EMAIL: 'An account with this email already exists.'
+  DUPLICATE_EMAIL: 'An account with this email already exists.',
+  LAST_ACTIVE_ADMIN: 'At least one active admin is required.',
+  ACTIVE_TEAM_MANAGER: 'Active team managers must remain active managers.'
 };
 
 @Catch()

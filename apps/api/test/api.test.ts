@@ -147,6 +147,29 @@ describe('API', () => {
     await request(app!.getHttpServer()).get('/api/v1/me').set('Cookie', cookie).expect(200).expect(({ body }) => expect(body.data.workspaces).toEqual([]));
   });
 
+  it('manages workspace members through canonical lifecycle states', async () => {
+    const f = await fixture(app!);
+    const provisioned = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/accounts`).set('Cookie', f.adminCookie).send({ email: 'invited@example.com', full_name: 'Invited User' }).expect(201);
+    const userId = provisioned.body.data.user.id;
+    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}`).set('Cookie', f.adminCookie).send({ name: 'Renamed Floz', timezone: 'UTC' }).expect(200).expect(({ body }) => expect(body.data).toMatchObject({ id: f.workspaceId, name: 'Renamed Floz', timezone: 'UTC' }));
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/members`).set('Cookie', f.adminCookie).send({ user_id: userId, role: 'MEMBER' }).expect(201).expect(({ body }) => expect(body.data).toMatchObject({ user_id: userId, full_name: 'Invited User', email: 'invited@example.com', role: 'MEMBER', status: 'INVITED' }));
+    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/members/${userId}`).set('Cookie', f.adminCookie).send({ status: 'ACTIVE' }).expect(200);
+    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/members/${userId}`).set('Cookie', f.adminCookie).send({ status: 'SUSPENDED' }).expect(200);
+    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/members/${userId}`).set('Cookie', f.adminCookie).send({ status: 'REMOVED' }).expect(200);
+    await request(app!.getHttpServer()).delete(`/api/v1/workspaces/${f.workspaceId}/members/${userId}`).set('Cookie', f.adminCookie).expect(404);
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/members`).set('Cookie', f.adminCookie).expect(200).expect(({ body }) => expect(body.data.find((member: { user_id: string }) => member.user_id === userId)).toMatchObject({ user_id: userId, full_name: 'Invited User', email: 'invited@example.com', role: 'MEMBER', status: 'REMOVED' }));
+  });
+
+  it('rejects lifecycle changes that remove an active team manager', async () => {
+    const f = await fixture(app!);
+    const { sql } = createDatabase(databaseUrl);
+    await sql`UPDATE workspace_memberships SET role_id=(SELECT id FROM roles WHERE code='MANAGER') WHERE workspace_id=${f.workspaceId} AND user_id=${f.memberId}`;
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Managed', manager_user_id: f.memberId }).expect(201);
+    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/members/${f.memberId}`).set('Cookie', f.adminCookie).send({ role: 'MEMBER' }).expect(409);
+    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/members/${f.memberId}`).set('Cookie', f.adminCookie).send({ status: 'SUSPENDED' }).expect(409);
+    await sql.end();
+  });
+
   it('validates manager authority and supports explicit manager clearing', async () => {
     const f = await fixture(app!);
     const { sql } = createDatabase(databaseUrl);

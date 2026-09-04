@@ -84,8 +84,14 @@ export class FlozController {
   async listWorkspaces(@Req() req: Request) { const user = await this.current(req); return ok((await this.floz.workspacesFor(user.id, true)).map((w) => ({ id: w.id, name: w.name, slug: w.slug, timezone: w.timezone, role: w.role, membership_status: w.membershipStatus }))); }
   @Get('workspaces/:workspaceId')
   async getWorkspace(@Req() req: Request, @Param('workspaceId') id: string) { await this.member(req, id); const w = await this.floz.workspace(id); if (!w) throw new NotFoundException('NOT_FOUND'); return ok({ id: w.id, name: w.name, slug: w.slug, timezone: w.timezone }); }
+  @Patch('workspaces/:workspaceId')
+  async patchWorkspace(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: { name?: string; timezone?: string }) { await this.admin(req, id); if (body.name !== undefined && !body.name.trim()) throw new BadRequestException('VALIDATION_ERROR'); if (body.timezone !== undefined) try { new Intl.DateTimeFormat('en-US', { timeZone: body.timezone }); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(await this.floz.patchWorkspace(id, { name: body.name?.trim(), timezone: body.timezone })); }
   @Get('workspaces/:workspaceId/members')
-  async members(@Req() req: Request, @Param('workspaceId') id: string) { await this.member(req, id); return ok(await this.floz.members(id)); }
+  async members(@Req() req: Request, @Param('workspaceId') id: string) { await this.member(req, id); return ok((await this.floz.members(id)).map(this.publicMember)); }
+  @Post('workspaces/:workspaceId/members')
+  async addMember(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: { user_id?: string; role?: string; status?: string }) { await this.admin(req, id); if (!body.user_id || !body.role) throw new BadRequestException('VALIDATION_ERROR'); const member = await this.floz.addMember(id, { userId: body.user_id, role: body.role, status: body.status ?? 'INVITED' }); return ok(this.publicMember(member)); }
+  @Patch('workspaces/:workspaceId/members/:userId')
+  async patchMember(@Req() req: Request, @Param('workspaceId') id: string, @Param('userId') userId: string, @Body() body: { role?: string; status?: string }) { await this.admin(req, id); if (body.role === undefined && body.status === undefined) throw new BadRequestException('VALIDATION_ERROR'); const member = await this.floz.updateMember(id, userId, body); return ok(this.publicMember(member)); }
   @Get('workspaces/:workspaceId/teams')
   async teams(@Req() req: Request, @Param('workspaceId') id: string) { await this.member(req, id); return ok(await this.floz.listTeams(id)); }
   @Post('workspaces/:workspaceId/teams')
@@ -153,4 +159,5 @@ export class FlozController {
   private async member(req: Request, wid: string) { const user = await this.current(req); const membership = await this.floz.membership(user.id, wid); if (!membership) throw new NotFoundException('NOT_FOUND'); return { user, membership }; }
   private async admin(req: Request, wid: string) { const ctx = await this.member(req, wid); if (ctx.membership.role !== 'ADMIN') throw new ForbiddenException('FORBIDDEN'); return ctx; }
   private publicUser(user: { id: string; email: string; name: string; image: string | null; timezone: string; locale: string; isActive: boolean }) { return { id: user.id, email: user.email, full_name: user.name, avatar_url: user.image, timezone: user.timezone, locale: user.locale, is_active: user.isActive }; }
+  private publicMember(member: { userId: string; fullName: string; email: string; role: string; status: string }) { return { user_id: member.userId, full_name: member.fullName, email: member.email, role: member.role, status: member.status }; }
 }
