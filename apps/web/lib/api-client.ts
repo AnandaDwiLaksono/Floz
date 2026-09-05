@@ -166,6 +166,8 @@ export interface Team {
 
 export interface WorkspaceMember {
   user_id: string;
+  full_name: string;
+  email: string;
   role: string;
   status: string;
   user?: {
@@ -257,11 +259,16 @@ export const api = {
       apiFetch<{ data: { id: string; name: string; slug: string; timezone: string } }>(
         `/workspaces/${workspaceId}`
       ),
+    update: (workspaceId: string, body: { name?: string; timezone?: string }) => apiFetch<{ data: { id: string; name: string; slug: string; timezone: string } }>(`/workspaces/${workspaceId}`, { method: 'PATCH', body: JSON.stringify(body) }),
     members: (workspaceId: string) =>
       apiFetch<{ data: WorkspaceMember[] }>(`/workspaces/${workspaceId}/members`),
     provisionAccount: (workspaceId: string, body: { email: string; full_name: string }) => apiFetch<{ data: { user: User; temporary_password: string } }>(`/workspaces/${workspaceId}/accounts`, { method: 'POST', body: JSON.stringify(body) }),
+    addMember: (workspaceId: string, body: { user_id: string; role: string; status?: string }) => apiFetch<{ data: WorkspaceMember }>(`/workspaces/${workspaceId}/members`, { method: 'POST', body: JSON.stringify(body) }),
+    patchMember: (workspaceId: string, userId: string, body: { role?: string; status?: string }) => apiFetch<{ data: WorkspaceMember }>(`/workspaces/${workspaceId}/members/${userId}`, { method: 'PATCH', body: JSON.stringify(body) }),
     teams: (workspaceId: string) =>
       apiFetch<{ data: Team[] }>(`/workspaces/${workspaceId}/teams`),
+    updateTeam: (workspaceId: string, teamId: string, body: { name?: string; description?: string | null; manager_user_id?: string | null; is_active?: boolean }) => apiFetch<{ data: Team }>(`/workspaces/${workspaceId}/teams/${teamId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    createTeam: (workspaceId: string, body: { name: string; description?: string; manager_user_id?: string | null }) => apiFetch<{ data: Team }>(`/workspaces/${workspaceId}/teams`, { method: 'POST', body: JSON.stringify(body) }),
     workflows: (workspaceId: string) =>
       apiFetch<{ data: Workflow[] }>(`/workspaces/${workspaceId}/workflows`),
   },
