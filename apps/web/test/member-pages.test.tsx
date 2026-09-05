@@ -13,7 +13,24 @@ vi.mock('next/navigation', () => ({ useParams: () => ({ workspaceId: 'workspace-
 vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { id: 'user-1', workspaces: [workspace] } }) }));
 vi.mock('../lib/api-client', async (load) => {
   const actual = await load<typeof import('../lib/api-client')>();
-  return { ...actual, api: { ...actual.api, workspaces: { ...actual.api.workspaces, get: vi.fn(), myWork: vi.fn(), dashboardMember: vi.fn() } } };
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      workspaces: {
+        ...actual.api.workspaces,
+        get: vi.fn(),
+        myWork: vi.fn(),
+        dashboardMember: vi.fn(),
+      },
+      tasks: {
+        ...actual.api.tasks,
+        get: vi.fn(),
+        availableTransitions: vi.fn(),
+        transition: vi.fn(),
+      },
+    },
+  };
 });
 
 const task = { id: 'task-1', taskKey: 'TASK-1', title: 'Inspect pump', dueAt: '2026-09-01T09:00:00.000Z', priority: 'HIGH' };
@@ -92,5 +109,91 @@ describe('Task 8 member pages', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(text);
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(api.workspaces.dashboardMember).toHaveBeenCalledTimes(2));
+  });
+
+  it('loads available transitions on demand and submits quick status transition', async () => {
+    vi.mocked(api.workspaces.myWork).mockResolvedValue({
+      data: { ...emptyWork, today: [task], counts: { today: 1, upcoming: 0, overdue: 0 } },
+      meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' },
+    });
+    vi.mocked(api.tasks.get).mockResolvedValue({
+      data: {
+        id: 'task-1', workspace_id: 'workspace-1', task_key: 'TASK-1', title: 'Inspect pump', description: null, priority: 'HIGH',
+        status_id: 'st-1', status: { id: 'st-1', key: 'OPEN', name: 'Open', category: 'UNSTARTED', position: 1, is_terminal: false },
+        version: 3, creator_id: 'user-1', start_at: null, due_at: '2026-09-01T09:00:00.000Z', completed_at: null, cancelled_at: null,
+        created_at: '2026-08-01T00:00:00.000Z', updated_at: '2026-08-01T00:00:00.000Z', is_overdue: false, assignees: [],
+      },
+    });
+    vi.mocked(api.tasks.availableTransitions).mockResolvedValue({
+      data: [
+        { to_status_id: 'st-2', code: 'IN_PROGRESS', name: 'In Progress' },
+        { to_status_id: 'st-3', code: 'DONE', name: 'Done' },
+      ],
+    });
+    vi.mocked(api.tasks.transition).mockResolvedValue({
+      data: {
+        id: 'task-1', workspace_id: 'workspace-1', task_key: 'TASK-1', title: 'Inspect pump', description: null, priority: 'HIGH',
+        status_id: 'st-2', status: { id: 'st-2', key: 'IN_PROGRESS', name: 'In Progress', category: 'IN_PROGRESS', position: 2, is_terminal: false },
+        version: 4, creator_id: 'user-1', start_at: null, due_at: '2026-09-01T09:00:00.000Z', completed_at: null, cancelled_at: null,
+        created_at: '2026-08-01T00:00:00.000Z', updated_at: '2026-08-01T00:00:00.000Z', is_overdue: false, assignees: [],
+      },
+    });
+
+    render(<MyWorkPage />);
+    await screen.findByRole('heading', { name: 'My Work' });
+
+    expect(api.tasks.availableTransitions).not.toHaveBeenCalled();
+
+    const quickStatusBtn1 = screen.getByRole('button', { name: /Quick status for TASK-1/i });
+    fireEvent.click(quickStatusBtn1);
+
+    await waitFor(() => {
+      expect(api.tasks.get).toHaveBeenCalledWith('workspace-1', 'task-1');
+      expect(api.tasks.availableTransitions).toHaveBeenCalledWith('workspace-1', 'task-1');
+    });
+
+    const inProgressBtn = await screen.findByRole('button', { name: /To In Progress/i });
+    fireEvent.click(inProgressBtn);
+
+    await waitFor(() => {
+      expect(api.tasks.transition).toHaveBeenCalledWith('workspace-1', 'task-1', {
+        version: 3,
+        to_status_id: 'st-2',
+      });
+    });
+
+    await waitFor(() => expect(api.workspaces.myWork).toHaveBeenCalledTimes(2));
+  });
+
+  it('handles VERSION_CONFLICT during quick status transition', async () => {
+    vi.mocked(api.workspaces.myWork).mockResolvedValue({
+      data: { ...emptyWork, today: [task], counts: { today: 1, upcoming: 0, overdue: 0 } },
+      meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' },
+    });
+    vi.mocked(api.tasks.get).mockResolvedValue({
+      data: {
+        id: 'task-1', workspace_id: 'workspace-1', task_key: 'TASK-1', title: 'Inspect pump', description: null, priority: 'HIGH',
+        status_id: 'st-1', status: { id: 'st-1', key: 'OPEN', name: 'Open', category: 'UNSTARTED', position: 1, is_terminal: false },
+        version: 3, creator_id: 'user-1', start_at: null, due_at: '2026-09-01T09:00:00.000Z', completed_at: null, cancelled_at: null,
+        created_at: '2026-08-01T00:00:00.000Z', updated_at: '2026-08-01T00:00:00.000Z', is_overdue: false, assignees: [],
+      },
+    });
+    vi.mocked(api.tasks.availableTransitions).mockResolvedValue({
+      data: [{ to_status_id: 'st-2', code: 'IN_PROGRESS', name: 'In Progress' }],
+    });
+    vi.mocked(api.tasks.transition).mockRejectedValue(
+      new ApiError(409, 'VERSION_CONFLICT', 'Task modified by another user')
+    );
+
+    render(<MyWorkPage />);
+    await screen.findByRole('heading', { name: 'My Work' });
+
+    const quickStatusBtn = screen.getByRole('button', { name: /Quick status for TASK-1/i });
+    fireEvent.click(quickStatusBtn);
+
+    const inProgressBtn = await screen.findByRole('button', { name: /To In Progress/i });
+    fireEvent.click(inProgressBtn);
+
+    expect(await screen.findByText(/VERSION_CONFLICT/i)).toBeInTheDocument();
   });
 });
