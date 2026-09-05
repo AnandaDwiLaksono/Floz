@@ -4,6 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { Test } from '@nestjs/testing';
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { ErrorFilter } from '../src/error.filter';
 import cookieParser from 'cookie-parser';
 import { createDatabase } from '@floz/database';
 import { AppModule } from '../src/app.module';
@@ -18,12 +19,13 @@ process.env.BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET ?? 'test-secret-
 
 type Fixture = { adminCookie: string; memberCookie: string; outsiderCookie: string; adminId: string; memberId: string; outsiderId: string; workspaceId: string; otherWorkspaceId: string; workflowId: string; todoId: string; doingId: string; doneId: string };
 
-async function createApp() {
+async function createApp(canonicalErrors = false) {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  if (canonicalErrors) app.useGlobalFilters(new ErrorFilter());
   await app.init();
   return app;
 }
@@ -191,19 +193,33 @@ describe('API', () => {
   });
 
   it('archives and restores teams without silently clearing managers', async () => {
-    const f = await fixture(app!);
+    const canonicalApp = await createApp(true);
+    const f = await fixture(canonicalApp);
     const { sql } = createDatabase(databaseUrl);
     await sql`UPDATE workspace_memberships SET role_id=(SELECT id FROM roles WHERE code='MANAGER') WHERE workspace_id=${f.workspaceId} AND user_id=${f.memberId}`;
-    const team = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Lifecycle', manager_user_id: f.memberId }).expect(201);
+    const validTeam = await request(canonicalApp.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Valid manager lifecycle', manager_user_id: f.adminId }).expect(201);
+    const validPath = `/api/v1/workspaces/${f.workspaceId}/teams/${validTeam.body.data.id}`;
+    await request(canonicalApp.getHttpServer()).patch(validPath).set('Cookie', f.adminCookie).send({ is_active: false }).expect(200).expect(({ body }) => expect(body.data.manager_user_id).toBe(f.adminId));
+    await request(canonicalApp.getHttpServer()).patch(validPath).set('Cookie', f.adminCookie).send({ is_active: true }).expect(200).expect(({ body }) => { expect(body.data.isActive).toBe(true); expect(body.data.manager_user_id).toBe(f.adminId); });
+    const team = await request(canonicalApp.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Lifecycle', manager_user_id: f.memberId }).expect(201);
     const path = `/api/v1/workspaces/${f.workspaceId}/teams/${team.body.data.id}`;
-    await request(app!.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ is_active: false }).expect(200).expect(({ body }) => { expect(body.data.isActive).toBe(false); expect(body.data.manager_user_id).toBe(f.memberId); });
-    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/members/${f.memberId}`).set('Cookie', f.adminCookie).send({ role: 'MEMBER' }).expect(200);
-    await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data.manager_user_id).toBe(f.memberId));
-    await request(app!.getHttpServer()).post(`${path}/members`).set('Cookie', f.adminCookie).send({ user_id: f.adminId }).expect(409);
-    await request(app!.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ is_active: true }).expect(409).expect(({ body }) => expect(body.error.code).toBe('INVALID_MANAGER'));
-    await request(app!.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ manager_user_id: null, is_active: true }).expect(200).expect(({ body }) => { expect(body.data.isActive).toBe(true); expect(body.data.manager_user_id).toBeNull(); });
-    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.otherWorkspaceId}/teams/${team.body.data.id}`).set('Cookie', f.outsiderCookie).send({ is_active: false }).expect(404);
+    const task = await request(canonicalApp.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/tasks`).set('Cookie', f.memberCookie).send({ title: 'Historical team task', team_id: team.body.data.id }).expect(201);
+    await request(canonicalApp.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ is_active: false }).expect(200).expect(({ body }) => { expect(body.data.isActive).toBe(false); expect(body.data.manager_user_id).toBe(f.memberId); });
+    await request(canonicalApp.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/members/${f.memberId}`).set('Cookie', f.adminCookie).send({ role: 'MEMBER' }).expect(200);
+    await request(canonicalApp.getHttpServer()).get(path).set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data.manager_user_id).toBe(f.memberId));
+    await request(canonicalApp.getHttpServer()).post(`${path}/members`).set('Cookie', f.adminCookie).send({ user_id: f.adminId }).expect(409);
+    await request(canonicalApp.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ is_active: true }).expect(409).expect(({ body }) => expect(body.error.code).toBe('INVALID_MANAGER'));
+    await request(canonicalApp.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/tasks/${task.body.data.id}`).set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data.team_id).toBe(team.body.data.id));
+    await request(canonicalApp.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ manager_user_id: null, is_active: true }).expect(200).expect(({ body }) => { expect(body.data.isActive).toBe(true); expect(body.data.manager_user_id).toBeNull(); });
+    await request(canonicalApp.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ is_active: false }).expect(200);
+    await request(canonicalApp.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ manager_user_id: f.adminId, is_active: true }).expect(200).expect(({ body }) => { expect(body.data.isActive).toBe(true); expect(body.data.manager_user_id).toBe(f.adminId); });
+    await request(canonicalApp.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ is_active: false }).expect(200);
+    await sql`UPDATE workspace_memberships SET status = 'SUSPENDED' WHERE workspace_id=${f.workspaceId} AND user_id=${f.memberId}`;
+    await request(canonicalApp.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ manager_user_id: f.memberId, is_active: true }).expect(400).expect(({ body }) => expect(body.error.code).toBe('INVALID_MANAGER'));
+    await request(canonicalApp.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ manager_user_id: null, is_active: true }).expect(200).expect(({ body }) => { expect(body.data.isActive).toBe(true); expect(body.data.manager_user_id).toBeNull(); });
+    await request(canonicalApp.getHttpServer()).patch(`/api/v1/workspaces/${f.otherWorkspaceId}/teams/${team.body.data.id}`).set('Cookie', f.outsiderCookie).send({ is_active: false }).expect(404);
     await sql.end();
+    await canonicalApp.close();
   });
 
   it('persists workspace and team relations with isolation and reference rejection', async () => {
