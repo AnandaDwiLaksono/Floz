@@ -2,7 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TasksPage from '../app/workspaces/[workspaceId]/tasks/page';
-import { api, Task, Team, WorkspaceMember, Workflow } from '../lib/api-client';
+import { api, Task } from '../lib/api-client';
 
 const push = vi.fn();
 const workspace = { id: 'workspace-1', name: 'Field Ops', role: 'ADMIN' as const, membership_status: 'ACTIVE', timezone: 'UTC' };
@@ -54,17 +54,18 @@ const mockTask: Task = {
   description: 'Regular maintenance',
   priority: 'HIGH',
   status_id: 'st-1',
-  status: { id: 'st-1', key: 'OPEN', name: 'Open', category: 'UNSTARTED', position: 1, is_terminal: false },
+  status: { id: 'st-1', code: 'OPEN', name: 'Open', category: 'UNSTARTED', is_terminal: false },
   version: 1,
   creator_id: 'user-1',
+  workflow_id: 'wf-1',
+  team_id: null,
   start_at: null,
   due_at: '2026-08-18T10:00:00.000Z',
   completed_at: null,
-  cancelled_at: null,
   created_at: '2026-08-01T00:00:00.000Z',
   updated_at: '2026-08-01T00:00:00.000Z',
   is_overdue: true,
-  assignees: [{ user_id: 'user-1', full_name: 'Admin User', role: 'ADMIN', is_primary: true }],
+  assignees: [{ user_id: 'user-1', full_name: 'Admin User', is_primary: true }],
 };
 
 describe('Task 10 Task filter UI completion', () => {
@@ -75,31 +76,32 @@ describe('Task 10 Task filter UI completion', () => {
       data: { id: 'workspace-1', name: 'Field Ops', slug: 'field-ops', timezone: 'UTC' },
     });
     vi.mocked(api.workspaces.teams).mockResolvedValue({
-      data: [{ id: 'team-1', workspace_id: 'workspace-1', name: 'Ops Team', is_active: true }],
+      data: [{ id: 'team-1', workspace_id: 'workspace-1', name: 'Ops Team', description: null, manager_user_id: null, is_active: true }],
     });
     vi.mocked(api.workspaces.members).mockResolvedValue({
       data: [{
-        workspace_id: 'workspace-1',
         user_id: 'user-1',
         role: 'ADMIN',
         status: 'ACTIVE',
-        user: { full_name: 'Admin User', email: 'admin@example.com' },
+        user: { id: 'user-1', full_name: 'Admin User', email: 'admin@example.com' },
       }],
     });
     vi.mocked(api.workspaces.workflows).mockResolvedValue({
       data: [{
         id: 'wf-1',
         name: 'Default',
+        team_id: null,
+        is_active: true,
         is_default: true,
         statuses: [
-          { id: 'st-1', key: 'OPEN', name: 'Open', category: 'UNSTARTED', position: 1, is_terminal: false },
-          { id: 'st-2', key: 'DONE', name: 'Done', category: 'DONE', position: 2, is_terminal: true },
+          { id: 'st-1', code: 'OPEN', name: 'Open', category: 'UNSTARTED', is_terminal: false },
+          { id: 'st-2', code: 'DONE', name: 'Done', category: 'DONE', is_terminal: true },
         ],
       }],
     });
     vi.mocked(api.tasks.list).mockResolvedValue({
       data: [mockTask],
-      meta: { pagination: { has_more: false, next_cursor: null } },
+      meta: { pagination: { limit: 10, has_more: false, next_cursor: null } },
     });
   });
 

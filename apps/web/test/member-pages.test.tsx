@@ -119,8 +119,9 @@ describe('Task 8 member pages', () => {
     vi.mocked(api.tasks.get).mockResolvedValue({
       data: {
         id: 'task-1', workspace_id: 'workspace-1', task_key: 'TASK-1', title: 'Inspect pump', description: null, priority: 'HIGH',
-        status_id: 'st-1', status: { id: 'st-1', key: 'OPEN', name: 'Open', category: 'UNSTARTED', position: 1, is_terminal: false },
-        version: 3, creator_id: 'user-1', start_at: null, due_at: '2026-09-01T09:00:00.000Z', completed_at: null, cancelled_at: null,
+        status_id: 'st-1', status: { id: 'st-1', code: 'OPEN', name: 'Open', category: 'UNSTARTED', is_terminal: false },
+        workflow_id: 'wf-1', team_id: null,
+        version: 3, creator_id: 'user-1', start_at: null, due_at: '2026-09-01T09:00:00.000Z', completed_at: null,
         created_at: '2026-08-01T00:00:00.000Z', updated_at: '2026-08-01T00:00:00.000Z', is_overdue: false, assignees: [],
       },
     });
@@ -131,12 +132,14 @@ describe('Task 8 member pages', () => {
       ],
     });
     vi.mocked(api.tasks.transition).mockResolvedValue({
-      data: {
+      task: {
         id: 'task-1', workspace_id: 'workspace-1', task_key: 'TASK-1', title: 'Inspect pump', description: null, priority: 'HIGH',
-        status_id: 'st-2', status: { id: 'st-2', key: 'IN_PROGRESS', name: 'In Progress', category: 'IN_PROGRESS', position: 2, is_terminal: false },
-        version: 4, creator_id: 'user-1', start_at: null, due_at: '2026-09-01T09:00:00.000Z', completed_at: null, cancelled_at: null,
+        status_id: 'st-2', status: { id: 'st-2', code: 'IN_PROGRESS', name: 'In Progress', category: 'IN_PROGRESS', is_terminal: false },
+        workflow_id: 'wf-1', team_id: null,
+        version: 4, creator_id: 'user-1', start_at: null, due_at: '2026-09-01T09:00:00.000Z', completed_at: null,
         created_at: '2026-08-01T00:00:00.000Z', updated_at: '2026-08-01T00:00:00.000Z', is_overdue: false, assignees: [],
       },
+      transition: { to_status_id: 'st-2' },
     });
 
     render(<MyWorkPage />);
@@ -173,8 +176,9 @@ describe('Task 8 member pages', () => {
     vi.mocked(api.tasks.get).mockResolvedValue({
       data: {
         id: 'task-1', workspace_id: 'workspace-1', task_key: 'TASK-1', title: 'Inspect pump', description: null, priority: 'HIGH',
-        status_id: 'st-1', status: { id: 'st-1', key: 'OPEN', name: 'Open', category: 'UNSTARTED', position: 1, is_terminal: false },
-        version: 3, creator_id: 'user-1', start_at: null, due_at: '2026-09-01T09:00:00.000Z', completed_at: null, cancelled_at: null,
+        status_id: 'st-1', status: { id: 'st-1', code: 'OPEN', name: 'Open', category: 'UNSTARTED', is_terminal: false },
+        workflow_id: 'wf-1', team_id: null,
+        version: 3, creator_id: 'user-1', start_at: null, due_at: '2026-09-01T09:00:00.000Z', completed_at: null,
         created_at: '2026-08-01T00:00:00.000Z', updated_at: '2026-08-01T00:00:00.000Z', is_overdue: false, assignees: [],
       },
     });

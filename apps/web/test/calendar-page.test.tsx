@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CalendarPage from '../app/workspaces/[workspaceId]/calendar/page';
 import TasksPage from '../app/workspaces/[workspaceId]/tasks/page';
@@ -53,11 +53,11 @@ const sampleCalendarTask: CalendarTaskSummary = {
   task_key: 'TASK-1',
   title: 'Inspect pump',
   priority: 'HIGH',
-  status: { id: 'st-1', key: 'OPEN', name: 'Open', category: 'UNSTARTED' },
+  status: { id: 'st-1', code: 'OPEN', name: 'Open', category: 'UNSTARTED' },
   is_deadline_only: false,
   start_at: '2026-08-18T09:00:00.000Z',
   due_at: '2026-08-18T10:00:00.000Z',
-  primary_assignee: { user_id: 'user-1', full_name: 'Admin User' },
+  primary_assignee: { id: 'user-1', full_name: 'Admin User' },
 };
 
 const sampleTaskDetail: Task = {
@@ -68,17 +68,18 @@ const sampleTaskDetail: Task = {
   description: 'Regular maintenance',
   priority: 'HIGH',
   status_id: 'st-1',
-  status: { id: 'st-1', key: 'OPEN', name: 'Open', category: 'UNSTARTED', position: 1, is_terminal: false },
+  status: { id: 'st-1', code: 'OPEN', name: 'Open', category: 'UNSTARTED', is_terminal: false },
   version: 2,
   creator_id: 'user-1',
+  workflow_id: 'wf-1',
+  team_id: null,
   start_at: '2026-08-18T09:00:00.000Z',
   due_at: '2026-08-18T10:00:00.000Z',
   completed_at: null,
-  cancelled_at: null,
   created_at: '2026-08-01T00:00:00.000Z',
   updated_at: '2026-08-01T00:00:00.000Z',
   is_overdue: false,
-  assignees: [{ user_id: 'user-1', full_name: 'Admin User', role: 'ADMIN', is_primary: true }],
+  assignees: [{ user_id: 'user-1', full_name: 'Admin User', is_primary: true }],
 };
 
 describe('Task 8 Calendar reschedule flow', () => {
@@ -90,15 +91,15 @@ describe('Task 8 Calendar reschedule flow', () => {
     });
     vi.mocked(api.workspaces.teams).mockResolvedValue({ data: [] });
     vi.mocked(api.workspaces.members).mockResolvedValue({
-      data: [{ workspace_id: 'workspace-1', user_id: 'user-1', role: 'ADMIN', status: 'ACTIVE', user: { full_name: 'Admin User', email: 'admin@example.com' } }],
+      data: [{ user_id: 'user-1', role: 'ADMIN', status: 'ACTIVE', user: { id: 'user-1', full_name: 'Admin User', email: 'admin@example.com' } }],
     });
     vi.mocked(api.workspaces.workflows).mockResolvedValue({
-      data: [{ id: 'wf-1', name: 'Default', is_default: true, statuses: [{ id: 'st-1', key: 'OPEN', name: 'Open', category: 'UNSTARTED', position: 1, is_terminal: false }] }],
+      data: [{ id: 'wf-1', name: 'Default', team_id: null, is_active: true, is_default: true, statuses: [{ id: 'st-1', code: 'OPEN', name: 'Open', category: 'UNSTARTED', is_terminal: false }] }],
     });
-    vi.mocked(api.tasks.calendar).mockResolvedValue({ data: [sampleCalendarTask] });
+    vi.mocked(api.tasks.calendar).mockResolvedValue({ data: [sampleCalendarTask], meta: { from: '2026-08-18', to: '2026-08-25' } });
     vi.mocked(api.tasks.list).mockResolvedValue({
       data: [sampleTaskDetail],
-      meta: { pagination: { has_more: false, next_cursor: null } },
+      meta: { pagination: { limit: 10, has_more: false, next_cursor: null } },
     });
     vi.mocked(api.tasks.get).mockResolvedValue({ data: sampleTaskDetail });
     vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
