@@ -34,6 +34,25 @@ export default function TasksPage() {
   const prefillDue = searchParams.get('prefill_due_at') || '';
   const workspaceTimezone = user?.workspaces.find((workspace) => workspace.id === workspaceId)?.timezone || '';
   const selectedTaskId = searchParams.get('selected_task_id');
+  const editSchedule = searchParams.get('edit_schedule');
+  const calView = searchParams.get('cal_view');
+  const calDate = searchParams.get('cal_date');
+  const calTeamId = searchParams.get('cal_team_id');
+  const calAssigneeId = searchParams.get('cal_assignee_id');
+  const returnTo = searchParams.get('return_to');
+
+  const calendarReturnUrl = useMemo(() => {
+    if (returnTo && returnTo.startsWith(`/workspaces/${workspaceId}/calendar`) && !returnTo.includes('//')) {
+      return returnTo;
+    }
+    if (!calView && !calDate && !calTeamId && !calAssigneeId) return null;
+    const p = new URLSearchParams();
+    if (calView) p.set('view', calView);
+    if (calDate) p.set('date', calDate);
+    if (calTeamId) p.set('team_id', calTeamId);
+    if (calAssigneeId) p.set('assignee_id', calAssigneeId);
+    return `/workspaces/${workspaceId}/calendar${p.toString() ? `?${p.toString()}` : ''}`;
+  }, [workspaceId, returnTo, calView, calDate, calTeamId, calAssigneeId]);
 
   // Server State
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -55,6 +74,7 @@ export default function TasksPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [availableTransitions, setAvailableTransitions] = useState<{ to_status_id: string; code: string; name: string }[]>([]);
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const [editValidationError, setEditValidationError] = useState<string | null>(null);
 
   // Form State - Create
   const [createTitle, setCreateTitle] = useState('');
@@ -157,8 +177,9 @@ export default function TasksPage() {
   // Open Detail & load transitions/history
   const handleOpenDetail = useCallback(async (task: Task) => {
     setSelectedTask(task);
-    setIsEditMode(false);
+    setIsEditMode(editSchedule === '1');
     setConflictError(null);
+    setEditValidationError(null);
     setAssigneeList(task.assignees.map((a) => ({ user_id: a.user_id, is_primary: a.is_primary })));
     setEditTitle(task.title);
     setEditDescription(task.description || '');
@@ -171,7 +192,7 @@ export default function TasksPage() {
     } catch (err) {
       console.error('Failed to load transitions', err);
     }
-  }, [workspaceId]);
+  }, [workspaceId, editSchedule]);
 
   useEffect(() => {
     if (!createTimezone && workspaceTimezone) {
@@ -316,14 +337,21 @@ export default function TasksPage() {
     e.preventDefault();
     if (!selectedTask) return;
     setConflictError(null);
+    setEditValidationError(null);
+
+    if (editStartAt && editDueAt && editStartAt > editDueAt) {
+      setEditValidationError('Start date must be before or equal to due date.');
+      return;
+    }
+
     try {
       const res = await api.tasks.update(workspaceId, selectedTask.id, {
         version: selectedTask.version,
         title: editTitle,
         description: editDescription || null,
         priority: editPriority,
-        start_at: editStartAt ? new Date(editStartAt).toISOString() : null,
-        due_at: editDueAt ? new Date(editDueAt).toISOString() : null,
+        start_at: editStartAt ? (workspaceTimezone ? getWorkspaceDateTime(editStartAt, workspaceTimezone) : new Date(editStartAt).toISOString()) : null,
+        due_at: editDueAt ? (workspaceTimezone ? getWorkspaceDateTime(editDueAt, workspaceTimezone) : new Date(editDueAt).toISOString()) : null,
       });
       setSelectedTask(res.data);
       setIsEditMode(false);
@@ -333,7 +361,7 @@ export default function TasksPage() {
         setConflictError('VERSION_CONFLICT');
       } else {
         const msg = err instanceof Error ? err.message : 'Update failed';
-        alert(msg);
+        setEditValidationError(msg);
       }
     }
   };
@@ -838,9 +866,9 @@ export default function TasksPage() {
           <div className="fixed inset-0 bg-black/50" onClick={() => setSelectedTask(null)} />
           <div role="dialog" aria-modal="true" aria-label="Task details" className="relative w-full max-w-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
             {conflictError && (
-              <div className="bg-orange-50 dark:bg-orange-950/50 border-l-4 border-orange-500 p-4 rounded mb-4 text-orange-700 dark:text-orange-300 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div role="alert" className="bg-orange-50 dark:bg-orange-950/50 border-l-4 border-orange-500 p-4 rounded mb-4 text-orange-700 dark:text-orange-300 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
-                  <p className="font-bold">Version Conflict</p>
+                  <p className="font-bold">VERSION_CONFLICT</p>
                   <p className="text-sm">This task has been modified by another user. Reload state to continue.</p>
                 </div>
                 <button
@@ -1018,11 +1046,17 @@ export default function TasksPage() {
               // EDIT MODE Form
               <form onSubmit={handleUpdate} className="space-y-4">
                 <h3 className="text-lg font-bold mb-4">Edit Task Fields</h3>
+                {editValidationError && (
+                  <div role="alert" className="bg-red-50 dark:bg-red-950/50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700 dark:text-red-300">
+                    {editValidationError}
+                  </div>
+                )}
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  <label htmlFor="edit_title" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                     Title
                   </label>
                   <input
+                    id="edit_title"
                     type="text"
                     required
                     value={editTitle}
@@ -1031,20 +1065,22 @@ export default function TasksPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  <label htmlFor="edit_description" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                     Description
                   </label>
                   <textarea
+                    id="edit_description"
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 h-24"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  <label htmlFor="edit_priority" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                     Priority
                   </label>
                   <select
+                    id="edit_priority"
                     value={editPriority}
                     onChange={(e) => setEditPriority(e.target.value as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT')}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800"
@@ -1057,10 +1093,11 @@ export default function TasksPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                    <label htmlFor="edit_start_at" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                       Start Date
                     </label>
                     <input
+                      id="edit_start_at"
                       type="datetime-local"
                       value={editStartAt}
                       onChange={(e) => setEditStartAt(e.target.value)}
@@ -1068,10 +1105,11 @@ export default function TasksPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                    <label htmlFor="edit_due_at" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
                       Due Date
                     </label>
                     <input
+                      id="edit_due_at"
                       type="datetime-local"
                       value={editDueAt}
                       onChange={(e) => setEditDueAt(e.target.value)}
@@ -1097,10 +1135,21 @@ export default function TasksPage() {
               </form>
             )}
 
-            <div className="flex justify-end pt-4 border-t mt-6">
+            <div className="flex justify-between items-center pt-4 border-t mt-6">
+              <div>
+                {calendarReturnUrl && (
+                  <button
+                    type="button"
+                    onClick={() => router.push(calendarReturnUrl)}
+                    className="px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-400 rounded-md text-sm font-bold transition"
+                  >
+                    Return to Calendar
+                  </button>
+                )}
+              </div>
               <button
                 onClick={() => setSelectedTask(null)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm hover:bg-gray-50"
+                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
               >
                 Close
               </button>
