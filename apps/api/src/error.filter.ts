@@ -13,7 +13,9 @@ const messages: Record<string, string> = {
   VERSION_CONFLICT: 'Task modified by another user.',
   DUPLICATE_EMAIL: 'An account with this email already exists.',
   LAST_ACTIVE_ADMIN: 'At least one active admin is required.',
-  ACTIVE_TEAM_MANAGER: 'Active team managers must remain active managers.'
+  ACTIVE_TEAM_MANAGER: 'Active team managers must remain active managers.',
+  INVALID_MANAGER: 'Team manager must be an active manager or admin.',
+  TEAM_ARCHIVED: 'Archived teams cannot accept members.'
 };
 
 @Catch()

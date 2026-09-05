@@ -190,6 +190,22 @@ describe('API', () => {
     await sql.end();
   });
 
+  it('archives and restores teams without silently clearing managers', async () => {
+    const f = await fixture(app!);
+    const { sql } = createDatabase(databaseUrl);
+    await sql`UPDATE workspace_memberships SET role_id=(SELECT id FROM roles WHERE code='MANAGER') WHERE workspace_id=${f.workspaceId} AND user_id=${f.memberId}`;
+    const team = await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/teams`).set('Cookie', f.adminCookie).send({ name: 'Lifecycle', manager_user_id: f.memberId }).expect(201);
+    const path = `/api/v1/workspaces/${f.workspaceId}/teams/${team.body.data.id}`;
+    await request(app!.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ is_active: false }).expect(200).expect(({ body }) => { expect(body.data.isActive).toBe(false); expect(body.data.manager_user_id).toBe(f.memberId); });
+    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.workspaceId}/members/${f.memberId}`).set('Cookie', f.adminCookie).send({ role: 'MEMBER' }).expect(200);
+    await request(app!.getHttpServer()).get(path).set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data.manager_user_id).toBe(f.memberId));
+    await request(app!.getHttpServer()).post(`${path}/members`).set('Cookie', f.adminCookie).send({ user_id: f.adminId }).expect(409);
+    await request(app!.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ is_active: true }).expect(409).expect(({ body }) => expect(body.error.code).toBe('INVALID_MANAGER'));
+    await request(app!.getHttpServer()).patch(path).set('Cookie', f.adminCookie).send({ manager_user_id: null, is_active: true }).expect(200).expect(({ body }) => { expect(body.data.isActive).toBe(true); expect(body.data.manager_user_id).toBeNull(); });
+    await request(app!.getHttpServer()).patch(`/api/v1/workspaces/${f.otherWorkspaceId}/teams/${team.body.data.id}`).set('Cookie', f.outsiderCookie).send({ is_active: false }).expect(404);
+    await sql.end();
+  });
+
   it('persists workspace and team relations with isolation and reference rejection', async () => {
     const f = await fixture(app!);
     await request(app!.getHttpServer()).get('/api/v1/workspaces').set('Cookie', f.memberCookie).expect(200).expect(({ body }) => expect(body.data.map((w: { id: string }) => w.id)).toEqual([f.workspaceId]));
