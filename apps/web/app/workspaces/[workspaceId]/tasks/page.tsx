@@ -28,6 +28,10 @@ export default function TasksPage() {
   const priority = searchParams.get('priority') || '';
   const assignee_id = searchParams.get('assignee_id') || '';
   const team_id = searchParams.get('team_id') || '';
+  const bucket = searchParams.get('bucket') || '';
+  const due_from = searchParams.get('due_from') || '';
+  const due_to = searchParams.get('due_to') || '';
+  const overdue = searchParams.get('overdue') || '';
   const sort = searchParams.get('sort') || '-created_at';
   const create = searchParams.get('create');
   const prefillStart = searchParams.get('prefill_start_at') || '';
@@ -141,6 +145,10 @@ export default function TasksPage() {
         priority,
         assignee_id,
         team_id,
+        due_from: due_from || undefined,
+        due_to: due_to || undefined,
+        bucket: bucket || undefined,
+        overdue: overdue === 'true' ? 'true' : undefined,
         sort,
         limit: 10,
         cursor,
@@ -159,7 +167,7 @@ export default function TasksPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [workspaceId, q, status_id, priority, assignee_id, team_id, sort]);
+  }, [workspaceId, q, status_id, priority, assignee_id, team_id, due_from, due_to, bucket, overdue, sort]);
 
   useEffect(() => {
     fetchTasks();
@@ -167,6 +175,7 @@ export default function TasksPage() {
 
   const updateFilters = (newParams: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString());
+    params.delete('cursor');
     Object.entries(newParams).forEach(([k, v]) => {
       if (v) params.set(k, v);
       else params.delete(k);
@@ -447,44 +456,27 @@ export default function TasksPage() {
         </button>
       </div>
 
+      {/* Bucket Tabs */}
+      <div className="flex gap-2">
+        <button type="button" aria-pressed={!bucket || bucket === 'active'} onClick={() => updateFilters({ bucket: 'active' })} className={`px-3 py-1.5 text-sm font-medium rounded-md ${!bucket || bucket === 'active' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'}`}>Active</button>
+        <button type="button" aria-pressed={bucket === 'completed'} onClick={() => updateFilters({ bucket: 'completed' })} className={`px-3 py-1.5 text-sm font-medium rounded-md ${bucket === 'completed' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'}`}>Completed</button>
+      </div>
+
       {/* Filter and Search Bar */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 space-y-4 shadow-sm">
         <div className="flex flex-col md:flex-row gap-3">
-          {/* Search */}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by title or key..."
-              value={q}
-              onChange={(e) => updateFilters({ q: e.target.value })}
-              className="pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
-            />
+            <input type="text" placeholder="Search by title or key..." value={q} onChange={(e) => updateFilters({ q: e.target.value })} className="pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500" />
           </div>
-
-          {/* Status Filter */}
           <div className="w-full md:w-48">
-            <select
-              value={status_id}
-              onChange={(e) => updateFilters({ status_id: e.target.value })}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
-            >
+            <select aria-label="Status filter" value={status_id} onChange={(e) => updateFilters({ status_id: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
               <option value="">All Statuses</option>
-              {allStatuses.map((st) => (
-                <option key={st.id} value={st.id}>
-                  {st.name}
-                </option>
-              ))}
+              {allStatuses.map((st) => (<option key={st.id} value={st.id}>{st.name}</option>))}
             </select>
           </div>
-
-          {/* Priority Filter */}
           <div className="w-full md:w-40">
-            <select
-              value={priority}
-              onChange={(e) => updateFilters({ priority: e.target.value })}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
-            >
+            <select aria-label="Priority filter" value={priority} onChange={(e) => updateFilters({ priority: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
               <option value="">All Priorities</option>
               <option value="LOW">Low</option>
               <option value="MEDIUM">Medium</option>
@@ -492,30 +484,20 @@ export default function TasksPage() {
               <option value="URGENT">Urgent</option>
             </select>
           </div>
-
-          {/* Team Filter */}
           <div className="w-full md:w-48">
-            <select
-              value={team_id}
-              onChange={(e) => updateFilters({ team_id: e.target.value })}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
-            >
+            <select aria-label="Team filter" value={team_id} onChange={(e) => updateFilters({ team_id: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
               <option value="">All Teams</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
+              {teams.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
             </select>
           </div>
-
-          {/* Sort */}
           <div className="w-full md:w-48">
-            <select
-              value={sort}
-              onChange={(e) => updateFilters({ sort: e.target.value })}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
-            >
+            <select aria-label="Assignee filter" value={assignee_id} onChange={(e) => updateFilters({ assignee_id: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
+              <option value="">All Assignees</option>
+              {members.map((m) => (<option key={m.user_id} value={m.user_id}>{m.user?.full_name || m.user_id}</option>))}
+            </select>
+          </div>
+          <div className="w-full md:w-48">
+            <select aria-label="Sort order" value={sort} onChange={(e) => updateFilters({ sort: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
               <option value="-created_at">Newest Created</option>
               <option value="created_at">Oldest Created</option>
               <option value="due_at">Due Date (Asc)</option>
@@ -524,6 +506,20 @@ export default function TasksPage() {
               <option value="-task_key">Task Key (Desc)</option>
             </select>
           </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label htmlFor="filter_due_from" className="text-xs font-medium text-gray-500">Due from</label>
+            <input id="filter_due_from" aria-label="Due from" type="date" value={due_from ? due_from.substring(0, 10) : ''} onChange={(e) => updateFilters({ due_from: e.target.value ? `${e.target.value}T00:00:00.000Z` : '' })} className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-800" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="filter_due_to" className="text-xs font-medium text-gray-500">Due to</label>
+            <input id="filter_due_to" aria-label="Due to" type="date" value={due_to ? due_to.substring(0, 10) : ''} onChange={(e) => updateFilters({ due_to: e.target.value ? `${e.target.value}T23:59:59.999Z` : '' })} className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-800" />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" aria-label="Overdue only" checked={overdue === 'true'} onChange={(e) => updateFilters({ overdue: e.target.checked ? 'true' : '' })} className="rounded border-gray-300 text-red-600 focus:ring-red-500" />
+            <span className="text-xs font-semibold text-red-700 dark:text-red-400">Overdue only</span>
+          </label>
         </div>
       </div>
 
