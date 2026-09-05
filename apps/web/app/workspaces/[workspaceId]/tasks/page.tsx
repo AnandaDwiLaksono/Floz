@@ -61,7 +61,7 @@ export default function TasksPage() {
   const [createDescription, setCreateDescription] = useState('');
   const [createPriority, setCreatePriority] = useState('MEDIUM');
   const [createTeamId, setCreateTeamId] = useState('');
-  const [createAssigneeId, setCreateAssigneeId] = useState('');
+  const [createAssignees, setCreateAssignees] = useState<{ user_id: string; is_primary: boolean }[]>([]);
   const [createStartAt, setCreateStartAt] = useState('');
   const [createDueAt, setCreateDueAt] = useState('');
   const [createStatusId, setCreateStatusId] = useState('');
@@ -246,7 +246,7 @@ export default function TasksPage() {
     e.preventDefault();
     setCreateValidationError(null);
     try {
-      const assignees = createAssigneeId ? [{ user_id: createAssigneeId, is_primary: true }] : [];
+      const assignees = createAssignees;
       if (createRecurring) {
         const interval = Number(createInterval);
         const occurrenceLimit = createOccurrenceLimit ? Number(createOccurrenceLimit) : undefined;
@@ -259,6 +259,7 @@ export default function TasksPage() {
         if (createEndDate && occurrenceLimit !== undefined) {
           throw new Error('Choose an end date or occurrence count, not both.');
         }
+        const primaryAssignee = assignees.find((a) => a.is_primary);
         await api.tasks.createRecurring(workspaceId, {
           name: createTitle,
           title: createTitle,
@@ -266,8 +267,8 @@ export default function TasksPage() {
           priority: createPriority,
           status_id: createStatusId || undefined,
           team_id: createTeamId || null,
-          assignee_ids: createAssigneeId ? [createAssigneeId] : [],
-          primary_assignee_id: createAssigneeId || null,
+          assignee_ids: assignees.map((a) => a.user_id),
+          primary_assignee_id: primaryAssignee?.user_id || null,
           frequency: createFrequency,
           interval_value: interval,
           timezone: createTimezone,
@@ -293,7 +294,7 @@ export default function TasksPage() {
       setCreateDescription('');
       setCreatePriority('MEDIUM');
       setCreateTeamId('');
-      setCreateAssigneeId('');
+      setCreateAssignees([]);
       setCreateStartAt('');
        setCreateDueAt('');
        setCreateStatusId('');
@@ -741,43 +742,75 @@ export default function TasksPage() {
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="primary_assignee" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                    Primary Assignee
-                  </label>
-                  <select
-                    id="primary_assignee"
-                    value={createAssigneeId}
-                    onChange={(e) => setCreateAssigneeId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">None</option>
-                    {members.map((m) => (
-                      <option key={m.user_id} value={m.user_id}>
-                        {m.user?.full_name || m.user_id}
-                      </option>
-                    ))}
-                  </select>
+              <div>
+                <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  Assignees
+                </label>
+                <div className="space-y-2 border rounded-md p-3 max-h-40 overflow-y-auto dark:border-gray-700">
+                  {members.map((m) => {
+                    const cur = createAssignees.find((a) => a.user_id === m.user_id);
+                    return (
+                      <div key={m.user_id} className="flex items-center justify-between text-sm">
+                        <label htmlFor={`create_assignee_${m.user_id}`} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            id={`create_assignee_${m.user_id}`}
+                            type="checkbox"
+                            checked={!!cur}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCreateAssignees((prev) => [...prev, { user_id: m.user_id, is_primary: prev.length === 0 }]);
+                              } else {
+                                setCreateAssignees((prev) => {
+                                  const next = prev.filter((a) => a.user_id !== m.user_id);
+                                  if (cur?.is_primary && next.length > 0) {
+                                    next[0].is_primary = true;
+                                  }
+                                  return [...next];
+                                });
+                              }
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>{m.full_name || m.user?.full_name || m.user_id}</span>
+                        </label>
+                        {cur && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCreateAssignees((prev) =>
+                                prev.map((a) => ({ ...a, is_primary: a.user_id === m.user_id }))
+                              );
+                            }}
+                            className={`text-xs px-2 py-0.5 rounded font-bold ${
+                              cur.is_primary ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                            }`}
+                          >
+                            {cur.is_primary ? 'Primary' : 'Make Primary'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {members.length === 0 && <p className="text-xs text-gray-500">No members found.</p>}
                 </div>
-                <div>
-                  <label htmlFor="initial_status" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                    Initial Status
-                  </label>
-                  <select
-                    id="initial_status"
-                    value={createStatusId}
-                    onChange={(e) => setCreateStatusId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">Default (Initial)</option>
-                    {allStatuses.map((st) => (
-                      <option key={st.id} value={st.id}>
-                        {st.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              </div>
+              <div>
+                <label htmlFor="initial_status" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                  Initial Status
+                </label>
+                <select
+                  id="initial_status"
+                  value={createStatusId}
+                  onChange={(e) => setCreateStatusId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">Default (Initial)</option>
+                  {allStatuses.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="flex justify-end space-x-2 pt-4">
                 <button
