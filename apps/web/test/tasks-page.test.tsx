@@ -79,12 +79,7 @@ describe('Task 10 Task filter UI completion', () => {
       data: [{ id: 'team-1', workspace_id: 'workspace-1', name: 'Ops Team', description: null, manager_user_id: null, is_active: true }],
     });
     vi.mocked(api.workspaces.members).mockResolvedValue({
-      data: [{
-        user_id: 'user-1',
-        role: 'ADMIN',
-        status: 'ACTIVE',
-        user: { id: 'user-1', full_name: 'Admin User', email: 'admin@example.com' },
-      }],
+      data: [{ user_id: 'user-1', full_name: 'Admin User', email: 'admin@example.com', role: 'ADMIN', status: 'ACTIVE', user: { id: 'user-1', full_name: 'Admin User', email: 'admin@example.com' } }],
     });
     vi.mocked(api.workspaces.workflows).mockResolvedValue({
       data: [{

@@ -145,9 +145,9 @@ test.describe('Floz Kanban', () => {
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     await page.goto(`/workspaces/${workspaceId}/calendar?view=month&date=2026-08-18`);
     await expect(page.getByRole('heading', { name: 'Calendar' })).toBeVisible();
-    const deadline = page.getByRole('button', { name: /Deadline task/ });
-    await expect(deadline).toBeVisible();
-    await expect(deadline).toContainText('Deadline only');
+    const deadlineBtn = page.getByRole('button', { name: 'Deadline task', exact: true });
+    await expect(deadlineBtn).toBeVisible();
+    await expect(page.getByText('Deadline only')).toBeVisible();
     await page.getByRole('button', { name: 'Week view' }).click();
     await expect(page).toHaveURL(/view=week/);
     await page.getByRole('button', { name: 'Next period' }).click();
@@ -159,7 +159,7 @@ test.describe('Floz Kanban', () => {
     await expect(page).toHaveURL(/prefill_timezone=Asia%2FJakarta/);
     await expect(page.locator('input#start_at')).not.toHaveValue('');
     await page.goto(`/workspaces/${workspaceId}/calendar?view=day&date=2026-08-10`);
-    await page.getByRole('button', { name: /Scheduled/ }).click();
+    await page.getByRole('button', { name: 'Scheduled', exact: true }).click();
     await expect(page).toHaveURL(/selected_task_id=/);
     await expect(page.getByText('Change Status')).toBeVisible();
   });

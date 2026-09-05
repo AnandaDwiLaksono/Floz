@@ -114,7 +114,24 @@ export default function CalendarPage() {
     {!loading && metadataLoaded && !error && <div className={view === 'month' ? 'grid gap-2 sm:grid-cols-2 lg:grid-cols-7' : 'space-y-2'}>
       {days.map((day) => <section key={day} className="min-h-32 rounded border p-2">
         <div className="mb-2 flex items-center justify-between gap-2"><h3 className="font-semibold">{formatCalendarLabel(`${day}T00:00:00.000Z`, timezone, { weekday: view === 'month' ? 'short' : 'long', month: 'short', day: 'numeric' })}</h3><button type="button" aria-label={`Create task on ${day}`} onClick={() => create(day)} className="rounded border px-2 py-1 text-sm">Create</button></div>
-        <div className="space-y-2">{(grouped[day] || []).map((task) => <button key={task.id} type="button" onClick={() => router.push(taskRoute(workspaceId, task.id, { edit_schedule: true, calendarContext: { view, date, team_id: teamId, assignee_id: assigneeId } }))} className="block w-full rounded border p-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"><strong>{task.title}</strong><span className="block text-xs text-gray-500">{task.is_deadline_only ? 'Deadline only' : `${task.status.name} · ${task.priority}`}{task.primary_assignee ? ` · ${task.primary_assignee.full_name}` : ''}</span></button>)}</div>
+        <div className="space-y-2">{(grouped[day] || []).map((task) => (
+          <div key={task.id} className="rounded border p-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 flex flex-col gap-1">
+            <button type="button" onClick={() => router.push(taskRoute(workspaceId, task.id, { calendarContext: { view, date, team_id: teamId, assignee_id: assigneeId } }))} className="block w-full text-left">
+              <strong>{task.title}</strong>
+            </button>
+            <div className="flex items-center justify-between text-xs text-gray-500 gap-2">
+              <span>{task.is_deadline_only ? 'Deadline only' : `${task.status.name} · ${task.priority}`}{task.primary_assignee ? ` · ${task.primary_assignee.full_name}` : ''}</span>
+              <button
+                type="button"
+                aria-label={`Reschedule ${task.title}`}
+                onClick={() => router.push(taskRoute(workspaceId, task.id, { edit_schedule: true, calendarContext: { view, date, team_id: teamId, assignee_id: assigneeId } }))}
+                className="shrink-0 px-1.5 py-0.5 border rounded hover:bg-gray-200 dark:hover:bg-gray-700 font-medium text-xs"
+              >
+                Reschedule
+              </button>
+            </div>
+          </div>
+        ))}</div>
       </section>)}
       {!tasks.length && <p className="text-sm text-gray-500">{teamId || assigneeId ? 'No tasks match these filters.' : 'No tasks in this range.'}</p>}
     </div>}

@@ -91,7 +91,7 @@ describe('Task 8 Calendar reschedule flow', () => {
     });
     vi.mocked(api.workspaces.teams).mockResolvedValue({ data: [] });
     vi.mocked(api.workspaces.members).mockResolvedValue({
-      data: [{ user_id: 'user-1', role: 'ADMIN', status: 'ACTIVE', user: { id: 'user-1', full_name: 'Admin User', email: 'admin@example.com' } }],
+      data: [{ user_id: 'user-1', full_name: 'Admin User', email: 'admin@example.com', role: 'ADMIN', status: 'ACTIVE', user: { id: 'user-1', full_name: 'Admin User', email: 'admin@example.com' } }],
     });
     vi.mocked(api.workspaces.workflows).mockResolvedValue({
       data: [{ id: 'wf-1', name: 'Default', team_id: null, is_active: true, is_default: true, statuses: [{ id: 'st-1', code: 'OPEN', name: 'Open', category: 'UNSTARTED', is_terminal: false }] }],
@@ -105,23 +105,33 @@ describe('Task 8 Calendar reschedule flow', () => {
     vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
   });
 
-  it('preserves calendar context and navigates to edit_schedule flow', async () => {
+  it('preserves calendar context on card click without edit_schedule', async () => {
     mockSearchParams = new URLSearchParams('view=week&date=2026-08-18&team_id=team-1&assignee_id=user-1');
     render(<CalendarPage />);
     await waitFor(() => expect(api.tasks.calendar).toHaveBeenCalled());
 
-    const taskBtn = await screen.findByRole('button', { name: /Inspect pump/ });
+    const taskBtn = await screen.findByRole('button', { name: /^Inspect pump$/ });
     fireEvent.click(taskBtn);
 
-    expect(push).toHaveBeenCalledWith(
-      expect.stringContaining('selected_task_id=task-1')
-    );
-    expect(push).toHaveBeenCalledWith(
-      expect.stringContaining('cal_view=week')
-    );
-    expect(push).toHaveBeenCalledWith(
-      expect.stringContaining('cal_date=2026-08-18')
-    );
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('selected_task_id=task-1'));
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('cal_view=week'));
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('cal_date=2026-08-18'));
+    const lastCall = vi.mocked(push).mock.calls[vi.mocked(push).mock.calls.length - 1][0] as string;
+    expect(lastCall).not.toContain('edit_schedule=1');
+  });
+
+  it('preserves calendar context and navigates to edit_schedule flow via Reschedule button', async () => {
+    mockSearchParams = new URLSearchParams('view=week&date=2026-08-18&team_id=team-1&assignee_id=user-1');
+    render(<CalendarPage />);
+    await waitFor(() => expect(api.tasks.calendar).toHaveBeenCalled());
+
+    const rescheduleBtn = await screen.findByRole('button', { name: /Reschedule Inspect pump/ });
+    fireEvent.click(rescheduleBtn);
+
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('selected_task_id=task-1'));
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('edit_schedule=1'));
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('cal_view=week'));
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('cal_date=2026-08-18'));
   });
 
   it('opens edit schedule mode directly in tasks page when edit_schedule=1 is present', async () => {
