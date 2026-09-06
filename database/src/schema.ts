@@ -295,6 +295,69 @@ export const notificationPreferences = pgTable('notification_preferences', {
 
 export const userRelations = relations(users, ({ many }) => ({ sessions: many(sessions), memberships: many(workspaceMemberships) }));
 export const workspaceRelations = relations(workspaces, ({ many }) => ({ memberships: many(workspaceMemberships), teams: many(teams) }));
+
+export const approvalRequests = pgTable('approval_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  taskId: uuid('task_id').references(() => tasks.id),
+  requesterId: uuid('requester_id').notNull().references(() => users.id),
+  cancelledByUserId: uuid('cancelled_by_user_id').references(() => users.id),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  cancelReason: text('cancel_reason'),
+  status: varchar('status', { length: 32 }).notNull().default('PENDING'),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: now(),
+  updatedAt: updated()
+}, (table) => ({
+  wsStatusSubmittedId: index('approval_requests_ws_status_submitted_id_idx').on(table.workspaceId, table.status, table.submittedAt, table.id),
+  wsRequesterStatusSubmittedId: index('approval_requests_ws_requester_status_submitted_id_idx').on(table.workspaceId, table.requesterId, table.status, table.submittedAt, table.id),
+  wsTask: index('approval_requests_ws_task_idx').on(table.workspaceId, table.taskId)
+}));
+
+export const approvalSteps = pgTable('approval_steps', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  approvalRequestId: uuid('approval_request_id').notNull().references(() => approvalRequests.id),
+  stepOrder: integer('step_order').notNull().default(1),
+  approverUserId: uuid('approver_user_id').notNull().references(() => users.id),
+  decidedByUserId: uuid('decided_by_user_id').references(() => users.id),
+  status: varchar('status', { length: 32 }).notNull().default('PENDING'),
+  decision: varchar('decision', { length: 32 }),
+  reason: text('reason'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  createdAt: now(),
+  updatedAt: updated()
+}, (table) => ({
+  reqStepOrder: unique().on(table.approvalRequestId, table.stepOrder),
+  wsApproverStatusCreated: index('approval_steps_ws_approver_status_created_idx').on(table.workspaceId, table.approverUserId, table.status, table.createdAt)
+}));
+
+export const comments = pgTable('comments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  taskId: uuid('task_id').notNull().references(() => tasks.id),
+  authorId: uuid('author_id').notNull().references(() => users.id),
+  content: text('content').notNull(),
+  createdAt: now(),
+  updatedAt: updated(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true })
+}, (table) => ({
+  wsTaskCreatedId: index('comments_ws_task_created_id_idx').on(table.workspaceId, table.taskId, table.createdAt, table.id)
+}));
+
+export const mentions = pgTable('mentions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  commentId: uuid('comment_id').notNull().references(() => comments.id),
+  mentionedUserId: uuid('mentioned_user_id').notNull().references(() => users.id),
+  createdAt: now()
+}, (table) => ({
+  commentUser: unique().on(table.commentId, table.mentionedUserId),
+  wsMentionedUserCreated: index('mentions_ws_user_created_idx').on(table.workspaceId, table.mentionedUserId, table.createdAt)
+}));
+
 export const roleCodes = ['ADMIN', 'MANAGER', 'MEMBER', 'FIELD_WORKER'] as const;
 export type RoleCode = typeof roleCodes[number];
 export const activeMembership = sql`${workspaceMemberships.status} = 'ACTIVE'`;

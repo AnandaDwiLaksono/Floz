@@ -50,6 +50,13 @@
       "when": 1788236144146,
       "tag": "0006_perfect_ezekiel",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788674952676,
+      "tag": "0007_bizarre_kabuki",
+      "breakpoints": true
     }
   ]
 }
