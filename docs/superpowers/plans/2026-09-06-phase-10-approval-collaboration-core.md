@@ -8,9 +8,9 @@
 ## 1. Current Verified Repository State
 
 - **Branch:** `master`
-- **Canonical master HEAD:** `1930d8004eecf7087ea3c0bed3467300cc9f1017`
+- **Canonical master HEAD:** `7fb1e3af27a826764909b9d6c2d5d1c4cc5fd653`
 - **origin/main HEAD:** `f4f2076391a365f7693af71f111ced5fe10ca8fe`
-- **Ahead / Behind (`origin/main...master`):** `0 6` (forward docs-only commits for approved Phase 10 design iterations)
+- **Ahead / Behind (`origin/main...master`):** `0 8` (forward docs-only commits for approved Phase 10 design iterations and implementation plan)
 - **Worktree:** Clean (`git status --short` empty)
 
 ---
@@ -19,19 +19,25 @@
 
 Planning occurs on `master`. Implementation Tasks 1–12 MUST occur in an isolated worktree branch.
 
-After this implementation plan receives FINAL human approval:
-1. Verify worktree is clean: `git status --short` returns empty.
-2. Run security & secret audit over outgoing documentation commits.
-3. Fetch origin: `git fetch origin`.
-4. Verify `origin/main` is an ancestor of `master`: `git merge-base --is-ancestor origin/main master`.
-5. Publish approved Phase 10 design and plan to `origin/main` via fast-forward only: `git push origin master:main`.
-6. Verify divergence is `0 0`: `git rev-list --left-right --count origin/main...master`.
-7. Create isolated implementation worktree and branch:
+After this implementation plan receives explicit FINAL human approval:
+1. **Plan Status Finalization:** Update status in `docs/superpowers/plans/2026-09-06-phase-10-approval-collaboration-core.md` to:
+   `FINAL IMPLEMENTATION PLAN / APPROVED FOR EXECUTION`
+2. **Docs-Only Commit:** Create a forward docs-only finalization commit (`docs(plan): finalize Phase 10 implementation plan for execution`).
+3. **Verify Master Clean:** Ensure `git status --short` returns completely empty.
+4. **Fetch Origin:** `git fetch origin`.
+5. **Verify Ancestor:** Ensure `origin/main` is strictly an ancestor of `master`:
+   `git merge-base --is-ancestor origin/main master`
+6. **Security & Repository Audit:** Run credential/secret pattern scans and repository hygiene audit over outgoing documentation commits.
+7. **Fast-Forward Push:**
+   `git push origin master:main`
+8. **Verify Divergence 0/0:** Ensure `master == origin/main`:
+   `git rev-list --left-right --count origin/main...master` (must return `0 0`).
+9. **Create Isolated Worktree & Branch:**
    - Branch name: `phase10-approval-collaboration-core`
    - Worktree path: `D:\Portofolio\Floz\app\.worktrees\phase10-approval-collaboration-core`
    - Command: `git worktree add -b phase10-approval-collaboration-core .worktrees/phase10-approval-collaboration-core master`
-8. Tasks 1–12 are executed inside `.worktrees/phase10-approval-collaboration-core`.
-9. **Divergence Protection:** If `origin/main` diverges unexpectedly, STOP and report immediately. Never auto-rebase or force push.
+10. **Execute Implementation in Worktree:** Tasks 1–12 are executed inside `.worktrees/phase10-approval-collaboration-core`.
+11. **Divergence Protection:** If `origin/main` diverges unexpectedly at any point, STOP and report immediately. Never auto-rebase, merge, or force push.
 
 ---
 
@@ -61,17 +67,19 @@ After this implementation plan receives FINAL human approval:
   `approval_requests` FOR UPDATE (`id = :approvalRequestId AND workspace_id = :workspaceId`) -> `approval_steps` FOR UPDATE (`approval_request_id = :approvalRequestId AND workspace_id = :workspaceId AND step_order = 1`).
   - Decision endpoints (`/steps/:stepId/approve`, `/steps/:stepId/reject`) bind exact `:stepId` matching `:approvalRequestId` and `workspace_id`.
   - Cancellation endpoint (`/cancel`) locks the single step `step_order = 1` for `:approvalRequestId`.
-- **Atomic Side Effects:**
-  - Creation: atomic `approval_request` + `approval_step` + `approval.requested` outbox + `APPROVAL_REQUESTED` task_history (when task-linked).
-  - Decision/Cancellation: atomic request mutation + step mutation + `approval.decided` or `approval.cancelled` outbox + `APPROVAL_COMPLETED` task_history (when task-linked).
-  - Comments: atomic `comment` + deduplicated `mentions` + one `comment.mentioned` outbox per unique eligible recipient (except author).
+- **Atomic Side Effects & Lifecycle Counts for Task-Linked Approvals:**
+  - **Creation (Task 2):** Atomic `approval_request` + `approval_step` + 1 `approval.requested` outbox row + 1 `APPROVAL_REQUESTED` task_history row.
+  - **Terminal Decision / Cancellation (Task 3):** Atomic request mutation + step mutation + exactly 1 terminal outbox event (`approval.decided` OR `approval.cancelled`) + exactly 1 `APPROVAL_COMPLETED` task_history row.
+  - **Completed Lifecycle Total:** Exactly 2 outbox events (1 `approval.requested` + 1 terminal event) and exactly 2 task_history rows (1 `APPROVAL_REQUESTED` + 1 `APPROVAL_COMPLETED`).
+  - **Racing Losers:** Must produce `409 APPROVAL_NOT_PENDING` and **zero** additional terminal outbox events and **zero** additional `APPROVAL_COMPLETED` history rows.
+  - **Comments (Task 4):** Atomic `comment` + deduplicated `mentions` + 1 `comment.mentioned` outbox event per unique eligible recipient (except author).
 - **Concurrency Test Suite (Task 3):**
   Real parallel `Promise.all` tests against PostgreSQL testing:
   1. Approve vs Reject
   2. Approve vs Cancel
   3. Reject vs Cancel
   4. Cancel vs Cancel
-  - Required Assertions: Exactly 1 terminal state succeeds; racing losers receive `409 APPROVAL_NOT_PENDING`; `approval_request` and `approval_step` match terminal state; exactly one outbox event is created; exactly one `APPROVAL_COMPLETED` task_history row is appended; zero contradictory history/outbox/actor metadata.
+  - Required Assertions: Exactly 1 terminal mutation succeeds; racing losers receive `409 APPROVAL_NOT_PENDING`; `approval_request` and `approval_step` match terminal state; exactly 1 terminal outbox event; exactly 1 `APPROVAL_COMPLETED` task_history row; zero contradictory history/outbox/actor metadata.
 
 ---
 
@@ -169,7 +177,7 @@ After this implementation plan receives FINAL human approval:
   - Pessimistic lock order: `approval_requests` FOR UPDATE -> `approval_steps` FOR UPDATE.
   - Exact `:stepId` resource binding on decision endpoints.
   - Reason normalization: Approve (optional, trim, max 500), Reject (mandatory, trim, 3–500), Cancel (optional, trim, max 500).
-  - Atomic terminal mutation: updates request + step (`CANCELLED` sets decision fields null) + `approval.decided` or `approval.cancelled` outbox + `APPROVAL_COMPLETED` task_history (when task-linked).
+  - Atomic terminal mutation: updates request + step (`CANCELLED` sets decision fields null) + exactly 1 terminal outbox event (`approval.decided` or `approval.cancelled`) + exactly 1 `APPROVAL_COMPLETED` task_history row (when task-linked).
 - **Expected Files:**
   - `apps/api/src/approval.service.ts`
   - `apps/api/src/floz.controller.ts`
@@ -180,7 +188,7 @@ After this implementation plan receives FINAL human approval:
      - Self-approval prohibition on decision: `422 SELF_APPROVAL_NOT_ALLOWED`.
      - Stale approver: suspended approver gets `403 FORBIDDEN`; active ADMIN override succeeds while `PENDING`.
      - Real parallel concurrency (`Promise.all`): Approve vs Reject, Approve vs Cancel, Reject vs Cancel, Cancel vs Cancel.
-     - Assertions: exactly 1 succeeds; losers get `409 APPROVAL_NOT_PENDING`; request and step terminal states match; exactly 1 outbox event; exactly 1 task_history row; zero contradictory metadata.
+     - Assertions: exactly 1 terminal mutation succeeds; losers get `409 APPROVAL_NOT_PENDING`; request and step terminal states match; exactly 1 terminal outbox event created; exactly 1 `APPROVAL_COMPLETED` task_history row appended; racing losers create zero additional outbox events and zero additional history rows; zero contradictory metadata.
   2. **Minimal Implementation:** Implement transactional locking, reason normalization, and decision/cancel handlers.
   3. **Focused GREEN:** Run `pnpm --filter @floz/api test`.
   4. **Requirements & Code-Quality Review:** Verify lock ordering and atomic history/outbox.
@@ -192,7 +200,15 @@ After this implementation plan receives FINAL human approval:
 
 ### 🛑 CHECKPOINT A — STOP
 - **Prerequisites:** Tasks 1–3 completed and committed.
-- **Evidence Required:** Commit hashes; files changed; exact test commands; test counts (executed/passed/failed/skipped); real concurrency race outcomes and side-effect counts; `pnpm lint`; `pnpm typecheck`; `git diff --check`; `git status --short`; blockers/deviations.
+- **Evidence Required at Checkpoint:**
+  - Task commit hashes and files changed.
+  - Exact test commands executed.
+  - Actual test counts: executed / passed / failed / skipped.
+  - Real concurrency race outcomes: winners, losers (`409 APPROVAL_NOT_PENDING`), and exact terminal side-effect counts (1 terminal outbox, 1 `APPROVAL_COMPLETED` history).
+  - Requirements-review, code-quality, and security review findings & clean re-review results.
+  - `pnpm lint` and `pnpm typecheck` pass.
+  - `git diff --check` and `git status --short` clean.
+  - Blockers and deviations reported.
 - **Handoff:** STOP and wait for explicit human approval before Task 4.
 
 ---
@@ -254,7 +270,15 @@ After this implementation plan receives FINAL human approval:
 
 ### 🛑 CHECKPOINT B — STOP
 - **Prerequisites:** Tasks 4–5 completed and committed.
-- **Evidence Required:** Commit hashes; files changed; exact test commands; test counts; exact outbox/worker/notification dedup evidence; `pnpm lint`; `pnpm typecheck`; `git diff --check`; `git status --short`; blockers/deviations.
+- **Evidence Required at Checkpoint:**
+  - Task commit hashes and files changed.
+  - Exact test commands executed.
+  - Actual test counts: executed / passed / failed / skipped.
+  - Exact outbox/worker/notification dedup evidence and idempotency replay proof.
+  - Requirements-review, code-quality, and security review findings & clean re-review results.
+  - `pnpm lint` and `pnpm typecheck` pass.
+  - `git diff --check` and `git status --short` clean.
+  - Blockers and deviations reported.
 - **Handoff:** STOP and wait for explicit human approval before Task 6.
 
 ---
@@ -342,7 +366,16 @@ After this implementation plan receives FINAL human approval:
 
 ### 🛑 CHECKPOINT C — STOP
 - **Prerequisites:** Tasks 6–8 completed and committed.
-- **Evidence Required:** Commit hashes; files changed; exact test commands; test counts; Dashboard scope + Approval UX evidence; `pnpm lint`; `pnpm typecheck`; `git diff --check`; `git status --short`; blockers/deviations.
+- **Evidence Required at Checkpoint:**
+  - Task commit hashes and files changed.
+  - Exact test commands executed.
+  - Actual test counts: executed / passed / failed / skipped.
+  - Dashboard scope + role drilldown evidence.
+  - Approval UX and conflict handling evidence.
+  - Accessibility review findings (focus trap, Escape listener).
+  - `pnpm lint` and `pnpm typecheck` pass.
+  - `git diff --check` and `git status --short` clean.
+  - Blockers and deviations reported.
 - **Handoff:** STOP and wait for explicit human approval before Task 9.
 
 ---
@@ -400,7 +433,15 @@ After this implementation plan receives FINAL human approval:
 
 ### 🛑 CHECKPOINT D — STOP
 - **Prerequisites:** Tasks 9–10 completed and committed.
-- **Evidence Required:** Commit hashes; files changed; exact test commands; test counts; Comments/Mentions + deep-link/accessibility evidence; `pnpm lint`; `pnpm typecheck`; `git diff --check`; `git status --short`; blockers/deviations.
+- **Evidence Required at Checkpoint:**
+  - Task commit hashes and files changed.
+  - Exact test commands executed.
+  - Actual test counts: executed / passed / failed / skipped.
+  - Comments/Mentions feed and composer evidence.
+  - Deep-link routing and accessibility audit evidence.
+  - `pnpm lint` and `pnpm typecheck` pass.
+  - `git diff --check` and `git status --short` clean.
+  - Blockers and deviations reported.
 - **Handoff:** STOP and wait for explicit human approval before Task 11.
 
 ---
@@ -411,14 +452,17 @@ After this implementation plan receives FINAL human approval:
   - **E2E 2 (Reject & Cancel Lifecycle):** Requester creates approval request -> approver rejects with mandatory reason -> requester views rejection reason in Sent tab -> requester creates second request -> requester cancels request -> status updates to `CANCELLED` and approver receives `APPROVAL_CANCELLED` notification.
   - **E2E 3 (Manager Dashboard & Deduplicated Drilldown):** Two teams managed by same manager with shared member -> requester submits approval to shared member -> Manager Dashboard shows deduplicated `pending_approvals = 1` -> clicking metric drilldowns to `/approvals?view=managed&status=PENDING` displaying exactly 1 item.
   - **E2E 4 (Task Comments & Mention Deep Link):** User creates comment on task with structured mention of another user -> mentioned user receives `COMMENT_MENTIONED` notification -> clicking notification navigates to `/tasks?selected_task_id=:taskId` with comment feed open.
+- **Test Count Policy:**
+  - Planning-time baseline expectation: 19 (15 existing Phase 0–9 scenarios + 4 new Phase 10 scenarios).
+  - Execution acceptance contract: all discovered Phase 0–10 Playwright tests must pass (0 failed, 0 skipped). Actual executed count will be reported dynamically based on real test discovery.
 - **Expected Files:**
   - `apps/web/e2e/flow.spec.ts` (or `apps/web/e2e/phase10-approval-collaboration.spec.ts`)
 - **Execution & Review Discipline:**
   1. **RED:** Write the 4 deterministic E2E scenarios in Playwright test file.
   2. **Minimal Implementation:** Ensure end-to-end wiring across web, API, worker, and database is green.
   3. **Focused GREEN:** Run `pwsh scripts/test-e2e.ps1`.
-  4. **Requirements & Code-Quality Review:** Verify all 4 scenarios pass reliably against disposable container.
-  5. **Regression Verification:** Assert all 15 existing Phase 0–9 Playwright tests continue to pass (19/19 total).
+  4. **Requirements & Code-Quality Review:** Verify all scenarios pass reliably against disposable container.
+  5. **Regression Verification:** Assert all discovered Phase 0–9 Playwright tests continue to pass.
   6. **Fix & Re-review Clean:** Resolve findings.
   7. **Focused Forward Commit:** `test(e2e): cover Phase 10 approvals, comments, mentions, and manager drilldown (Task 11)`
 
@@ -426,7 +470,14 @@ After this implementation plan receives FINAL human approval:
 
 ### 🛑 CHECKPOINT E — STOP
 - **Prerequisites:** Task 11 completed and committed.
-- **Evidence Required:** Commit hashes; files changed; exact test command (`pwsh scripts/test-e2e.ps1`); pass/fail/skip counts (19/19 passing); full real-stack E2E regression evidence; `pnpm lint`; `pnpm typecheck`; `git diff --check`; `git status --short`; blockers/deviations.
+- **Evidence Required at Checkpoint:**
+  - Task commit hashes and files changed.
+  - Exact test command (`pwsh scripts/test-e2e.ps1`).
+  - Actual executed test counts: executed / passed / failed / skipped (all passing, 0 failed, 0 skipped).
+  - Full real-stack E2E regression evidence.
+  - `pnpm lint` and `pnpm typecheck` pass.
+  - `git diff --check` and `git status --short` clean.
+  - Blockers and deviations reported.
 - **Handoff:** STOP and wait for explicit human approval before Task 12.
 
 ---
@@ -435,12 +486,16 @@ After this implementation plan receives FINAL human approval:
 - **Scope:** 
   1. Author `docs/implementation/PHASE_10_REPORT.md` documenting implemented architecture, test counts, and completed scope.
   2. Update `docs/implementation/IMPLEMENTATION_STATUS.md`, `CURRENT_HANDOFF.md`, and `docs/decisions/OPEN_DECISIONS.md`.
-  3. Inspect and synchronize relevant external canonical documentation under `D:\Portofolio\Floz\Documentation`:
-     - `Floz_API_Specification.md`: Document approval requests endpoints (§48–50) and comments/mentions (§51).
-     - `Floz_ERD_Database_Design.md`: Document migration `0007` tables, constraints, and indexes.
-     - External docs remain strictly outside the app git repo; do NOT initialize git there or stage them into the app repo.
+  3. **External Documentation Inspection Matrix:** Under `D:\Portofolio\Floz\Documentation`, inspect canonical documents against implemented Phase 10 behavior:
+     - `Floz_API_Specification.md`: Update approval request endpoints (§48–50), comments/mentions (§51), and error contracts.
+     - `Floz_ERD_Database_Design.md`: Update schema tables, relationships, and indexes for migration `0007`.
+     - `Floz_PRD_Product_Requirements_Document.md`: Inspect against implemented scope; record "inspected — no update required" or apply necessary contract clarifications.
+     - `Floz_Feature_Spec_Backlog.md`: Inspect against implemented scope; record "inspected — no update required" or apply updates.
+     - `Floz_Wireframe_UI_Specification.md`: Inspect UX selected-item and navigation contracts; record "inspected — no update required" or update.
+     - `Floz_Technical_Design_Architecture.md`: Inspect persistence and outbox event topology; record "inspected — no update required" or update.
+     - **Rule:** External docs remain strictly outside the app git repo; do NOT initialize git there or stage/copy them into the app repo.
   4. Run the full canonical Phase 10 verification gate sequence sequentially.
-  5. Prepare the Final Phase 10 Verification Report (do NOT automatically push to origin/main).
+  5. Prepare the **Final Phase 10 Verification Report** (do NOT automatically push to origin/main; publication occurs only after explicit final Phase 10 acceptance).
 - **Expected Files:**
   - `docs/implementation/PHASE_10_REPORT.md`
   - `docs/implementation/IMPLEMENTATION_STATUS.md`
@@ -449,7 +504,7 @@ After this implementation plan receives FINAL human approval:
   - `D:\Portofolio\Floz\Documentation\Technical\Floz_API_Specification.md`
   - `D:\Portofolio\Floz\Documentation\Technical\Floz_ERD_Database_Design.md`
 - **Execution & Review Discipline:**
-  1. **Documentation Drafting:** Draft report, update status and external specifications.
+  1. **Documentation Drafting:** Draft report, update internal status and external specifications.
   2. **Gate Sequence Execution:**
      - `pwsh scripts/test-clean-db.ps1`
      - `pwsh scripts/test-e2e.ps1`
@@ -466,11 +521,12 @@ After this implementation plan receives FINAL human approval:
 
 ### 🛑 CHECKPOINT F — STOP FOR FINAL ACCEPTANCE
 - **Prerequisites:** Task 12 completed and committed. All 8 verification gates exit 0.
-- **Evidence Required:**
+- **Evidence Required at Checkpoint:**
   - Final Phase 10 Verification Report.
-  - Exact test counts from each package.
+  - Exact test counts from each package across consecutive root test runs.
   - Worktree state verification.
-  - External documentation synchronization summary.
+  - External documentation synchronization summary matrix.
+  - `git diff --check` and `git status --short` clean.
 - **Handoff:** STOP. Phase 10 implementation complete. Publication to `origin/main` awaits separate explicit direction.
 
 ---
@@ -491,5 +547,5 @@ After this implementation plan receives FINAL human approval:
 | **Checkpoint B** | Comments & Mentions API, Outbox & Worker Notification handlers | `pnpm --filter @floz/api test` & `pnpm --filter @floz/worker test:integration` |
 | **Checkpoint C** | Manager Dashboard `pending_approvals` metric & Web Approvals Inbox/Detail UX | `pnpm --filter @floz/database test` & `pnpm --filter @floz/web test` |
 | **Checkpoint D** | Web Task Comments/Mentions UX, Notification deep links, Accessibility | `pnpm --filter @floz/web test` |
-| **Checkpoint E** | Playwright Real-Stack E2E (19/19) & Phase 0-9 Regression | `pwsh scripts/test-e2e.ps1` |
+| **Checkpoint E** | Playwright Real-Stack E2E & Phase 0-9 Regression (all pass, 0 fail/skip) | `pwsh scripts/test-e2e.ps1` |
 | **Checkpoint F** | Final Documentation, Full 8-Step Gate Sequence & Verification Report | Full 8-step verification gate sequence |
