@@ -1,6 +1,6 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { AuthService } from './auth';
-import type { CreateApprovalRequestDto, ApprovalQueryDto } from './approval.dto';
+import type { CreateApprovalRequestDto, ApprovalQueryDto, ApproveStepDto, RejectStepDto, CancelApprovalDto } from './approval.dto';
 import type { Sql, TransactionSql } from 'postgres';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -295,6 +295,239 @@ export class ApprovalService {
 
   async detail(workspaceId: string, actorId: string, role: string, approvalRequestId: string) {
     return this.detailTx(this.sql, workspaceId, actorId, role, approvalRequestId);
+  }
+
+  async approve(workspaceId: string, actorId: string, role: string, approvalRequestId: string, stepId: string, input: ApproveStepDto) {
+    if (!uuidPattern.test(approvalRequestId) || !uuidPattern.test(stepId)) throw new BadRequestException('VALIDATION_ERROR');
+
+    const trimmedReason = input.reason?.trim();
+    if (trimmedReason && trimmedReason.length > 500) throw new BadRequestException('VALIDATION_ERROR');
+    const normalizedReason = trimmedReason ? trimmedReason : null;
+
+    return this.authService.database.sql.begin(async (sqlTx: TransactionSql) => {
+      const request = (await sqlTx<{ id: string; status: string; requester_id: string; task_id: string | null }[]>`
+        SELECT id, status, requester_id, task_id
+        FROM approval_requests
+        WHERE id = ${approvalRequestId} AND workspace_id = ${workspaceId}
+        FOR UPDATE
+      `)[0];
+      if (!request) throw new NotFoundException('NOT_FOUND');
+
+      const step = (await sqlTx<{ id: string; status: string; approver_user_id: string }[]>`
+        SELECT id, status, approver_user_id
+        FROM approval_steps
+        WHERE id = ${stepId} AND approval_request_id = ${approvalRequestId} AND workspace_id = ${workspaceId} AND step_order = 1
+        FOR UPDATE
+      `)[0];
+      if (!step) throw new NotFoundException('NOT_FOUND');
+
+      if (request.status !== 'PENDING' || step.status !== 'PENDING') {
+        throw new ConflictException('APPROVAL_NOT_PENDING');
+      }
+
+      const isApprover = step.approver_user_id === actorId;
+      const isAdmin = role === 'ADMIN';
+      if (!isApprover && !isAdmin) throw new ForbiddenException('FORBIDDEN');
+      if (request.requester_id === actorId) throw new UnprocessableEntityException('SELF_APPROVAL_NOT_ALLOWED');
+
+      await sqlTx`
+        UPDATE approval_steps
+        SET status = 'APPROVED', decision = 'APPROVED', decided_by_user_id = ${actorId}, decided_at = NOW(), reason = ${normalizedReason}, updated_at = NOW()
+        WHERE id = ${stepId}
+      `;
+
+      await sqlTx`
+        UPDATE approval_requests
+        SET status = 'APPROVED', completed_at = NOW(), updated_at = NOW()
+        WHERE id = ${approvalRequestId}
+      `;
+
+      const payload = {
+        approval_request_id: approvalRequestId,
+        step_id: stepId,
+        decision: 'APPROVED',
+        requester_id: request.requester_id,
+        decided_by_user_id: actorId,
+        reason: normalizedReason,
+      };
+      await sqlTx`
+        INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload)
+        VALUES(${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.decided', ${JSON.stringify(payload)}::jsonb)
+      `;
+
+      if (request.task_id) {
+        const metadata = {
+          approval_request_id: approvalRequestId,
+          step_id: stepId,
+          status: 'APPROVED',
+          decision: 'APPROVED',
+          assigned_approver_id: step.approver_user_id,
+          actual_actor_user_id: actorId,
+          reason: normalizedReason,
+        };
+        await sqlTx`
+          INSERT INTO task_history(task_id, actor_user_id, event_type, metadata)
+          VALUES(${request.task_id}, ${actorId}, 'APPROVAL_COMPLETED', ${JSON.stringify(metadata)}::jsonb)
+        `;
+      }
+
+      return this.detailTx(sqlTx, workspaceId, actorId, 'ADMIN', approvalRequestId);
+    });
+  }
+
+  async reject(workspaceId: string, actorId: string, role: string, approvalRequestId: string, stepId: string, input: RejectStepDto) {
+    if (!uuidPattern.test(approvalRequestId) || !uuidPattern.test(stepId)) throw new BadRequestException('VALIDATION_ERROR');
+
+    const trimmedReason = input.reason?.trim();
+    if (!trimmedReason || trimmedReason.length < 3 || trimmedReason.length > 500) {
+      throw new BadRequestException('VALIDATION_ERROR');
+    }
+    const normalizedReason = trimmedReason;
+
+    return this.authService.database.sql.begin(async (sqlTx: TransactionSql) => {
+      const request = (await sqlTx<{ id: string; status: string; requester_id: string; task_id: string | null }[]>`
+        SELECT id, status, requester_id, task_id
+        FROM approval_requests
+        WHERE id = ${approvalRequestId} AND workspace_id = ${workspaceId}
+        FOR UPDATE
+      `)[0];
+      if (!request) throw new NotFoundException('NOT_FOUND');
+
+      const step = (await sqlTx<{ id: string; status: string; approver_user_id: string }[]>`
+        SELECT id, status, approver_user_id
+        FROM approval_steps
+        WHERE id = ${stepId} AND approval_request_id = ${approvalRequestId} AND workspace_id = ${workspaceId} AND step_order = 1
+        FOR UPDATE
+      `)[0];
+      if (!step) throw new NotFoundException('NOT_FOUND');
+
+      if (request.status !== 'PENDING' || step.status !== 'PENDING') {
+        throw new ConflictException('APPROVAL_NOT_PENDING');
+      }
+
+      const isApprover = step.approver_user_id === actorId;
+      const isAdmin = role === 'ADMIN';
+      if (!isApprover && !isAdmin) throw new ForbiddenException('FORBIDDEN');
+      if (request.requester_id === actorId) throw new UnprocessableEntityException('SELF_APPROVAL_NOT_ALLOWED');
+
+      await sqlTx`
+        UPDATE approval_steps
+        SET status = 'REJECTED', decision = 'REJECTED', decided_by_user_id = ${actorId}, decided_at = NOW(), reason = ${normalizedReason}, updated_at = NOW()
+        WHERE id = ${stepId}
+      `;
+
+      await sqlTx`
+        UPDATE approval_requests
+        SET status = 'REJECTED', completed_at = NOW(), updated_at = NOW()
+        WHERE id = ${approvalRequestId}
+      `;
+
+      const payload = {
+        approval_request_id: approvalRequestId,
+        step_id: stepId,
+        decision: 'REJECTED',
+        requester_id: request.requester_id,
+        decided_by_user_id: actorId,
+        reason: normalizedReason,
+      };
+      await sqlTx`
+        INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload)
+        VALUES(${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.decided', ${JSON.stringify(payload)}::jsonb)
+      `;
+
+      if (request.task_id) {
+        const metadata = {
+          approval_request_id: approvalRequestId,
+          step_id: stepId,
+          status: 'REJECTED',
+          decision: 'REJECTED',
+          assigned_approver_id: step.approver_user_id,
+          actual_actor_user_id: actorId,
+          reason: normalizedReason,
+        };
+        await sqlTx`
+          INSERT INTO task_history(task_id, actor_user_id, event_type, metadata)
+          VALUES(${request.task_id}, ${actorId}, 'APPROVAL_COMPLETED', ${JSON.stringify(metadata)}::jsonb)
+        `;
+      }
+
+      return this.detailTx(sqlTx, workspaceId, actorId, 'ADMIN', approvalRequestId);
+    });
+  }
+
+  async cancel(workspaceId: string, actorId: string, role: string, approvalRequestId: string, input: CancelApprovalDto) {
+    if (!uuidPattern.test(approvalRequestId)) throw new BadRequestException('VALIDATION_ERROR');
+
+    const trimmedReason = input.reason?.trim();
+    if (trimmedReason && trimmedReason.length > 500) throw new BadRequestException('VALIDATION_ERROR');
+    const normalizedReason = trimmedReason ? trimmedReason : null;
+
+    return this.authService.database.sql.begin(async (sqlTx: TransactionSql) => {
+      const request = (await sqlTx<{ id: string; status: string; requester_id: string; task_id: string | null }[]>`
+        SELECT id, status, requester_id, task_id
+        FROM approval_requests
+        WHERE id = ${approvalRequestId} AND workspace_id = ${workspaceId}
+        FOR UPDATE
+      `)[0];
+      if (!request) throw new NotFoundException('NOT_FOUND');
+
+      const step = (await sqlTx<{ id: string; status: string; approver_user_id: string }[]>`
+        SELECT id, status, approver_user_id
+        FROM approval_steps
+        WHERE approval_request_id = ${approvalRequestId} AND workspace_id = ${workspaceId} AND step_order = 1
+        FOR UPDATE
+      `)[0];
+      if (!step) throw new NotFoundException('NOT_FOUND');
+
+      if (request.status !== 'PENDING' || step.status !== 'PENDING') {
+        throw new ConflictException('APPROVAL_NOT_PENDING');
+      }
+
+      const isRequester = request.requester_id === actorId;
+      const isAdmin = role === 'ADMIN';
+      if (!isRequester && !isAdmin) throw new ForbiddenException('FORBIDDEN');
+
+      await sqlTx`
+        UPDATE approval_steps
+        SET status = 'CANCELLED', decision = NULL, decided_by_user_id = NULL, decided_at = NULL, reason = NULL, updated_at = NOW()
+        WHERE id = ${step.id}
+      `;
+
+      await sqlTx`
+        UPDATE approval_requests
+        SET status = 'CANCELLED', completed_at = NOW(), cancelled_by_user_id = ${actorId}, cancel_reason = ${normalizedReason}, updated_at = NOW()
+        WHERE id = ${approvalRequestId}
+      `;
+
+      const payload = {
+        approval_request_id: approvalRequestId,
+        cancelled_by_user_id: actorId,
+        approver_user_id: step.approver_user_id,
+        cancel_reason: normalizedReason,
+      };
+      await sqlTx`
+        INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload)
+        VALUES(${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.cancelled', ${JSON.stringify(payload)}::jsonb)
+      `;
+
+      if (request.task_id) {
+        const metadata = {
+          approval_request_id: approvalRequestId,
+          step_id: step.id,
+          status: 'CANCELLED',
+          decision: null,
+          assigned_approver_id: step.approver_user_id,
+          actual_actor_user_id: actorId,
+          reason: normalizedReason,
+        };
+        await sqlTx`
+          INSERT INTO task_history(task_id, actor_user_id, event_type, metadata)
+          VALUES(${request.task_id}, ${actorId}, 'APPROVAL_COMPLETED', ${JSON.stringify(metadata)}::jsonb)
+        `;
+      }
+
+      return this.detailTx(sqlTx, workspaceId, actorId, 'ADMIN', approvalRequestId);
+    });
   }
 
   private formatDetail(row: ApprovalRequestDetailRow) {

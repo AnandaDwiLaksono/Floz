@@ -8,7 +8,7 @@ import type { TaskRole } from './task.policy';
 import { RecurrenceService } from './recurrence.service';
 import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto, validateCreateRecurringTask, validateRecurrenceRuleQuery, validateUpdateRecurrenceRule } from './recurrence.dto';
 import { ApprovalService } from './approval.service';
-import type { CreateApprovalRequestDto, ApprovalQueryDto } from './approval.dto';
+import type { CreateApprovalRequestDto, ApprovalQueryDto, ApproveStepDto, RejectStepDto, CancelApprovalDto } from './approval.dto';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
 
@@ -174,6 +174,27 @@ export class FlozController {
   async getApprovalRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') id: string) {
     const ctx = await this.member(req, wid);
     return ok(await this.approvals.detail(wid, ctx.user.id, ctx.membership.role, id));
+  }
+
+  @Post('workspaces/:workspaceId/approval-requests/:approvalRequestId/steps/:stepId/approve')
+  @HttpCode(200)
+  async approveApprovalStep(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @Param('stepId') stepId: string, @Body() body: ApproveStepDto) {
+    const ctx = await this.member(req, wid);
+    return ok(await this.approvals.approve(wid, ctx.user.id, ctx.membership.role, reqId, stepId, body));
+  }
+
+  @Post('workspaces/:workspaceId/approval-requests/:approvalRequestId/steps/:stepId/reject')
+  @HttpCode(200)
+  async rejectApprovalStep(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @Param('stepId') stepId: string, @Body() body: RejectStepDto) {
+    const ctx = await this.member(req, wid);
+    return ok(await this.approvals.reject(wid, ctx.user.id, ctx.membership.role, reqId, stepId, body));
+  }
+
+  @Post('workspaces/:workspaceId/approval-requests/:approvalRequestId/cancel')
+  @HttpCode(200)
+  async cancelApprovalRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @Body() body: CancelApprovalDto) {
+    const ctx = await this.member(req, wid);
+    return ok(await this.approvals.cancel(wid, ctx.user.id, ctx.membership.role, reqId, body));
   }
 
   private reportingScope(query: Record<string, string>, workspaceId: string, timezone: string): ReportingScope { const from = query.from, to = query.to, evaluationAt = this.clock.now(); try { parseReportingInterval({ from, to }); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return { workspaceId, from, to, evaluationAt, timezone }; }
