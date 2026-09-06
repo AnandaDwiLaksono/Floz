@@ -16,22 +16,26 @@ Floz requires the core Approval & Collaboration capability for Gate B (Collabora
   - Canonical state machine (`PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`).
   - Step status domain (`PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`). Cancellation sets step status to `CANCELLED` while keeping decision fields null.
   - Exact `:stepId` resource binding in Approve (`POST .../steps/:stepId/approve`) and Reject (`POST .../steps/:stepId/reject`), locked with `approval_requests`.
-  - Decisions: Approve (optional reason), Reject (mandatory reason), Cancel (requester or ADMIN while pending, optional reason).
+  - Exact cancellation transaction locking `approval_requests` then `approval_steps` (`step_order = 1`) under `FOR UPDATE`.
+  - Decision reason normalization:
+    - Approve: optional, trim, empty -> null, max 500 chars.
+    - Reject: required, trim, 3–500 chars.
+    - Cancel: optional, trim, empty -> null, max 500 chars.
   - Explicit decision/cancellation actor persistence (`decided_by_user_id`, `cancelled_by_user_id`, `cancel_reason`).
   - Complete self-approval prohibition applying to all decision actors (including ADMIN override).
-  - Eligible approver: any ACTIVE same-workspace member (including `FIELD_WORKER`). Target must be active upon creation (`422 INACTIVE_APPROVER`).
+  - Eligible approver: any ACTIVE same-workspace member (including `FIELD_WORKER`). Target must be active upon creation (`422 INACTIVE_APPROVER`). For task-linked requests, approver must possess Task-view authorization (`422 INVALID_APPROVER_TARGET`).
   - Strict read authorization: visibility limited to requester, assigned approver, workspace ADMIN, or authorized MANAGER within managed-team scope.
   - Floz canonical selected-item pattern for detail navigation: `/workspaces/:workspaceId/approvals?selected_approval_request_id=:id`.
   - Stable list pagination across all views (`inbox`, `sent`, `managed`, `all`): ordered strictly by `submitted_at DESC, id DESC` via opaque cursor.
 - **Collaboration Core:** 
-  - Task comments (plain text, trimmed 1–2000 chars, chronological keyset pagination `created_at ASC, id ASC`, soft-delete).
+  - Task comments (plain text, trimmed 1–2000 chars, empty-after-trim rejected, chronological keyset pagination `created_at ASC, id ASC`, soft-delete).
   - Explicit structured mentions (`mentioned_user_ids: string[]`) deduplicated to a unique set and validated against active workspace members authorized to view the task context. Invalid/unauthorized mention targets produce `422 INVALID_MENTION_TARGET`.
   - Response projection includes structured mention chips `mentions: [{ user_id, full_name }]`.
 - **Integration:** 
   - Transactional `outbox_events` for approval and mention notifications (`APPROVAL_REQUESTED`, `APPROVAL_APPROVED`, `APPROVAL_REJECTED`, `APPROVAL_CANCELLED`, `COMMENT_MENTIONED`).
   - Task history integration using canonical repository event vocabulary: `APPROVAL_REQUESTED` and `APPROVAL_COMPLETED` (recording terminal status, decision, approver, and actual actor in metadata).
   - Exact notification deep-links: `/workspaces/${wid}/approvals?selected_approval_request_id=${reqId}` and `/workspaces/${wid}/tasks?selected_task_id=${taskId}`.
-  - Enable live `pending_approvals` count on Manager Dashboard using set semantics (`COUNT(DISTINCT approval_steps.id)`) scoped to authorized teams and pending steps assigned to managed members/manager (`view=managed&status=PENDING`); Member Dashboard contract unchanged.
+  - Enable live `pending_approvals` count on Manager Dashboard using set semantics (`COUNT(DISTINCT approval_steps.id)`) scoped to authorized teams and pending steps assigned to managed members/manager. Role-aligned drilldown: `view=managed` for MANAGER, `view=all` for ADMIN. Member Dashboard contract unchanged.
 - **Web UI:** 
   - Approval views at `/workspaces/:workspaceId/approvals` (`view=inbox|sent|managed|all`).
   - Approval Detail panel/dialog driven by `selected_approval_request_id` with complete audit reconstruction.
@@ -62,21 +66,23 @@ To prevent scope creep, the following are strictly excluded from Phase 10:
     - Locks & validates exact `:stepId` matching `:approvalRequestId` and `workspace_id`.
     - Actor: Assigned `approver_user_id` OR workspace `ADMIN`.
     - Constraint: `actor.id !== approval_requests.requester_id` (No self-approval).
-    - Step update: `status = 'APPROVED'`, `decision = 'APPROVED'`, `decided_by_user_id = actor.id`, `decided_at = NOW()`, `reason = input.reason ?? null`.
+    - Reason Normalization: **OPTIONAL** (trim whitespace; if empty -> `null`; max 500 chars).
+    - Step update: `status = 'APPROVED'`, `decision = 'APPROVED'`, `decided_by_user_id = actor.id`, `decided_at = NOW()`, `reason = normalizedReason`.
     - Request update: `status = 'APPROVED'`, `completed_at = NOW()`.
   - `PENDING` -> `REJECTED`:
     - Endpoint: `POST /approval-requests/:approvalRequestId/steps/:stepId/reject`
     - Locks & validates exact `:stepId` matching `:approvalRequestId` and `workspace_id`.
     - Actor: Assigned `approver_user_id` OR workspace `ADMIN`.
     - Constraint: `actor.id !== approval_requests.requester_id` (No self-approval).
-    - Reason: **REQUIRED** (non-empty string, 3–500 chars after trim).
-    - Step update: `status = 'REJECTED'`, `decision = 'REJECTED'`, `decided_by_user_id = actor.id`, `decided_at = NOW()`, `reason = input.reason`.
+    - Reason Normalization: **REQUIRED** (trim whitespace; 3–500 chars after trim).
+    - Step update: `status = 'REJECTED'`, `decision = 'REJECTED'`, `decided_by_user_id = actor.id`, `decided_at = NOW()`, `reason = normalizedReason`.
     - Request update: `status = 'REJECTED'`, `completed_at = NOW()`.
   - `PENDING` -> `CANCELLED`:
     - Endpoint: `POST /approval-requests/:approvalRequestId/cancel`
+    - Locks `approval_requests` then `approval_steps` (`step_order = 1`) under `FOR UPDATE`.
     - Actor: `approval_requests.requester_id` OR workspace `ADMIN`.
-    - Cancel Reason: **OPTIONAL** (string up to 500 chars after trim).
-    - Request update: `status = 'CANCELLED'`, `completed_at = NOW()`, `cancelled_by_user_id = actor.id`, `cancel_reason = input.reason ?? null`.
+    - Cancel Reason Normalization: **OPTIONAL** (trim whitespace; if empty -> `null`; max 500 chars).
+    - Request update: `status = 'CANCELLED'`, `completed_at = NOW()`, `cancelled_by_user_id = actor.id`, `cancel_reason = normalizedReason`.
     - Step update: `status = 'CANCELLED'`, `decision = null`, `decided_by_user_id = null`, `decided_at = null`, `reason = null`.
 - **Terminal Behavior:** `APPROVED`, `REJECTED`, and `CANCELLED` are immutable terminal states. Any mutation attempt on non-pending approvals throws `409 APPROVAL_NOT_PENDING`.
 
@@ -89,6 +95,7 @@ To prevent scope creep, the following are strictly excluded from Phase 10:
     - Requester, approver, and all mention targets must possess `ACTIVE` workspace membership in `workspaceId`.
 - **Task-Linked Access Enforcement:**
   - For task-linked requests (`task_id != null`), `requester` and `assigned approver` MUST pass canonical Task-view authorization (membership + team scope check).
+  - If the selected approver lacks Task-view access, request creation is rejected with `422 INVALID_APPROVER_TARGET`.
   - Approval API will not return or leak linked Task details to an actor who cannot view the underlying Task.
   - Workspace `ADMIN` override operates under ADMIN workspace authorization.
 - **Approval Read Authorization (List & Detail):**
@@ -99,7 +106,7 @@ To prevent scope creep, the following are strictly excluded from Phase 10:
     4. `MANAGER` when the approval falls inside their canonical managed-team reporting scope.
   - Unrelated active members cannot list or read approval details (`403 FORBIDDEN`).
 - **Create Approval Request:** Any ACTIVE workspace member (ADMIN, MANAGER, MEMBER, FIELD_WORKER).
-- **Eligible Approver:** Any ACTIVE workspace member (including `FIELD_WORKER`). Role does not grant approval authority; explicit assignment in the step does. Target approver must be active when the request is created (`422 INACTIVE_APPROVER`). Self-approval is forbidden (`requester_id !== approver_user_id`).
+- **Eligible Approver:** Any ACTIVE workspace member (including `FIELD_WORKER`). Role does not grant approval authority; explicit assignment in the step does. Target approver must be active when the request is created (`422 INACTIVE_APPROVER`). Self-approval is forbidden (`requester_id !== approver_user_id`, throws `422 SELF_APPROVAL_NOT_ALLOWED`).
 - **Decide Approval (Approve/Reject):** Assigned `approver_user_id` OR active workspace `ADMIN`.
   - If assigned approver's membership is suspended or deactivated at decision time, they cannot decide and receive `403 FORBIDDEN` under standard workspace authorization.
   - Workspace `ADMIN` override may decide or cancel while `PENDING` without requiring the original assigned approver to still be active.
@@ -110,7 +117,7 @@ To prevent scope creep, the following are strictly excluded from Phase 10:
 - **Comment Deletion:** Comment author OR workspace `ADMIN`.
 
 ## 8. Concurrency, Transaction Semantics & Idempotency
-- **Canonical Pessimistic Lock Order for Decision Endpoints:**
+- **Canonical Pessimistic Lock Order for Decision Endpoints (`/steps/:stepId/approve`, `/steps/:stepId/reject`):**
   1. `BEGIN` transaction.
   2. `SELECT * FROM approval_requests WHERE id = :approvalRequestId AND workspace_id = :workspaceId FOR UPDATE`
   3. `SELECT * FROM approval_steps WHERE id = :stepId AND approval_request_id = :approvalRequestId AND workspace_id = :workspaceId AND step_order = 1 FOR UPDATE`
@@ -123,17 +130,32 @@ To prevent scope creep, the following are strictly excluded from Phase 10:
   10. Insert `outbox_events` row (transactional notification handoff).
   11. If `task_id` is present, insert `task_history` entry (`APPROVAL_COMPLETED` with outcome metadata).
   12. `COMMIT` transaction.
+
+- **Canonical Pessimistic Lock Order for Cancellation Endpoint (`/cancel`):**
+  1. `BEGIN` transaction.
+  2. `SELECT * FROM approval_requests WHERE id = :approvalRequestId AND workspace_id = :workspaceId FOR UPDATE`
+  3. `SELECT * FROM approval_steps WHERE approval_request_id = :approvalRequestId AND workspace_id = :workspaceId AND step_order = 1 FOR UPDATE`
+  4. Verify both records exist. Throw `404 NOT_FOUND` if missing.
+  5. Validate `approval_requests.status === 'PENDING'` AND `approval_steps.status === 'PENDING'`. If not, throw `409 APPROVAL_NOT_PENDING` with `{ current_status: request.status }`.
+  6. Validate cancellation permission (actor must be requester or workspace ADMIN; throw `403 FORBIDDEN` if not).
+  7. Update `approval_steps` row (`status = 'CANCELLED'`, `decision = null`, `decided_by_user_id = null`, `decided_at = null`, `reason = null`).
+  8. Update `approval_requests` row (`status = 'CANCELLED'`, `completed_at = NOW()`, `cancelled_by_user_id = actor.id`, `cancel_reason = normalizedReason`).
+  9. Insert `APPROVAL_CANCELLED` outbox event.
+  10. If `task_id` is present, insert `task_history` entry (`APPROVAL_COMPLETED` with `status: 'CANCELLED'`, `actual_actor_user_id: actor.id`, `reason: normalizedReason`).
+  11. `COMMIT` transaction.
+
 - **Atomic Creation Transactions:**
   - **Approval Request Creation (`POST /approval-requests`):**
     ```text
     BEGIN
     validate requester has ACTIVE membership in workspace
+    validate approver belongs to same workspace (throw 422 CROSS_WORKSPACE_REFERENCE)
     validate approver has ACTIVE membership in workspace (throw 422 INACTIVE_APPROVER if inactive)
     validate self-approval prohibition: approver_user_id != requester.id (throw 422 SELF_APPROVAL_NOT_ALLOWED)
     if task_id != null:
       validate task exists and task.workspace_id == workspaceId (throw 422 CROSS_WORKSPACE_REFERENCE)
       validate requester has Task-view access (throw 403 FORBIDDEN)
-      validate approver has Task-view access (throw 422 INVALID_MENTION_TARGET)
+      validate approver has Task-view access (throw 422 INVALID_APPROVER_TARGET)
     INSERT INTO approval_requests (...) RETURNING id
     INSERT INTO approval_steps (approval_request_id, step_order = 1, approver_user_id, status = 'PENDING') RETURNING id
     INSERT INTO outbox_events (aggregate_type = 'approval_request', event_type = 'approval.requested', payload = {...})
@@ -158,10 +180,11 @@ To prevent scope creep, the following are strictly excluded from Phase 10:
         INSERT INTO outbox_events (aggregate_type = 'comment', event_type = 'comment.mentioned', payload = { comment_id, task_id, mentioned_user_id })
     COMMIT
     ```
+
 - **Idempotency & Retry Policy:**
   - Generic `Idempotency-Key` table persistence = **DEFERRED**.
   - **Create Approval & Create Comment:** Atomic single-submit transactions. Web UI disables submission buttons during flight. Callers must not blindly retry ambiguous network failures.
-  - **Approve / Reject / Cancel:** Fully race-safe via `FOR UPDATE` lock and terminal state recheck. First valid terminal mutation commits. Racing or duplicate retry submissions safely return `409 APPROVAL_NOT_PENDING` without creating duplicate outbox events or history entries.
+  - **Approve / Reject / Cancel:** Fully race-safe via `FOR UPDATE` lock and terminal state recheck. First valid terminal mutation commits. Racing or duplicate retry submissions safely return `409 APPROVAL_NOT_PENDING` without creating duplicate outbox events or history entries. Concurrency races (Approve vs Reject, Approve vs Cancel, Reject vs Cancel, Cancel vs Cancel) guarantee exactly one terminal mutation wins.
 
 ## 9. Database Design
 **Migration required:** Yes (one versioned migration).
@@ -236,7 +259,9 @@ Canonical REST API surface matching specification:
 
 - **`POST /api/v1/workspaces/:workspaceId/approval-requests`**
   - Body: `{ "title": string, "description"?: string, "task_id"?: string, "approver_user_id": string }`
-  - Validates `approver_user_id !== actor.id` and active workspace memberships (`422 INACTIVE_APPROVER` if inactive). If `task_id` is present, validates Task-view authorization for both requester and approver. Creates request and single step (`step_order = 1`).
+  - Validates `approver_user_id !== actor.id` (`422 SELF_APPROVAL_NOT_ALLOWED`) and target active workspace membership (`422 INACTIVE_APPROVER`).
+  - If `task_id` is present, validates Task exists (`422 CROSS_WORKSPACE_REFERENCE`), requester Task-view authorization (`403 FORBIDDEN`), and approver Task-view authorization (`422 INVALID_APPROVER_TARGET`).
+  - Creates request and single step (`step_order = 1`).
   - Response: `201 Created` with full Approval Request & step projection.
 
 - **`GET /api/v1/workspaces/:workspaceId/approval-requests`**
@@ -255,18 +280,22 @@ Canonical REST API surface matching specification:
 
 - **`POST /api/v1/workspaces/:workspaceId/approval-requests/:approvalRequestId/steps/:stepId/approve`**
   - Body: `{ "reason"?: string }`
+  - Normalization: trim whitespace; if empty -> `null`; max 500 chars.
   - Locks and validates exact `:stepId` for `:approvalRequestId`.
   - Validates actor is assigned approver or ADMIN, and `actor.id !== requester_id`.
   - Response: `200 OK` with updated request and step.
 
 - **`POST /api/v1/workspaces/:workspaceId/approval-requests/:approvalRequestId/steps/:stepId/reject`**
-  - Body: `{ "reason": string }` (Reason mandatory, 3–500 chars after trim).
+  - Body: `{ "reason": string }`
+  - Normalization: trim whitespace; mandatory 3–500 chars after trim.
   - Locks and validates exact `:stepId` for `:approvalRequestId`.
   - Validates actor is assigned approver or ADMIN, and `actor.id !== requester_id`.
   - Response: `200 OK` with updated request and step.
 
 - **`POST /api/v1/workspaces/:workspaceId/approval-requests/:approvalRequestId/cancel`**
   - Body: `{ "reason"?: string }`
+  - Normalization: trim whitespace; if empty -> `null`; max 500 chars.
+  - Locks `approval_requests` and `approval_steps` (`step_order = 1`) under `FOR UPDATE`.
   - Validates actor is requester or ADMIN, and request is `PENDING`. Sets request and step status to `CANCELLED`.
   - Response: `200 OK` with updated request and step.
 
@@ -301,7 +330,7 @@ Reuses Phase 7 transactional `outbox_events` and worker BullMQ dispatcher:
 
 ## 12. Comments / Mentions Design
 - **Comment Content Normalization:** Trimmed leading/trailing whitespace. 1 to 2000 characters. Internal spaces and newlines preserved. Standard React HTML escaping on web UI.
-- **Mentions:** Explicit array `mentioned_user_ids: string[]`. Server deduplicates array to a set, then validates each target against active workspace membership and Task-view authorization. Stored in `mentions` table. API returns `mentions: [{ user_id, full_name }]`.
+- **Mentions:** Explicit array `mentioned_user_ids: string[]`. Server deduplicates array to a set, then validates each target against active workspace membership and Task-view authorization (`422 INVALID_MENTION_TARGET`). Stored in `mentions` table. API returns `mentions: [{ user_id, full_name }]`.
 - **Deletion:** Soft delete sets `deleted_at = NOW()`. Soft-deleted rows excluded from comment list. DB row and mention rows retained as tombstone/audit state. Existing notifications not retracted; deletion emits no new notification.
 
 ## 13. Dashboard Integration
@@ -309,7 +338,9 @@ Phase 8 reporting queries are updated to compute live `pending_approvals`:
 - **Manager Dashboard (`getManagerDashboard`):**
   - Uses set semantics: `COUNT(DISTINCT approval_steps.id)` where step is `PENDING`, matching the manager's authorized team scope or assigned directly to the manager.
   - For workspace `ADMIN`, counts all workspace `PENDING` steps.
-  - Drilldown URL: `/workspaces/:workspaceId/approvals?view=managed&status=PENDING` (appends `&team_id=...` if team filter active on dashboard).
+  - Role-aligned Drilldown URLs:
+    - **MANAGER:** `/workspaces/:workspaceId/approvals?view=managed&status=PENDING` (appends `&team_id=:teamId` if team filtered).
+    - **ADMIN:** `/workspaces/:workspaceId/approvals?view=all&status=PENDING` (appends `&team_id=:teamId` if team filtered).
 - **Member Dashboard (`getMemberDashboard`):**
   - Contract preserved from Phase 8. No pending approval metric added to Member Dashboard.
 
@@ -326,13 +357,14 @@ Phase 8 reporting queries are updated to compute live `pending_approvals`:
   - Chronological list (`created_at ASC, id ASC`) with author, timestamp, body, mention chips, and soft-delete button for author/ADMIN.
 
 ## 15. Error Contracts
-- `400 VALIDATION_ERROR`: Missing title, blank rejection reason, empty content after trim, malformed UUID, invalid cursor.
+- `400 VALIDATION_ERROR`: Missing title, blank rejection reason, rejection reason shorter than 3 chars, empty content after trim, malformed UUID, invalid cursor.
 - `401 UNAUTHENTICATED`: Missing or invalid session.
 - `403 FORBIDDEN`: Non-approver attempting decision, non-admin attempting admin override, suspended/inactive approver attempting decision, unauthorized approval detail read, unauthorized team scope, non-author attempting comment deletion, `ACCOUNT_INACTIVE`.
 - `404 NOT_FOUND`: Resource missing, or `:stepId` does not belong to `:approvalRequestId`.
 - `409 APPROVAL_NOT_PENDING`: Decision or cancellation attempted on non-pending approval.
 - `422 CROSS_WORKSPACE_REFERENCE`: Referenced task, approver, or mentioned user belongs to another workspace.
 - `422 INACTIVE_APPROVER`: Target approver selected during approval request creation is deactivated or suspended.
+- `422 INVALID_APPROVER_TARGET`: Selected approver is active in workspace but lacks canonical Task-view authorization for the linked Task.
 - `422 INVALID_MENTION_TARGET`: Mentioned user lacks active membership or is not authorized to view the Task context.
 - `422 SELF_APPROVAL_NOT_ALLOWED`: Requester attempting to approve or reject their own request (including ADMIN requester).
 
@@ -342,7 +374,7 @@ Phase 8 reporting queries are updated to compute live `pending_approvals`:
 - **Approval Read Authorization:** Enforced on both list views and direct detail GET endpoints.
 - **Self-Approval Loophole Closed:** Enforced for all decision actors (`decision_actor_user_id !== requester_id`).
 - **Double Decisions:** Prevented via `SELECT ... FOR UPDATE` row locks.
-- **XSS & Mention Spoofing:** Plain text escaping; server-side active task-authorized user validation for mentions (`422 INVALID_MENTION_TARGET`).
+- **XSS & Mention Spoofing:** Plain text escaping; server-side active task-authorized user validation for mentions (`422 INVALID_MENTION_TARGET`) and task-linked approvers (`422 INVALID_APPROVER_TARGET`).
 
 ## 17. Accessibility
 - Approval decision confirmation dialogs feature focus trapping and Escape-to-close.
@@ -352,16 +384,19 @@ Phase 8 reporting queries are updated to compute live `pending_approvals`:
 ## 18. Testing Strategy
 - **Unit & Integration Tests:**
   - State machine transitions (including cancel setting step status to `CANCELLED` with null decision fields).
-  - Concurrency lock tests: simultaneous `Approve` vs `Reject` and `Approve` vs `Cancel` asserting one success and one `409 APPROVAL_NOT_PENDING`.
+  - Concurrency lock tests: simultaneous `Approve` vs `Reject`, `Approve` vs `Cancel`, `Reject` vs `Cancel`, and `Cancel` vs `Cancel` asserting exactly one terminal mutation wins and racing losers receive `409 APPROVAL_NOT_PENDING`.
   - Resource binding test: mismatched `:stepId` and `:approvalRequestId` returns `404 NOT_FOUND`.
   - Self-approval prohibition tests for standard members and ADMIN override (`422 SELF_APPROVAL_NOT_ALLOWED`).
   - Target approver inactive at creation returns `422 INACTIVE_APPROVER`.
+  - Target approver active but lacking Task-view authorization on linked Task returns `422 INVALID_APPROVER_TARGET`.
   - Suspended approver attempting decision returns `403 FORBIDDEN`; workspace ADMIN override succeeds.
   - Read authorization tests: unauthorized approval detail read attempt returns `403 FORBIDDEN`.
   - Task-linked approval authorization tests for requester and approver.
   - Comment normalization, mention deduplication (asserting zero duplicate mention rows and notifications), and invalid mention target test (`422 INVALID_MENTION_TARGET`).
+  - Reason normalization tests for approve (optional, trim), reject (mandatory, 3-500 trim), and cancel (optional, trim).
   - Keyset pagination stability test for equal timestamps (`submitted_at DESC, id DESC`).
   - Manager `view=managed` and dashboard deduplication test: member in two managed teams counted exactly once.
+  - Role-aligned drilldown URL test: `view=managed` for MANAGER, `view=all` for ADMIN.
   - Repeated comment DELETE test (idempotent `204`).
 - **Worker & Outbox Integration:**
   - Assert outbox event generation and worker delivery to in-app `notifications` with exact deep links.
@@ -385,22 +420,24 @@ Phase 8 reporting queries are updated to compute live `pending_approvals`:
 | **API Path** | `/workspaces/:wid/approval-requests` | Matches canonical API specification (§48-50) | `/approvals` | Fully consistent |
 | **Approval Scope** | Independent workspace entity with optional Task link | Supports operational approvals and task sign-offs | Task-only approvals | Workflow attachments |
 | **Approver Steps** | Single-step MVP via `approval_requests` + `approval_steps` | Minimal complexity; prevents future schema breaking changes | Multi-step sequential rules | Phase 11 multi-step ready |
-| **Step Locking** | Bind `:stepId` directly in query under `FOR UPDATE` | Prevents foreign step mutations; validates path contract | Ignore stepId in query | Multi-step locking |
+| **Step Locking** | Bind `:stepId` directly in decision query under `FOR UPDATE` | Prevents foreign step mutations; validates path contract | Ignore stepId in query | Multi-step locking |
+| **Cancel Locking** | Lock `approval_requests` then `approval_steps(step_order=1)` FOR UPDATE | Consistent lock ordering; prevents cancel/decision race | Lock request only | Multi-step cancellation |
 | **Cancellation Step State** | `approval_steps.status = CANCELLED`, decision fields `null` | Cancellation is distinct from rejection; preserves clean step state | `REJECTED` or preserved pending | Multi-step cancel semantics |
 | **Approval Read Policy** | Restricted to Requester, Approver, ADMIN, or authorized MANAGER | Prevents unauthorized member enumeration/snooping | Public workspace read | Role-based ACLs |
 | **Detail Navigation** | Selected-item pattern (`?selected_approval_request_id=`) | Matches canonical Floz URL/state architecture | Dedicated routes / Modals | Deep-linkable UI |
 | **Eligible Approver** | Any ACTIVE workspace member (including `FIELD_WORKER`) | Assignment grants authority; allows field verification sign-offs | Role-restricted approvers | Configurable per workflow |
+| **Approver Validation Errors** | Inactive: `422 INACTIVE_APPROVER`; No Task Access: `422 INVALID_APPROVER_TARGET` | Precise domain errors; avoids reusing comment mention error | Reusing `INVALID_MENTION_TARGET` | Granular policy errors |
 | **Self-Approval** | FORBIDDEN for all actors (`decision_actor !== requester`) | Closes ADMIN loophole; separation of duties | Allow ADMIN self-approval | Admin override setting |
-| **Inactive Approver** | Creation: `422 INACTIVE_APPROVER`; Decision: `403 FORBIDDEN` | Clear separation between validation error and auth failure | 403 on create / 422 on auth | Granular member states |
+| **Inactive Approver Decision** | Suspended/inactive approver attempting decision: `403 FORBIDDEN` | Clear separation between validation error and auth failure | 422 on decision | Granular member states |
 | **Decision Actor Audit** | Persist `decided_by_user_id` and `cancelled_by_user_id` | Audit clarity for normal decisions vs ADMIN overrides | Overwrite `approver_user_id` | Full audit log entity |
-| **Rejection Reason** | REQUIRED (3–500 chars) | Constructive feedback mandatory for rejections | Optional rejection reason | Configurable rules |
+| **Reason Normalization** | Approve: opt, trim, max 500; Reject: req, trim, 3–500; Cancel: opt, trim, max 500 | Deterministic string sanitization | Unvalidated free text | Configurable lengths |
 | **Cancellation** | Requester or ADMIN while `PENDING` | Prevents stale/orphaned approval requests | Approver cancellation | Reason tracking |
 | **Task Status Sync** | No automatic task status change | Decouples approval state machine from workflow rules | Auto-advance task | Workflow triggers in Phase 11 |
 | **Task History Events** | `APPROVAL_REQUESTED` and `APPROVAL_COMPLETED` with metadata | Matches external ERD and repository conventions | `APPROVAL_DECIDED` / `CANCELLED` | Full lifecycle audit |
 | **Comment Deletion** | Soft-delete (`deleted_at`); Author or ADMIN; Idempotent `204` | Preserves tombstone; simple and safe; idempotent API | Hard delete / In-place edit | Comment edit history |
 | **Mentions** | Deduplicated array; `422 INVALID_MENTION_TARGET` for ineligible | Deterministic, secure, zero duplicate notifications | Regex parser on server | Interactive token editor |
 | **Pagination Order** | Strict `submitted_at DESC, id DESC` via opaque cursor | Guarantees stable ordering across all views | Arbitrary sort / offset | Standard Floz keyset |
-| **Dashboard Metric** | Live `pending_approvals` via set semantics (`COUNT(DISTINCT)`) | Deduplicates multi-team members; Member Dashboard unchanged | Duplicated counts / dummy zero | Custom KPI drilldowns |
+| **Dashboard Metric & Drilldown** | Live `pending_approvals` via set semantics; MANAGER `view=managed`, ADMIN `view=all` | Role-aligned drilldown; deduplicates multi-team members | Mismatched drilldowns | Custom KPI drilldowns |
 | **Deep-Links** | `selected_approval_request_id=` and `selected_task_id=` | Matches canonical Floz URL parameters | Stale `?id=` or `selectedTask=` | Unified URL router |
 | **Same-Workspace Enforcement** | Service-level transactional validation before mutation | Simple FKs only guarantee row existence, not same workspace | Simple DB FKs alone | Tenant-scoped DB schemas |
 | **Idempotency Policy** | Generic `Idempotency-Key` DEFERRED; decision endpoints race-safe via `FOR UPDATE` | High concurrency safety without unnecessary storage overhead | Generic idempotency table | API-wide idempotency |
@@ -414,23 +451,23 @@ Phase 8 reporting queries are updated to compute live `pending_approvals`:
 
 ## 23. Proposed Phase Boundaries
 1. Database migration & Drizzle schema.
-2. Approval Request & Steps backend API with pessimistic locking, exact stepId binding, and read policies.
+2. Approval Request & Steps backend API with pessimistic locking, exact stepId binding, exact cancel locking, and read policies.
 3. Comments & Mentions backend API with validation, normalization, and mention deduplication.
 4. Outbox events & worker notification handlers with canonical deep-links.
-5. Manager Dashboard pending approvals query integration with set semantics.
+5. Manager Dashboard pending approvals query integration with set semantics and role-aligned drilldowns.
 6. Web UI (Approvals Inbox/Sent/Managed/All views, selected-item detail panel, Task Comments & Mentions) and Playwright E2E verification.
 
 ## 24. Acceptance Criteria
 - Active workspace members can create approval requests (standalone or task-linked).
-- Creation validates target approver is active (`422 INACTIVE_APPROVER`) and forbids self-approval (`422 SELF_APPROVAL_NOT_ALLOWED`).
+- Creation validates target approver is active (`422 INACTIVE_APPROVER`), possesses Task access if task-linked (`422 INVALID_APPROVER_TARGET`), and forbids self-approval (`422 SELF_APPROVAL_NOT_ALLOWED`).
 - Decision endpoints validate exact `:stepId` bound to `:approvalRequestId` under `FOR UPDATE`.
-- Assigned approvers can approve (optional reason) or reject (mandatory reason).
-- Cancellation sets request and step status to `CANCELLED` with null decision fields and records `cancelled_by_user_id`.
+- Cancellation locks request then step (`step_order = 1`) under `FOR UPDATE`, sets status to `CANCELLED` with null decision fields, and records `cancelled_by_user_id` and normalized reason.
+- Reason normalization enforced: approve (optional, max 500), reject (mandatory, 3–500), cancel (optional, max 500).
 - Read authorization restricts approval list/detail visibility to requester, approver, workspace ADMIN, or authorized MANAGER.
 - Concurrency conflicts return `409 APPROVAL_NOT_PENDING` without inconsistent side effects.
 - Self-approval is rejected with `422 SELF_APPROVAL_NOT_ALLOWED` for all actors.
 - Task comments and mentions persist, paginate chronologically, normalize input, deduplicate mention IDs, validate mention target access (`422 INVALID_MENTION_TARGET`), and support idempotent soft deletion.
 - Task history logs `APPROVAL_REQUESTED` and `APPROVAL_COMPLETED` with full audit metadata.
 - In-app notifications are reliably delivered via outbox worker using exact canonical deep links (`selected_approval_request_id` and `selected_task_id`).
-- Manager Dashboard correctly displays deduplicated pending approval count for `view=managed&status=PENDING` and supports drilldown navigation.
+- Manager Dashboard correctly displays deduplicated pending approval count and supports role-aligned drilldown navigation (`view=managed` for MANAGER, `view=all` for ADMIN).
 - All existing Phase 0–9 regression tests and new real-stack E2E tests pass.
