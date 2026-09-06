@@ -15,3 +15,7 @@
 - Open (Phase 8 follow-up): Historical KPI snapshots and audit analytics if immutable past-period reporting becomes required.
 - Open (Phase 8 follow-up): Business-hours/paused-time completion metrics and configurable Upcoming horizons.
 - Open: Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported in projection.
+- Resolved (Phase 9): Account provisioning is ADMIN-only with one-time temporary credentials; Better Auth `autoSignIn` is disabled, provisioning creates no membership/session, and no public self-registration exists.
+- Resolved (Phase 9): Last-active-admin (`409 LAST_ACTIVE_ADMIN`) and active-team-manager (`409 ACTIVE_TEAM_MANAGER`) mutations are rejected under a workspace-row `SELECT ... FOR UPDATE` lock plus an explicit workspace lock, so concurrent demotions cannot both succeed.
+- Resolved (Phase 9): Team archive/restore uses `is_active`; restore with an invalid retained manager is rejected (`409 INVALID_MANAGER`), archived teams reject member-add (`409 TEAM_ARCHIVED`), and clearing the manager is an explicit `manager_user_id: null`.
+- Open (Phase 9 follow-up): Several admin dialogs (members, teams, add-member) still lack Escape-to-close/focus-trap handling, and skip-link support remains future accessibility hardening (pre-existing, not a Phase 9 regression).
