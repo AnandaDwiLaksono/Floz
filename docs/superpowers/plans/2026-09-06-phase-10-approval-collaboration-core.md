@@ -1,6 +1,6 @@
 # Phase 10: Approval & Collaboration Core Implementation Plan
 
-**Status**: DRAFT IMPLEMENTATION PLAN / AWAITING APPROVAL  
+**Status**: FINAL IMPLEMENTATION PLAN / APPROVED FOR EXECUTION  
 **Design Reference**: `docs/superpowers/specs/2026-09-06-phase-10-approval-collaboration-core-design.md` (FINAL DESIGN / APPROVED FOR IMPLEMENTATION PLANNING)
 
 ---
@@ -125,6 +125,15 @@ After this implementation plan receives explicit FINAL human approval:
 ---
 
 ## 8. Detailed Task Breakdown & Checkpoints
+
+> **Global Checkpoint Reporting Rule:**
+> Every Checkpoint A–F must report, where applicable:
+> - Requirements-review findings
+> - Code-quality review findings
+> - Security/authorization/concurrency findings
+> - Accessibility findings for web tasks
+> - Fixes applied
+> - Clean re-review result
 
 ### Task 1: Database Schema, Migration & Constraints
 - **Scope:** Define Drizzle ORM schema for `approval_requests`, `approval_steps`, `comments`, and `mentions`. Generate migration `database/drizzle/0007_phase10_approval_collaboration.sql`.
