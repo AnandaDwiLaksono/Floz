@@ -1,6 +1,6 @@
 # Phase 10: Approval & Collaboration Core Design
 
-**Status**: DRAFT DESIGN / AWAITING APPROVAL
+**Status**: FINAL DESIGN / APPROVED FOR IMPLEMENTATION PLANNING
 
 ## 1. Current State Reconstructed
 Phase 9 is complete, accepted, and frozen (master HEAD: `f4f2076`). The core platform provides workspace isolation, tasks, Kanban, Calendar, Recurrence, Notifications, Dashboards, and comprehensive Administration. Approval and collaboration functions are entirely absent. The database contains zero tables for approvals, comments, or mentions. The `outbox_events` and worker BullMQ infrastructure successfully process async transactional events for recurrence and notifications. The Phase 8 Dashboard API exists, but `pending_approvals` metrics were deferred pending this domain design.
