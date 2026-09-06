@@ -9,7 +9,7 @@ Phase 9 is complete, accepted, and frozen (master HEAD: `f4f2076`). The core pla
 Floz requires the core Approval & Collaboration capability for Gate B (Collaborative Pilot). Teams must be able to request formal approvals (optionally linked to tasks), make binding approval/rejection/cancellation decisions safely under high-concurrency races, converse via chronological task comments with soft deletion, and alert colleagues using structured mentions. The design must integrate with the existing in-app notification outbox engine and manager dashboard projections without leaking scope into workflow builders or rich-text editors.
 
 ## 3. Proposed Phase 10 Scope
-- **Approval Core:** 
+- **Approval Core:**
   - Independent entity with optional Task reference (`task_id`).
   - Single-step approver MVP using future-compatible `approval_requests` + `approval_steps` schema.
   - Canonical API resource `/api/v1/workspaces/:workspaceId/approval-requests`.
@@ -27,16 +27,16 @@ Floz requires the core Approval & Collaboration capability for Gate B (Collabora
   - Strict read authorization: visibility limited to requester, assigned approver, workspace ADMIN, or authorized MANAGER within managed-team scope.
   - Floz canonical selected-item pattern for detail navigation: `/workspaces/:workspaceId/approvals?selected_approval_request_id=:id`.
   - Stable list pagination across all views (`inbox`, `sent`, `managed`, `all`): ordered strictly by `submitted_at DESC, id DESC` via opaque cursor.
-- **Collaboration Core:** 
+- **Collaboration Core:**
   - Task comments (plain text, trimmed 1–2000 chars, empty-after-trim rejected, chronological keyset pagination `created_at ASC, id ASC`, soft-delete).
   - Explicit structured mentions (`mentioned_user_ids: string[]`) deduplicated to a unique set and validated against active workspace members authorized to view the task context. Invalid/unauthorized mention targets produce `422 INVALID_MENTION_TARGET`.
   - Response projection includes structured mention chips `mentions: [{ user_id, full_name }]`.
-- **Integration:** 
+- **Integration:**
   - Transactional `outbox_events` for approval and mention notifications (`APPROVAL_REQUESTED`, `APPROVAL_APPROVED`, `APPROVAL_REJECTED`, `APPROVAL_CANCELLED`, `COMMENT_MENTIONED`).
   - Task history integration using canonical repository event vocabulary: `APPROVAL_REQUESTED` and `APPROVAL_COMPLETED` (recording terminal status, decision, approver, and actual actor in metadata).
   - Exact notification deep-links: `/workspaces/${wid}/approvals?selected_approval_request_id=${reqId}` and `/workspaces/${wid}/tasks?selected_task_id=${taskId}`.
   - Enable live `pending_approvals` count on Manager Dashboard using set semantics (`COUNT(DISTINCT approval_steps.id)`) scoped to authorized teams and pending steps assigned to managed members/manager. Role-aligned drilldown: `view=managed` for MANAGER, `view=all` for ADMIN. Member Dashboard contract unchanged.
-- **Web UI:** 
+- **Web UI:**
   - Approval views at `/workspaces/:workspaceId/approvals` (`view=inbox|sent|managed|all`).
   - Approval Detail panel/dialog driven by `selected_approval_request_id` with complete audit reconstruction.
   - Task Detail Comments section with structured mention chips and idempotent soft delete action.
@@ -265,7 +265,7 @@ Canonical REST API surface matching specification:
   - Response: `201 Created` with full Approval Request & step projection.
 
 - **`GET /api/v1/workspaces/:workspaceId/approval-requests`**
-  - Query: 
+  - Query:
     - `view`: `inbox` (assigned to user), `sent` (created by user), `managed` (MANAGER only; approvals assigned to managed team members/manager), `all` (ADMIN only; workspace-wide). Default `inbox`.
     - `status`: `PENDING` | `APPROVED` | `REJECTED` | `CANCELLED`.
     - `team_id`: optional team scope for `managed` or `all` views (validates Phase 8 manager scope; throws `403 FORBIDDEN` if unauthorized).
