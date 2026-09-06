@@ -32,7 +32,7 @@ async function createApp(canonicalErrors = false) {
 
 async function resetDatabase() {
   const { sql: client } = createDatabase(databaseUrl);
-  await client`TRUNCATE team_memberships, teams, workspace_memberships, workspaces, roles, sessions, accounts, users, verifications RESTART IDENTITY CASCADE`;
+  await client`TRUNCATE mentions, comments, approval_steps, approval_requests, task_history, task_assignees, tasks, recurrence_occurrences, recurrence_rules, recurrence_idempotency_keys, team_memberships, teams, workflow_transitions, task_statuses, workflows, workspace_memberships, workspaces, roles, sessions, accounts, users, verifications, outbox_events RESTART IDENTITY CASCADE`;
   await client.end();
 }
 

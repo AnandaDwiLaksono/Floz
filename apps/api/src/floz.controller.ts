@@ -7,6 +7,8 @@ import { TaskService, type AssignTaskDto, type CalendarQueryDto, type CreateTask
 import type { TaskRole } from './task.policy';
 import { RecurrenceService } from './recurrence.service';
 import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto, validateCreateRecurringTask, validateRecurrenceRuleQuery, validateUpdateRecurrenceRule } from './recurrence.dto';
+import { ApprovalService } from './approval.service';
+import type { CreateApprovalRequestDto, ApprovalQueryDto } from './approval.dto';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
 
@@ -17,7 +19,7 @@ const urlPattern = /^https?:\/\/.+/i;
 
 @Controller()
 export class FlozController {
-  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService, @Inject(RecurrenceService) private readonly recurrence: RecurrenceService, @Inject(ReportingClock) private readonly clock: ReportingClock) {}
+  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService, @Inject(RecurrenceService) private readonly recurrence: RecurrenceService, @Inject(ApprovalService) private readonly approvals: ApprovalService, @Inject(ReportingClock) private readonly clock: ReportingClock) {}
 
   private get auth() { return this.authService.auth; }
 
@@ -155,6 +157,24 @@ export class FlozController {
   @Post('workspaces/:workspaceId/recurrence-rules/:id/stop')
   @HttpCode(200)
   async stopRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); return ok(await this.recurrence.stop(wid, id)); }
+
+  @Post('workspaces/:workspaceId/approval-requests')
+  async createApprovalRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateApprovalRequestDto) {
+    const ctx = await this.member(req, wid);
+    return ok(await this.approvals.create(wid, ctx.user.id, body));
+  }
+
+  @Get('workspaces/:workspaceId/approval-requests')
+  async listApprovalRequests(@Req() req: Request, @Param('workspaceId') wid: string, @Query() query: ApprovalQueryDto) {
+    const ctx = await this.member(req, wid);
+    return this.approvals.list(wid, ctx.user.id, ctx.membership.role, query);
+  }
+
+  @Get('workspaces/:workspaceId/approval-requests/:approvalRequestId')
+  async getApprovalRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') id: string) {
+    const ctx = await this.member(req, wid);
+    return ok(await this.approvals.detail(wid, ctx.user.id, ctx.membership.role, id));
+  }
 
   private reportingScope(query: Record<string, string>, workspaceId: string, timezone: string): ReportingScope { const from = query.from, to = query.to, evaluationAt = this.clock.now(); try { parseReportingInterval({ from, to }); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return { workspaceId, from, to, evaluationAt, timezone }; }
   private async current(req: Request) { const session = await this.auth.api.getSession({ headers: req.headers as HeadersInit }); if (!session) throw new UnauthorizedException('UNAUTHENTICATED'); const user = await this.floz.user(session.user.id); if (!user) throw new UnauthorizedException('UNAUTHENTICATED'); if (!user.isActive) throw new ForbiddenException('ACCOUNT_INACTIVE'); return user; }

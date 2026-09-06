@@ -15,8 +15,21 @@ const messages: Record<string, string> = {
   LAST_ACTIVE_ADMIN: 'At least one active admin is required.',
   ACTIVE_TEAM_MANAGER: 'Active team managers must remain active managers.',
   INVALID_MANAGER: 'Team manager must be an active manager or admin.',
-  TEAM_ARCHIVED: 'Archived teams cannot accept members.'
+  TEAM_ARCHIVED: 'Archived teams cannot accept members.',
+  INACTIVE_APPROVER: 'Selected approver is inactive.',
+  INVALID_APPROVER_TARGET: 'Selected approver is not authorized for the linked task.',
+  INVALID_MENTION_TARGET: 'Mentioned user is not authorized for the linked task.',
+  SELF_APPROVAL_NOT_ALLOWED: 'Self-approval is not allowed.',
+  APPROVAL_NOT_PENDING: 'Approval request is no longer pending.'
 };
+
+const unprocessableCodes = new Set([
+  'CROSS_WORKSPACE_REFERENCE',
+  'INACTIVE_APPROVER',
+  'INVALID_APPROVER_TARGET',
+  'INVALID_MENTION_TARGET',
+  'SELF_APPROVAL_NOT_ALLOWED'
+]);
 
 @Catch()
 export class ErrorFilter implements ExceptionFilter {
@@ -25,6 +38,6 @@ export class ErrorFilter implements ExceptionFilter {
     const status = error instanceof HttpException ? error.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const raw = error instanceof HttpException ? error.message : 'INTERNAL_ERROR';
     const code = messages[raw] ? raw : status === 400 ? 'VALIDATION_ERROR' : status === 401 ? 'UNAUTHENTICATED' : status === 403 ? 'FORBIDDEN' : status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR';
-    res.status(code === 'CROSS_WORKSPACE_REFERENCE' ? 422 : status).json({ error: { code, message: messages[code] ?? 'Internal server error.', details: [] } });
+    res.status(unprocessableCodes.has(code) ? 422 : status).json({ error: { code, message: messages[code] ?? 'Internal server error.', details: [] } });
   }
 }
