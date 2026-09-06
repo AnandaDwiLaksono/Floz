@@ -493,7 +493,7 @@ export default function TasksPage() {
           <div className="w-full md:w-48">
             <select aria-label="Assignee filter" value={assignee_id} onChange={(e) => updateFilters({ assignee_id: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
               <option value="">All Assignees</option>
-              {members.map((m) => (<option key={m.user_id} value={m.user_id}>{m.user?.full_name || m.user_id}</option>))}
+              {members.map((m) => (<option key={m.user_id} value={m.user_id}>{m.full_name || m.user_id}</option>))}
             </select>
           </div>
           <div className="w-full md:w-48">
@@ -558,7 +558,7 @@ export default function TasksPage() {
               {tasks.map((task) => (
                 <li
                   key={task.id}
-                  onClick={() => handleOpenDetail(task)}
+                  onClick={() => { void api.tasks.get(workspaceId, task.id).then((res) => handleOpenDetail(res.data)); }}
                   className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition cursor-pointer flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
                 >
                   <div className="min-w-0 space-y-1">
@@ -938,7 +938,7 @@ export default function TasksPage() {
                   <div>
                     <span className="block text-gray-500 text-xs uppercase font-semibold">Creator</span>
                     <span className="font-medium">
-                      {members.find((m) => m.user_id === selectedTask.creator_id)?.user?.full_name || 'System'}
+                      {members.find((m) => m.user_id === selectedTask.creator_id)?.full_name || 'System'}
                     </span>
                   </div>
                 </div>
@@ -996,7 +996,7 @@ export default function TasksPage() {
                       const cur = assigneeList.find((a) => a.user_id === m.user_id);
                       return (
                         <div key={m.user_id} className="flex items-center justify-between text-sm">
-                          <span>{m.user?.full_name || m.user_id}</span>
+                          <span>{m.full_name || m.user_id}</span>
                           <div className="flex items-center space-x-2">
                             <input
                               type="checkbox"

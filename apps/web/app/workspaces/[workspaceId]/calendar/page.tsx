@@ -107,7 +107,7 @@ export default function CalendarPage() {
     </div>
     <div className="grid gap-2 sm:grid-cols-2">
       <select aria-label="Team" value={teamId} onChange={(event) => update({ team_id: event.target.value })} className="rounded border p-2"><option value="">All teams</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
-      <select aria-label="Assignee" value={assigneeId} onChange={(event) => update({ assignee_id: event.target.value })} className="rounded border p-2"><option value="">All assignees</option>{members.map((member) => <option key={member.user_id} value={member.user_id}>{member.user?.full_name || member.user_id}</option>)}</select>
+      <select aria-label="Assignee" value={assigneeId} onChange={(event) => update({ assignee_id: event.target.value })} className="rounded border p-2"><option value="">All assignees</option>{members.map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.user_id}</option>)}</select>
     </div>
     {error && <p role="alert" className="text-red-600">{error}</p>}
     {loading && <p role="status">Loading calendar range…</p>}

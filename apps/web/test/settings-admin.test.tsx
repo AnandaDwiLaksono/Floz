@@ -6,7 +6,7 @@ import WorkspaceSettingsPage from '../app/workspaces/[workspaceId]/settings/work
 import MembersSettingsPage from '../app/workspaces/[workspaceId]/settings/members/page';
 import TeamsSettingsPage from '../app/workspaces/[workspaceId]/settings/teams/page';
 import { useAuth } from '../lib/auth-context';
-import { api } from '../lib/api-client';
+import { api, ApiError } from '../lib/api-client';
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ workspaceId: 'ws-123' }),
@@ -38,10 +38,11 @@ vi.mock('../lib/api-client', () => ({
       }),
       patchMember: vi.fn().mockResolvedValue({ data: {} }),
       addMember: vi.fn().mockResolvedValue({ data: {} }),
+      lookupUser: vi.fn().mockResolvedValue({ data: { id: 'u-9', email: 'found@floz.com', full_name: 'Found User' } }),
       teams: vi.fn().mockResolvedValue({
         data: [
-          { id: 't-1', workspace_id: 'ws-123', name: 'Dev Team', description: 'Core devs', manager_user_id: 'u-1', is_active: true },
-          { id: 't-2', workspace_id: 'ws-123', name: 'Old Team', description: 'Archived', manager_user_id: null, is_active: false },
+          { id: 't-1', workspace_id: 'ws-123', name: 'Dev Team', description: 'Core devs', manager_user_id: 'u-1', isActive: true },
+          { id: 't-2', workspace_id: 'ws-123', name: 'Old Team', description: 'Archived', manager_user_id: null, isActive: false },
         ],
       }),
       updateTeam: vi.fn().mockResolvedValue({ data: {} }),
@@ -151,7 +152,38 @@ describe('Task 6 — Member & Team Administration UI', () => {
     expect(screen.queryByDisplayValue('temp-secret-pwd-123')).not.toBeInTheDocument();
   });
 
+  it('adds an existing account resolved through user lookup', async () => {
+    const lookupUser = api.workspaces.lookupUser as unknown as ReturnType<typeof vi.fn>;
+    const addMember = api.workspaces.addMember as unknown as ReturnType<typeof vi.fn>;
+    lookupUser.mockResolvedValue({ data: { id: 'u-9', email: 'found@floz.com', full_name: 'Found User' } });
+    render(<MembersSettingsPage />);
+    fireEvent.click(screen.getByRole('button', { name: /Add Member/i }));
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'found@floz.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Add$/i }));
+
+    await waitFor(() => {
+      expect(lookupUser).toHaveBeenCalledWith('ws-123', 'found@floz.com');
+      expect(addMember).toHaveBeenCalledWith('ws-123', { user_id: 'u-9', role: 'MEMBER', status: 'INVITED' });
+    });
+  });
+
+  it('shows provision hint when user lookup misses', async () => {
+    const lookupUser = api.workspaces.lookupUser as unknown as ReturnType<typeof vi.fn>;
+    const addMember = api.workspaces.addMember as unknown as ReturnType<typeof vi.fn>;
+    lookupUser.mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'NOT_FOUND'));
+    render(<MembersSettingsPage />);
+    fireEvent.click(screen.getByRole('button', { name: /Add Member/i }));
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'ghost@floz.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Add$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Provision an account first/i)).toBeInTheDocument();
+    });
+    expect(addMember).not.toHaveBeenCalled();
+  });
+
   it('renders teams with active/archived toggle and manager assign', async () => {
+
     render(<TeamsSettingsPage />);
     await waitFor(() => {
       expect(screen.getByText('Dev Team')).toBeInTheDocument();

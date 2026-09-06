@@ -35,12 +35,12 @@ export default function TeamsSettingsPage() {
   if (!isAdmin) return <div className="p-6 text-center text-red-600 font-semibold">Access denied. Admin only.</div>;
 
   const managers = members.filter((m) => m.status === 'ACTIVE' && (m.role === 'ADMIN' || m.role === 'MANAGER'));
-  const filtered = teams.filter((t) => filter === 'all' || (filter === 'active' ? t.is_active : !t.is_active));
+  const filtered = teams.filter((t) => filter === 'all' || (filter === 'active' ? t.isActive : !t.isActive));
 
   const handleToggleActive = async (team: Team) => {
     setError(null);
     try {
-      await api.workspaces.updateTeam(workspaceId, team.id, { is_active: !team.is_active });
+      await api.workspaces.updateTeam(workspaceId, team.id, { is_active: !team.isActive });
       loadData();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Update failed.');
@@ -100,21 +100,21 @@ export default function TeamsSettingsPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map((team) => (
-            <div key={team.id} className={`bg-white dark:bg-gray-900 border rounded-lg p-4 ${!team.is_active ? 'opacity-60' : ''} border-gray-200 dark:border-gray-800`}>
+            <div key={team.id} className={`bg-white dark:bg-gray-900 border rounded-lg p-4 ${!team.isActive ? 'opacity-60' : ''} border-gray-200 dark:border-gray-800`}>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">{team.name}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${team.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{team.is_active ? 'Active' : 'Archived'}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${team.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{team.isActive ? 'Active' : 'Archived'}</span>
                   </div>
                   {team.description && <p className="text-sm text-gray-500 mt-1">{team.description}</p>}
                 </div>
                 <div className="flex items-center gap-2">
-                  <select value={team.manager_user_id ?? ''} onChange={(e) => handleManagerChange(team, e.target.value)} className="text-xs border rounded px-2 py-1 dark:bg-gray-800">
+                  <select aria-label={`Manager for ${team.name}`} value={team.manager_user_id ?? ''} onChange={(e) => handleManagerChange(team, e.target.value)} className="text-xs border rounded px-2 py-1 dark:bg-gray-800">
                     <option value="">No manager</option>
                     {managers.map((m) => <option key={m.user_id} value={m.user_id}>{m.full_name}</option>)}
                   </select>
-                  <button onClick={() => handleToggleActive(team)} className={`px-3 py-1 text-xs font-bold rounded ${team.is_active ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>{team.is_active ? 'Archive' : 'Restore'}</button>
+                  <button onClick={() => handleToggleActive(team)} className={`px-3 py-1 text-xs font-bold rounded ${team.isActive ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>{team.isActive ? 'Archive' : 'Restore'}</button>
                 </div>
               </div>
             </div>

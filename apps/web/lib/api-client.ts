@@ -161,7 +161,7 @@ export interface Team {
   name: string;
   description: string | null;
   manager_user_id: string | null;
-  is_active: boolean;
+  isActive: boolean;
 }
 
 export interface WorkspaceMember {
@@ -262,6 +262,8 @@ export const api = {
     update: (workspaceId: string, body: { name?: string; timezone?: string }) => apiFetch<{ data: { id: string; name: string; slug: string; timezone: string } }>(`/workspaces/${workspaceId}`, { method: 'PATCH', body: JSON.stringify(body) }),
     members: (workspaceId: string) =>
       apiFetch<{ data: WorkspaceMember[] }>(`/workspaces/${workspaceId}/members`),
+    lookupUser: (workspaceId: string, email: string) =>
+      apiFetch<{ data: User }>(`/workspaces/${workspaceId}/users?email=${encodeURIComponent(email)}`),
     provisionAccount: (workspaceId: string, body: { email: string; full_name: string }) => apiFetch<{ data: { user: User; temporary_password: string } }>(`/workspaces/${workspaceId}/accounts`, { method: 'POST', body: JSON.stringify(body) }),
     addMember: (workspaceId: string, body: { user_id: string; role: string; status?: string }) => apiFetch<{ data: WorkspaceMember }>(`/workspaces/${workspaceId}/members`, { method: 'POST', body: JSON.stringify(body) }),
     patchMember: (workspaceId: string, userId: string, body: { role?: string; status?: string }) => apiFetch<{ data: WorkspaceMember }>(`/workspaces/${workspaceId}/members/${userId}`, { method: 'PATCH', body: JSON.stringify(body) }),

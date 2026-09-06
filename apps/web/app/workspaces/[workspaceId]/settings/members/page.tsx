@@ -63,16 +63,18 @@ export default function MembersSettingsPage() {
     setAddError(null);
     setAddSaving(true);
     try {
-      const userRes = await api.workspaces.members(workspaceId);
-      const found = userRes.data.find((m) => m.email === addEmail);
-      if (!found) { setAddError('User not found. Provision an account first.'); setAddSaving(false); return; }
-      await api.workspaces.addMember(workspaceId, { user_id: found.user_id, role: addRole, status: 'INVITED' });
+      const userRes = await api.workspaces.lookupUser(workspaceId, addEmail.trim());
+      await api.workspaces.addMember(workspaceId, { user_id: userRes.data.id, role: addRole, status: 'INVITED' });
       setAddOpen(false);
       setAddEmail('');
       setAddRole('MEMBER');
       loadMembers();
     } catch (err) {
-      setAddError(err instanceof ApiError ? err.message : 'Add failed.');
+      if (err instanceof ApiError && err.status === 404) {
+        setAddError('User not found. Provision an account first.');
+      } else {
+        setAddError(err instanceof ApiError ? err.message : 'Add failed.');
+      }
     } finally { setAddSaving(false); }
   };
 
@@ -129,7 +131,7 @@ export default function MembersSettingsPage() {
                   <td className="px-4 py-3">{m.full_name || m.user_id}</td>
                   <td className="px-4 py-3 text-gray-500">{m.email}</td>
                   <td className="px-4 py-3">
-                    <select value={m.role} onChange={(e) => handlePatch(m.user_id, { role: e.target.value })} className="text-xs border rounded px-2 py-1 dark:bg-gray-800">
+                    <select aria-label={`Role for ${m.email}`} value={m.role} onChange={(e) => handlePatch(m.user_id, { role: e.target.value })} className="text-xs border rounded px-2 py-1 dark:bg-gray-800">
                       <option value="ADMIN">ADMIN</option>
                       <option value="MANAGER">MANAGER</option>
                       <option value="MEMBER">MEMBER</option>
@@ -137,7 +139,7 @@ export default function MembersSettingsPage() {
                     </select>
                   </td>
                   <td className="px-4 py-3">
-                    <select value={m.status} onChange={(e) => handlePatch(m.user_id, { status: e.target.value })} className="text-xs border rounded px-2 py-1 dark:bg-gray-800">
+                    <select aria-label={`Status for ${m.email}`} value={m.status} onChange={(e) => handlePatch(m.user_id, { status: e.target.value })} className="text-xs border rounded px-2 py-1 dark:bg-gray-800">
                       <option value="ACTIVE">ACTIVE</option>
                       <option value="INVITED">INVITED</option>
                       <option value="SUSPENDED">SUSPENDED</option>

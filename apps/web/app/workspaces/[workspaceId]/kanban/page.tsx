@@ -68,7 +68,7 @@ export default function KanbanPage() {
     <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
       <select aria-label="Workflow" value={workflow_id} onChange={(e) => update({ workflow_id: e.target.value })}><option value="">Default workflow</option>{workflows.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       <select aria-label="Team" value={team_id} onChange={(e) => update({ team_id: e.target.value })}><option value="">All teams</option>{teams.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-      <select aria-label="Assignee" value={assignee_id} onChange={(e) => update({ assignee_id: e.target.value })}><option value="">All assignees</option>{members.map((item) => <option key={item.user_id} value={item.user_id}>{item.user?.full_name || item.user_id}</option>)}</select>
+      <select aria-label="Assignee" value={assignee_id} onChange={(e) => update({ assignee_id: e.target.value })}><option value="">All assignees</option>{members.map((item) => <option key={item.user_id} value={item.user_id}>{item.full_name || item.user_id}</option>)}</select>
       <select aria-label="Priority" value={priority} onChange={(e) => update({ priority: e.target.value })}><option value="">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select>
       <input aria-label="Due from" type="date" value={due_from} onChange={(e) => update({ due_from: e.target.value })} />
       <input aria-label="Due to" type="date" value={due_to} onChange={(e) => update({ due_to: e.target.value })} />

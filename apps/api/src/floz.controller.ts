@@ -88,6 +88,8 @@ export class FlozController {
   async patchWorkspace(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: { name?: string; timezone?: string }) { await this.admin(req, id); if (body.name !== undefined && !body.name.trim()) throw new BadRequestException('VALIDATION_ERROR'); if (body.timezone !== undefined) try { new Intl.DateTimeFormat('en-US', { timeZone: body.timezone }); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(await this.floz.patchWorkspace(id, { name: body.name?.trim(), timezone: body.timezone })); }
   @Get('workspaces/:workspaceId/members')
   async members(@Req() req: Request, @Param('workspaceId') id: string) { await this.member(req, id); return ok((await this.floz.members(id)).map(this.publicMember)); }
+  @Get('workspaces/:workspaceId/users')
+  async lookupUser(@Req() req: Request, @Param('workspaceId') id: string, @Query('email') email: string) { await this.admin(req, id); if (!email?.trim()) throw new BadRequestException('VALIDATION_ERROR'); const user = await this.floz.userByEmail(email.trim()); if (!user) throw new NotFoundException('NOT_FOUND'); return ok(this.publicUser(user)); }
   @Post('workspaces/:workspaceId/members')
   async addMember(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: { user_id?: string; role?: string; status?: string }) { await this.admin(req, id); if (!body.user_id || !body.role) throw new BadRequestException('VALIDATION_ERROR'); const member = await this.floz.addMember(id, { userId: body.user_id, role: body.role, status: body.status ?? 'INVITED' }); return ok(this.publicMember(member)); }
   @Patch('workspaces/:workspaceId/members/:userId')

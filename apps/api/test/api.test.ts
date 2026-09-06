@@ -129,6 +129,19 @@ describe('API', () => {
     await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/accounts`).set('Cookie', f.adminCookie).send({ email: 'admin@example.com', full_name: 'Duplicate' }).expect(409);
   });
 
+  it('lets admins look up accounts by email without exposing credentials', async () => {
+    const f = await fixture(app!);
+    await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.workspaceId}/accounts`).set('Cookie', f.adminCookie).send({ email: 'lookup@example.com', full_name: 'Lookup User' }).expect(201);
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/users?email=lookup@example.com`).set('Cookie', f.adminCookie).expect(200).expect(({ body }) => {
+      expect(body.data).toMatchObject({ email: 'lookup@example.com', full_name: 'Lookup User' });
+      expect(body.data).not.toHaveProperty('temporary_password');
+    });
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/users?email=missing@example.com`).set('Cookie', f.adminCookie).expect(404);
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/users`).set('Cookie', f.adminCookie).expect(400);
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/users?email=lookup@example.com`).expect(401);
+    await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/users?email=lookup@example.com`).set('Cookie', f.memberCookie).expect(403);
+  });
+
   it('updates the authenticated profile without changing email identity', async () => {
     const f = await fixture(app!);
     await request(app!.getHttpServer()).patch('/api/v1/me').set('Cookie', f.memberCookie).send({ full_name: 'Updated Member', timezone: 'UTC', locale: 'en-US', avatar_url: null, email: 'evil@example.com' }).expect(200).expect(({ body }) => {
