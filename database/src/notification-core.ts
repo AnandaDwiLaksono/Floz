@@ -5,6 +5,7 @@ import type { PostgresJsQueryResultHKT } from 'drizzle-orm/postgres-js';
 import type { ExtractTablesWithRelations } from 'drizzle-orm';
 import { tasks, taskStatuses, taskAssignees } from './schema.js';
 import { and, eq } from 'drizzle-orm';
+import type { Sql, TransactionSql } from 'postgres';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Tx = PgTransaction<PostgresJsQueryResultHKT, any, ExtractTablesWithRelations<any>>;
@@ -156,5 +157,48 @@ export async function createOverdueNotifications(
       SELECT notification_id, ${params.workspaceId}, ${userId}, ${type}, ${title}, ${body}, 'TASK', ${params.taskId}, false, NOW()
       FROM inserted_dedup;
     `);
+  }
+}
+
+export async function createPhase10Notification(
+  tx: Sql | TransactionSql | unknown,
+  params: {
+    workspaceId: string;
+    userId: string;
+    type: string;
+    title: string;
+    body: string;
+    entityType: string;
+    entityId: string;
+    dedupKey: string;
+  }
+) {
+  const notificationId = randomUUID();
+  const ledgerId = randomUUID();
+
+  if (tx && typeof tx === 'object' && 'execute' in tx && typeof (tx as { execute: unknown }).execute === 'function') {
+    await (tx as { execute: (q: unknown) => Promise<unknown> }).execute(drizzleSql`
+      WITH inserted_dedup AS (
+        INSERT INTO notification_dedup_ledger (id, workspace_id, dedup_key, notification_id, created_at)
+        VALUES (${ledgerId}, ${params.workspaceId}, ${params.dedupKey}, ${notificationId}, NOW())
+        ON CONFLICT (workspace_id, dedup_key) DO NOTHING
+        RETURNING notification_id
+      )
+      INSERT INTO notifications (id, workspace_id, user_id, type, title, body, entity_type, entity_id, is_read, created_at)
+      SELECT notification_id, ${params.workspaceId}, ${params.userId}, ${params.type}, ${params.title}, ${params.body}, ${params.entityType}, ${params.entityId}, false, NOW()
+      FROM inserted_dedup;
+    `);
+  } else {
+    await (tx as Sql)`
+      WITH inserted_dedup AS (
+        INSERT INTO notification_dedup_ledger (id, workspace_id, dedup_key, notification_id, created_at)
+        VALUES (${ledgerId}, ${params.workspaceId}, ${params.dedupKey}, ${notificationId}, NOW())
+        ON CONFLICT (workspace_id, dedup_key) DO NOTHING
+        RETURNING notification_id
+      )
+      INSERT INTO notifications (id, workspace_id, user_id, type, title, body, entity_type, entity_id, is_read, created_at)
+      SELECT notification_id, ${params.workspaceId}, ${params.userId}, ${params.type}, ${params.title}, ${params.body}, ${params.entityType}, ${params.entityId}, false, NOW()
+      FROM inserted_dedup;
+    `;
   }
 }

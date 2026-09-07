@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Sql, TransactionSql } from 'postgres';
 import type { Queue } from 'bullmq';
+import { createPhase10Notification } from '@floz/database';
 import { buildWakeupJobId } from './queues.js';
 
 type Db = Sql | TransactionSql;
@@ -56,6 +57,72 @@ export async function dispatchOutboxBatch(input: {
              }
           }
         }
+      } else if (row.event_type === 'approval.requested') {
+        const payload = row.payload as { approval_request_id: string; approver_user_id: string; title: string };
+        const dedupKey = `approval-requested-${payload.approval_request_id}`;
+        await createPhase10Notification(input.db, {
+          workspaceId: row.workspace_id,
+          userId: payload.approver_user_id,
+          type: 'APPROVAL_REQUESTED',
+          title: 'Approval Requested',
+          body: `Approval requested: ${payload.title}`,
+          entityType: 'APPROVAL_REQUEST',
+          entityId: payload.approval_request_id,
+          dedupKey,
+        });
+      } else if (row.event_type === 'approval.decided') {
+        const payload = row.payload as { approval_request_id: string; decision: 'APPROVED' | 'REJECTED'; requester_id: string; decided_by_user_id: string; reason?: string | null };
+        if (payload.decision === 'APPROVED') {
+          const dedupKey = `approval-approved-${payload.approval_request_id}`;
+          await createPhase10Notification(input.db, {
+            workspaceId: row.workspace_id,
+            userId: payload.requester_id,
+            type: 'APPROVAL_APPROVED',
+            title: 'Approval Approved',
+            body: payload.reason ? `Your approval request was approved: ${payload.reason}` : 'Your approval request was approved.',
+            entityType: 'APPROVAL_REQUEST',
+            entityId: payload.approval_request_id,
+            dedupKey,
+          });
+        } else if (payload.decision === 'REJECTED') {
+          const dedupKey = `approval-rejected-${payload.approval_request_id}`;
+          await createPhase10Notification(input.db, {
+            workspaceId: row.workspace_id,
+            userId: payload.requester_id,
+            type: 'APPROVAL_REJECTED',
+            title: 'Approval Rejected',
+            body: payload.reason ? `Your approval request was rejected: ${payload.reason}` : 'Your approval request was rejected.',
+            entityType: 'APPROVAL_REQUEST',
+            entityId: payload.approval_request_id,
+            dedupKey,
+          });
+        }
+      } else if (row.event_type === 'approval.cancelled') {
+        const payload = row.payload as { approval_request_id: string; approver_user_id: string; cancelled_by_user_id: string; cancel_reason?: string | null };
+        const dedupKey = `approval-cancelled-${payload.approval_request_id}`;
+        await createPhase10Notification(input.db, {
+          workspaceId: row.workspace_id,
+          userId: payload.approver_user_id,
+          type: 'APPROVAL_CANCELLED',
+          title: 'Approval Cancelled',
+          body: payload.cancel_reason ? `Approval request was cancelled: ${payload.cancel_reason}` : 'Approval request was cancelled.',
+          entityType: 'APPROVAL_REQUEST',
+          entityId: payload.approval_request_id,
+          dedupKey,
+        });
+      } else if (row.event_type === 'comment.mentioned') {
+        const payload = row.payload as { comment_id: string; task_id: string; mentioned_user_id: string; author_id: string };
+        const dedupKey = `comment-mention-${payload.comment_id}-${payload.mentioned_user_id}`;
+        await createPhase10Notification(input.db, {
+          workspaceId: row.workspace_id,
+          userId: payload.mentioned_user_id,
+          type: 'COMMENT_MENTIONED',
+          title: 'You were mentioned',
+          body: 'You were mentioned in a comment.',
+          entityType: 'TASK',
+          entityId: payload.task_id,
+          dedupKey,
+        });
       } else {
         const recurrenceRuleId = String(row.payload.recurrence_rule_id ?? row.aggregate_id);
         const scheduledFor = String(row.payload.scheduled_for ?? row.available_at.toISOString());

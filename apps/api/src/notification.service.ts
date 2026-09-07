@@ -34,6 +34,17 @@ export class NotificationService {
     return date.toISOString();
   }
 
+  private getNotificationContext(workspaceId: string, entityType: string | null, entityId: string | null, type: string): { route: string } | null {
+    if (entityType === 'TASK' && entityId) {
+      return { route: `/workspaces/${workspaceId}/tasks?selected_task_id=${entityId}` };
+    }
+    if (entityType === 'APPROVAL_REQUEST' && entityId) {
+      const view = (type === 'APPROVAL_REQUESTED' || type === 'APPROVAL_CANCELLED') ? 'inbox' : 'sent';
+      return { route: `/workspaces/${workspaceId}/approvals?view=${view}&selected_approval_request_id=${entityId}` };
+    }
+    return null;
+  }
+
   private encodeCursor(item: NotificationRow): string {
     const createdAt = item.created_at instanceof Date ? item.created_at.toISOString() : new Date(item.created_at).toISOString();
     const payload = JSON.stringify({
@@ -99,12 +110,7 @@ export class NotificationService {
     const dataRows = hasMore ? rows.slice(0, limit) : rows;
 
     const mappedData = dataRows.map((row) => {
-      let context: { route: string } | null = null;
-      if (row.entity_type === 'TASK' && row.entity_id) {
-        context = {
-          route: `/workspaces/${workspaceId}/tasks?selected_task_id=${row.entity_id}`,
-        };
-      }
+      const context = this.getNotificationContext(workspaceId, row.entity_type, row.entity_id, row.type);
 
       return {
         id: row.id,
@@ -168,12 +174,7 @@ export class NotificationService {
     const item = existing[0];
 
     if (item.is_read) {
-      let context: { route: string } | null = null;
-      if (item.entity_type === 'TASK' && item.entity_id) {
-        context = {
-          route: `/workspaces/${workspaceId}/tasks?selected_task_id=${item.entity_id}`,
-        };
-      }
+      const context = this.getNotificationContext(workspaceId, item.entity_type, item.entity_id, item.type);
       return {
         data: {
           id: item.id,
@@ -202,12 +203,7 @@ export class NotificationService {
     `;
 
     const row = updated[0];
-    let context: { route: string } | null = null;
-    if (row.entity_type === 'TASK' && row.entity_id) {
-      context = {
-        route: `/workspaces/${workspaceId}/tasks?selected_task_id=${row.entity_id}`,
-      };
-    }
+    const context = this.getNotificationContext(workspaceId, row.entity_type, row.entity_id, row.type);
 
     return {
       data: {
