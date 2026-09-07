@@ -80,37 +80,38 @@ export class ApprovalService {
     if (!input.title?.trim() || input.title.trim().length > 255 || !input.approver_user_id || !uuidPattern.test(input.approver_user_id)) {
       throw new BadRequestException('VALIDATION_ERROR');
     }
-    if (input.approver_user_id === actorId) {
-      throw new UnprocessableEntityException('SELF_APPROVAL_NOT_ALLOWED');
-    }
-
-    const approverMembership = (await this.sql<{ user_id: string; status: string; is_active: boolean }[]>`
-      SELECT m.user_id, m.status, u.is_active
-      FROM workspace_memberships m
-      JOIN users u ON u.id = m.user_id
-      WHERE m.workspace_id = ${workspaceId} AND m.user_id = ${input.approver_user_id}
-    `)[0];
-
-    if (!approverMembership) {
-      throw new UnprocessableEntityException('CROSS_WORKSPACE_REFERENCE');
-    }
-    if (approverMembership.status !== 'ACTIVE' || !approverMembership.is_active) {
-      throw new UnprocessableEntityException('INACTIVE_APPROVER');
-    }
-
-    if (input.task_id) {
-      if (!uuidPattern.test(input.task_id)) throw new BadRequestException('VALIDATION_ERROR');
-      const task = (await this.sql<{ id: string }[]>`SELECT id FROM tasks WHERE id=${input.task_id} AND workspace_id=${workspaceId} AND deleted_at IS NULL`)[0];
-      if (!task) throw new UnprocessableEntityException('CROSS_WORKSPACE_REFERENCE');
-
-      const requesterHasAccess = await this.validateTaskAccess(this.sql, workspaceId, input.task_id, actorId);
-      if (!requesterHasAccess) throw new ForbiddenException('FORBIDDEN');
-
-      const approverHasAccess = await this.validateTaskAccess(this.sql, workspaceId, input.task_id, input.approver_user_id);
-      if (!approverHasAccess) throw new UnprocessableEntityException('INVALID_APPROVER_TARGET');
-    }
 
     return this.authService.database.sql.begin(async (sqlTx: TransactionSql) => {
+      if (input.approver_user_id === actorId) {
+        throw new UnprocessableEntityException('SELF_APPROVAL_NOT_ALLOWED');
+      }
+
+      const approverMembership = (await sqlTx<{ user_id: string; status: string; is_active: boolean }[]>`
+        SELECT m.user_id, m.status, u.is_active
+        FROM workspace_memberships m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.workspace_id = ${workspaceId} AND m.user_id = ${input.approver_user_id}
+      `)[0];
+
+      if (!approverMembership) {
+        throw new UnprocessableEntityException('CROSS_WORKSPACE_REFERENCE');
+      }
+      if (approverMembership.status !== 'ACTIVE' || !approverMembership.is_active) {
+        throw new UnprocessableEntityException('INACTIVE_APPROVER');
+      }
+
+      if (input.task_id) {
+        if (!uuidPattern.test(input.task_id)) throw new BadRequestException('VALIDATION_ERROR');
+        const task = (await sqlTx<{ id: string }[]>`SELECT id FROM tasks WHERE id=${input.task_id} AND workspace_id=${workspaceId} AND deleted_at IS NULL`)[0];
+        if (!task) throw new UnprocessableEntityException('CROSS_WORKSPACE_REFERENCE');
+
+        const requesterHasAccess = await this.validateTaskAccess(sqlTx, workspaceId, input.task_id, actorId);
+        if (!requesterHasAccess) throw new ForbiddenException('FORBIDDEN');
+
+        const approverHasAccess = await this.validateTaskAccess(sqlTx, workspaceId, input.task_id, input.approver_user_id);
+        if (!approverHasAccess) throw new UnprocessableEntityException('INVALID_APPROVER_TARGET');
+      }
+
       const request = (await sqlTx<{ id: string; submitted_at: Date }[]>`
         INSERT INTO approval_requests(workspace_id, task_id, requester_id, title, description, status)
         VALUES(${workspaceId}, ${input.task_id ?? null}, ${actorId}, ${input.title!.trim()}, ${input.description?.trim() ?? null}, 'PENDING')
@@ -152,9 +153,7 @@ export class ApprovalService {
       return this.detailTx(sqlTx, workspaceId, actorId, 'ADMIN', request.id);
     });
   }
-
-  private async managedUserIds(workspaceId: string, managerUserId: string): Promise<string[]> {
-    const rows = await this.sql<{ user_id: string }[]>`
+`
       SELECT DISTINCT tm.user_id
       FROM team_memberships tm
       JOIN teams t ON t.id = tm.team_id
