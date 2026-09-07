@@ -62,6 +62,7 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
   it('renders Inbox and Sent tabs for standard MEMBER; hides Managed and All tabs', async () => {
     authState.role = 'MEMBER';
     render(<ApprovalsPage />);
+    await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
     expect(screen.getByRole('tab', { name: /Inbox/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Sent/i })).toBeInTheDocument();
@@ -72,6 +73,7 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
   it('renders Managed tab for MANAGER, but not All tab', async () => {
     authState.role = 'MANAGER';
     render(<ApprovalsPage />);
+    await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
     expect(screen.getByRole('tab', { name: /Inbox/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Sent/i })).toBeInTheDocument();
@@ -82,6 +84,7 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
   it('renders All tab for ADMIN, but NOT Managed tab', async () => {
     authState.role = 'ADMIN';
     render(<ApprovalsPage />);
+    await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
     expect(screen.getByRole('tab', { name: /Inbox/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Sent/i })).toBeInTheDocument();
@@ -94,7 +97,9 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
     mockSearchParams = new URLSearchParams('view=managed');
     render(<ApprovalsPage />);
 
-    expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('view=inbox'));
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('view=inbox'));
+    });
   });
 
   it('handles 403 safely when unauthorized view fetch fails', async () => {
@@ -111,6 +116,7 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
 
   it('synchronizes view and status changes to URL and resets cursor', async () => {
     render(<ApprovalsPage />);
+    await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
     // Click Sent tab
     const sentTab = screen.getByRole('tab', { name: /Sent/i });

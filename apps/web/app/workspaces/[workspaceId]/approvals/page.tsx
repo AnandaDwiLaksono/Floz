@@ -106,10 +106,13 @@ export default function ApprovalsPage() {
   );
 
   // Normalize view if unauthorized
+  const normalizedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (currentView === 'all' && !isAdmin) {
+    if (currentView === 'all' && !isAdmin && normalizedRef.current !== 'all') {
+      normalizedRef.current = 'all';
       updateUrl({ view: 'inbox', cursor: undefined });
-    } else if (currentView === 'managed' && !isManager) {
+    } else if (currentView === 'managed' && !isManager && normalizedRef.current !== 'managed') {
+      normalizedRef.current = 'managed';
       updateUrl({ view: 'inbox', cursor: undefined });
     }
   }, [currentView, isAdmin, isManager, updateUrl]);
