@@ -9,6 +9,8 @@ import { RecurrenceService } from './recurrence.service';
 import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto, validateCreateRecurringTask, validateRecurrenceRuleQuery, validateUpdateRecurrenceRule } from './recurrence.dto';
 import { ApprovalService } from './approval.service';
 import type { CreateApprovalRequestDto, ApprovalQueryDto, ApproveStepDto, RejectStepDto, CancelApprovalDto } from './approval.dto';
+import { CommentService } from './comment.service';
+import type { CreateCommentDto, CommentQueryDto } from './comment.dto';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
 
@@ -19,7 +21,7 @@ const urlPattern = /^https?:\/\/.+/i;
 
 @Controller()
 export class FlozController {
-  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService, @Inject(RecurrenceService) private readonly recurrence: RecurrenceService, @Inject(ApprovalService) private readonly approvals: ApprovalService, @Inject(ReportingClock) private readonly clock: ReportingClock) {}
+  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService, @Inject(RecurrenceService) private readonly recurrence: RecurrenceService, @Inject(ApprovalService) private readonly approvals: ApprovalService, @Inject(CommentService) private readonly comments: CommentService, @Inject(ReportingClock) private readonly clock: ReportingClock) {}
 
   private get auth() { return this.authService.auth; }
 
@@ -195,6 +197,26 @@ export class FlozController {
   async cancelApprovalRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @Body() body: CancelApprovalDto) {
     const ctx = await this.member(req, wid);
     return ok(await this.approvals.cancel(wid, ctx.user.id, ctx.membership.role, reqId, body));
+  }
+
+  @Get('workspaces/:workspaceId/tasks/:taskId/comments')
+  async listComments(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) {
+    const ctx = await this.member(req, wid);
+    return this.comments.list(wid, ctx.user.id, tid, req.query as CommentQueryDto);
+  }
+
+  @Post('workspaces/:workspaceId/tasks/:taskId/comments')
+  @HttpCode(201)
+  async createComment(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Body() body: CreateCommentDto) {
+    const ctx = await this.member(req, wid);
+    return ok(await this.comments.create(wid, ctx.user.id, tid, body));
+  }
+
+  @Delete('workspaces/:workspaceId/tasks/:taskId/comments/:commentId')
+  @HttpCode(204)
+  async deleteComment(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Param('commentId') cid: string) {
+    const ctx = await this.member(req, wid);
+    await this.comments.delete(wid, ctx.user.id, ctx.membership.role, tid, cid);
   }
 
   private reportingScope(query: Record<string, string>, workspaceId: string, timezone: string): ReportingScope { const from = query.from, to = query.to, evaluationAt = this.clock.now(); try { parseReportingInterval({ from, to }); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return { workspaceId, from, to, evaluationAt, timezone }; }

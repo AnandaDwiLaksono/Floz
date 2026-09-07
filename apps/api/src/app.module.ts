@@ -8,7 +8,8 @@ import { TaskService } from './task.service';
 import { RecurrenceService } from './recurrence.service';
 import { NotificationService } from './notification.service';
 import { ApprovalService } from './approval.service';
+import { CommentService } from './comment.service';
 import { ReportingClock } from './reporting-clock';
 
-@Module({ controllers: [HealthController, FlozController, NotificationController], providers: [AuthService, FlozService, TaskService, RecurrenceService, NotificationService, ApprovalService, ReportingClock] })
+@Module({ controllers: [HealthController, FlozController, NotificationController], providers: [AuthService, FlozService, TaskService, RecurrenceService, NotificationService, ApprovalService, CommentService, ReportingClock] })
 export class AppModule {}
