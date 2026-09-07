@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { api, Task, Team, WorkspaceMember, Workflow, ApiError } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
 import { getWorkspaceDateTime } from '../../../../lib/calendar-time';
+import { TaskCommentsSection } from '../../../../components/task-comments-section';
 import {
   Plus,
   Search,
@@ -18,7 +19,7 @@ import {
 
 export default function TasksPage() {
   const { workspaceId } = useParams() as { workspaceId: string };
-  const { user } = useAuth();
+  const { user, activeWorkspace } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1037,6 +1038,15 @@ export default function TasksPage() {
                     Save Assignment Changes
                   </button>
                 </div>
+
+                {/* Task Comments & Mentions Section */}
+                <TaskCommentsSection
+                  workspaceId={workspaceId}
+                  taskId={selectedTask.id}
+                  currentUserId={user?.id || ''}
+                  userRole={activeWorkspace?.role || 'MEMBER'}
+                  workspaceMembers={members}
+                />
               </div>
             ) : (
               // EDIT MODE Form

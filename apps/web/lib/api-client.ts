@@ -224,6 +224,17 @@ export interface Team {
   isActive: boolean;
 }
 
+export interface TaskComment {
+  id: string;
+  workspace_id: string;
+  task_id: string;
+  author: { id: string; full_name: string };
+  content: string;
+  created_at: string;
+  updated_at: string;
+  mentions: { user_id: string; full_name: string }[];
+}
+
 export interface WorkspaceMember {
   user_id: string;
   full_name: string;
@@ -503,6 +514,40 @@ export const api = {
         {
           method: 'POST',
           body: JSON.stringify(body || {}),
+        }
+      ),
+  },
+  comments: {
+    list: (
+      workspaceId: string,
+      taskId: string,
+      params: { limit?: number; cursor?: string } = {}
+    ) => {
+      const searchParams = new URLSearchParams();
+      if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+      if (params.cursor) searchParams.set('cursor', params.cursor);
+      const query = searchParams.toString();
+      return apiFetch<PaginatedList<TaskComment>>(
+        `/workspaces/${workspaceId}/tasks/${taskId}/comments${query ? `?${query}` : ''}`
+      );
+    },
+    create: (
+      workspaceId: string,
+      taskId: string,
+      body: { content: string; mentioned_user_ids?: string[] }
+    ) =>
+      apiFetch<{ data: TaskComment }>(
+        `/workspaces/${workspaceId}/tasks/${taskId}/comments`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }
+      ),
+    delete: (workspaceId: string, taskId: string, commentId: string) =>
+      apiFetch<void>(
+        `/workspaces/${workspaceId}/tasks/${taskId}/comments/${commentId}`,
+        {
+          method: 'DELETE',
         }
       ),
   },
