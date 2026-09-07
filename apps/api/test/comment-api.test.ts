@@ -235,6 +235,61 @@ describe('Phase 10 Task 4 — Task Comments & Mentions API', () => {
     await db.end();
   });
 
+  it('rejects inactive mention target (SUSPENDED or REMOVED or is_active=false) with 422 INVALID_MENTION_TARGET and rolls back completely', async () => {
+    const { sql: db } = createDatabase(databaseUrl);
+
+    // Create a suspended workspace member
+    const suspended = await app.get(AuthService).auth.api.signUpEmail({ body: { email: 'suspended@example.com', password: 'password123', name: 'Suspended User' } });
+    const suspendedId = String(suspended.user.id);
+    const roleRow = (await db`SELECT id FROM roles WHERE code = 'MEMBER'`)[0];
+    await db`INSERT INTO workspace_memberships (workspace_id, user_id, role_id, status) VALUES (${fix.workspaceId}, ${suspendedId}, ${roleRow.id}, 'SUSPENDED')`;
+
+    // Create a user with is_active = false
+    const inactive = await app.get(AuthService).auth.api.signUpEmail({ body: { email: 'inactive@example.com', password: 'password123', name: 'Inactive User' } });
+    const inactiveId = String(inactive.user.id);
+    await db`INSERT INTO workspace_memberships (workspace_id, user_id, role_id, status) VALUES (${fix.workspaceId}, ${inactiveId}, ${roleRow.id}, 'ACTIVE')`;
+    await db`UPDATE users SET is_active = false WHERE id = ${inactiveId}`;
+
+    const beforeComments = (await db`SELECT count(*)::int AS count FROM comments WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const beforeMentions = (await db`SELECT count(*)::int AS count FROM mentions WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const beforeOutbox = (await db`SELECT count(*)::int AS count FROM outbox_events WHERE workspace_id=${fix.workspaceId} AND event_type='comment.mentioned'`)[0].count;
+
+    // Test SUSPENDED member -> 422 INVALID_MENTION_TARGET
+    const resSuspended = await request(app.getHttpServer())
+      .post(`/api/v1/workspaces/${fix.workspaceId}/tasks/${fix.taskId}/comments`)
+      .set('Cookie', fix.memberCookie)
+      .send({
+        content: 'Hey suspended user',
+        mentioned_user_ids: [suspendedId],
+      })
+      .expect(422);
+
+    expect(resSuspended.body.error.code).toBe('INVALID_MENTION_TARGET');
+
+    // Test is_active = false user -> 422 INVALID_MENTION_TARGET
+    const resInactive = await request(app.getHttpServer())
+      .post(`/api/v1/workspaces/${fix.workspaceId}/tasks/${fix.taskId}/comments`)
+      .set('Cookie', fix.memberCookie)
+      .send({
+        content: 'Hey inactive user',
+        mentioned_user_ids: [inactiveId],
+      })
+      .expect(422);
+
+    expect(resInactive.body.error.code).toBe('INVALID_MENTION_TARGET');
+
+    // Assert complete transaction rollback
+    const afterComments = (await db`SELECT count(*)::int AS count FROM comments WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const afterMentions = (await db`SELECT count(*)::int AS count FROM mentions WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const afterOutbox = (await db`SELECT count(*)::int AS count FROM outbox_events WHERE workspace_id=${fix.workspaceId} AND event_type='comment.mentioned'`)[0].count;
+
+    expect(afterComments).toBe(beforeComments);
+    expect(afterMentions).toBe(beforeMentions);
+    expect(afterOutbox).toBe(beforeOutbox);
+
+    await db.end();
+  });
+
   it('rejects cross-workspace mentioned user with 422 CROSS_WORKSPACE_REFERENCE', async () => {
     const res = await request(app.getHttpServer())
       .post(`/api/v1/workspaces/${fix.workspaceId}/tasks/${fix.taskId}/comments`)

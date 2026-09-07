@@ -69,17 +69,25 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
 
   it('handles approval.decided (APPROVED) and maps to requester, including actor metadata', async () => {
     const approvalRequestId = randomUUID();
-    // userA requested, adminUser decided
+    // userA requested, adminUser decided (ADMIN override)
     const payload = { approval_request_id: approvalRequestId, step_id: randomUUID(), decision: 'APPROVED', requester_id: userA, decided_by_user_id: adminUser, reason: 'Looks good' };
     await sql<{ id: string }[]>`INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload, status, available_at) VALUES (${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.decided', ${JSON.stringify(payload)}::jsonb, 'PENDING', NOW()) RETURNING id`;
     
     const dispatched = await dispatchOutboxBatch({ db: sql, queue: { add: vi.fn() } as unknown as import('bullmq').Queue, now: new Date(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(dispatched).toBe(1);
 
-    const notifications = await sql`SELECT * FROM notifications WHERE entity_id = ${approvalRequestId} AND type = 'APPROVAL_APPROVED'`;
+    const notifications = await sql<{ user_id: string; type: string; title: string; body: string; entity_type: string; entity_id: string }[]>`SELECT * FROM notifications WHERE entity_id = ${approvalRequestId} AND type = 'APPROVAL_APPROVED'`;
     expect(notifications.length).toBe(1);
     expect(notifications[0].user_id).toBe(userA); // target is requester
+    expect(notifications[0].type).toBe('APPROVAL_APPROVED');
+    expect(notifications[0].entity_type).toBe('APPROVAL_REQUEST');
+    expect(notifications[0].entity_id).toBe(approvalRequestId);
     
+    // Check outbox event payload retains decided_by_user_id
+    const outbox = (await sql<{ payload: { decided_by_user_id: string; approval_request_id: string } }[]>`SELECT payload FROM outbox_events WHERE aggregate_id = ${approvalRequestId}`)[0];
+    expect(outbox.payload.decided_by_user_id).toBe(adminUser);
+    expect(outbox.payload.approval_request_id).toBe(approvalRequestId);
+
     // Check dedup ledger
     const dedups = await sql`SELECT * FROM notification_dedup_ledger WHERE dedup_key = ${`approval-approved-${approvalRequestId}`}`;
     expect(dedups.length).toBe(1);
@@ -87,28 +95,40 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
 
   it('handles approval.decided (REJECTED) and maps to requester', async () => {
     const approvalRequestId = randomUUID();
-    const payload = { approval_request_id: approvalRequestId, step_id: randomUUID(), decision: 'REJECTED', requester_id: userA, decided_by_user_id: userB };
+    const payload = { approval_request_id: approvalRequestId, step_id: randomUUID(), decision: 'REJECTED', requester_id: userA, decided_by_user_id: adminUser, reason: 'Not compliant' };
     await sql<{ id: string }[]>`INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload, status, available_at) VALUES (${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.decided', ${JSON.stringify(payload)}::jsonb, 'PENDING', NOW()) RETURNING id`;
     
     const dispatched = await dispatchOutboxBatch({ db: sql, queue: { add: vi.fn() } as unknown as import('bullmq').Queue, now: new Date(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(dispatched).toBe(1);
 
-    const notifications = await sql`SELECT * FROM notifications WHERE entity_id = ${approvalRequestId} AND type = 'APPROVAL_REJECTED'`;
+    const notifications = await sql<{ user_id: string; type: string; title: string; body: string; entity_type: string; entity_id: string }[]>`SELECT * FROM notifications WHERE entity_id = ${approvalRequestId} AND type = 'APPROVAL_REJECTED'`;
     expect(notifications.length).toBe(1);
     expect(notifications[0].user_id).toBe(userA);
+    expect(notifications[0].type).toBe('APPROVAL_REJECTED');
+    expect(notifications[0].entity_type).toBe('APPROVAL_REQUEST');
+    expect(notifications[0].entity_id).toBe(approvalRequestId);
+
+    const outbox = (await sql<{ payload: { decided_by_user_id: string; approval_request_id: string } }[]>`SELECT payload FROM outbox_events WHERE aggregate_id = ${approvalRequestId}`)[0];
+    expect(outbox.payload.decided_by_user_id).toBe(adminUser);
   });
 
   it('handles approval.cancelled and maps to assigned approver, including actor metadata', async () => {
     const approvalRequestId = randomUUID();
-    const payload = { approval_request_id: approvalRequestId, approver_user_id: userB, cancelled_by_user_id: adminUser };
+    const payload = { approval_request_id: approvalRequestId, approver_user_id: userB, cancelled_by_user_id: adminUser, cancel_reason: 'No longer needed' };
     await sql<{ id: string }[]>`INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload, status, available_at) VALUES (${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.cancelled', ${JSON.stringify(payload)}::jsonb, 'PENDING', NOW()) RETURNING id`;
     
     const dispatched = await dispatchOutboxBatch({ db: sql, queue: { add: vi.fn() } as unknown as import('bullmq').Queue, now: new Date(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(dispatched).toBe(1);
 
-    const notifications = await sql`SELECT * FROM notifications WHERE entity_id = ${approvalRequestId} AND type = 'APPROVAL_CANCELLED'`;
+    const notifications = await sql<{ user_id: string; type: string; title: string; body: string; entity_type: string; entity_id: string }[]>`SELECT * FROM notifications WHERE entity_id = ${approvalRequestId} AND type = 'APPROVAL_CANCELLED'`;
     expect(notifications.length).toBe(1);
     expect(notifications[0].user_id).toBe(userB);
+    expect(notifications[0].type).toBe('APPROVAL_CANCELLED');
+    expect(notifications[0].entity_type).toBe('APPROVAL_REQUEST');
+    expect(notifications[0].entity_id).toBe(approvalRequestId);
+
+    const outbox = (await sql<{ payload: { cancelled_by_user_id: string; approval_request_id: string } }[]>`SELECT payload FROM outbox_events WHERE aggregate_id = ${approvalRequestId}`)[0];
+    expect(outbox.payload.cancelled_by_user_id).toBe(adminUser);
   });
 
   it('handles comment.mentioned and maps to mentioned user exactly', async () => {
