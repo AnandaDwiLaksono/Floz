@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, TaskComment, WorkspaceMember } from '../lib/api-client';
-import { MessageSquare, AtSign, Trash2, Send, Loader2, X, AlertTriangle } from 'lucide-react';
+import { MessageSquare, AtSign, Trash2, Send, Loader2, X } from 'lucide-react';
 
 interface TaskCommentsSectionProps {
   workspaceId: string;

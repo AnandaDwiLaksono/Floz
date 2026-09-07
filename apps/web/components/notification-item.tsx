@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Clock, CheckCircle2, MessageSquare, AlertCircle } from 'lucide-react';
+import { User, Clock, CheckCircle2, MessageSquare } from 'lucide-react';
 
 export interface NotificationResource {
   id: string;
