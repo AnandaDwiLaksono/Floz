@@ -17,7 +17,7 @@ async function bootstrap() {
     credentials: true,
   }));
   app.use(cookieParser());
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(new ValidationPipe({ whitelist: false, transform: true }));
   app.useGlobalFilters(new ErrorFilter());
   app.setGlobalPrefix('api/v1');
   await app.listen(env.API_PORT);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useTransition, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../../../lib/auth-context';
 import {
@@ -28,7 +28,6 @@ export default function ApprovalsPage() {
   const searchParams = useSearchParams();
   const workspaceId = String(params.workspaceId);
   const { activeWorkspace, user } = useAuth();
-  const [, startTransition] = useTransition();
 
   const currentView = (searchParams?.get('view') as 'inbox' | 'sent' | 'managed' | 'all') || 'inbox';
   const currentStatus = (searchParams?.get('status') as 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED') || '';
@@ -98,9 +97,7 @@ export default function ApprovalsPage() {
         else sp.delete('selected_approval_request_id');
       }
 
-      startTransition(() => {
-        router.push(`/workspaces/${workspaceId}/approvals?${sp.toString()}`);
-      });
+      router.push(`/workspaces/${workspaceId}/approvals?${sp.toString()}`);
     },
     [router, searchParams, workspaceId]
   );

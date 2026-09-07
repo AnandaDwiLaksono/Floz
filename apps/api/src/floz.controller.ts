@@ -241,5 +241,5 @@ export class FlozController {
   private async member(req: Request, wid: string) { const user = await this.current(req); const membership = await this.floz.membership(user.id, wid); if (!membership) throw new NotFoundException('NOT_FOUND'); return { user, membership }; }
   private async admin(req: Request, wid: string) { const ctx = await this.member(req, wid); if (ctx.membership.role !== 'ADMIN') throw new ForbiddenException('FORBIDDEN'); return ctx; }
   private publicUser(user: { id: string; email: string; name: string; image: string | null; timezone: string; locale: string; isActive: boolean }) { return { id: user.id, email: user.email, full_name: user.name, avatar_url: user.image, timezone: user.timezone, locale: user.locale, is_active: user.isActive }; }
-  private publicMember(member: { userId: string; fullName: string; email: string; role: string; status: string }) { return { user_id: member.userId, full_name: member.fullName, email: member.email, role: member.role, status: member.status }; }
+  private publicMember(member: { userId: string; fullName: string; email: string; role: string; status: string; isActive?: boolean }) { return { user_id: member.userId, full_name: member.fullName, email: member.email, role: member.role, status: member.status, is_active: member.isActive ?? true }; }
 }

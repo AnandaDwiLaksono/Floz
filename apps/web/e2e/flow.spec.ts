@@ -733,4 +733,341 @@ test.describe('Floz Kanban', () => {
     const hasOverdue = await page.evaluate(() => new URL(window.location.href).searchParams.has('overdue'));
     expect(hasOverdue).toBe(false);
   });
+
+  test('phase10 e2e 1 create -> inbox -> approve -> notification -> deep link', async ({ page }) => {
+    const { sql } = createDatabase(databaseUrl);
+    const requester = await auth.api.signUpEmail({ body: { email: 'e1-requester@example.com', password: 'password123', name: 'Requester Alice' } });
+    const approver = await auth.api.signUpEmail({ body: { email: 'e1-approver@example.com', password: 'password123', name: 'Approver Bob' } });
+    const requesterId = String(requester.user.id);
+    const approverId = String(approver.user.id);
+    const workspaceId = 'a8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    const memberRoleId = String((await sql`SELECT id FROM roles WHERE code='MEMBER'`)[0].id);
+    await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'E1 Work','e1-work','UTC',${requesterId},true)`;
+    await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${requesterId},${memberRoleId},'ACTIVE'),(${workspaceId},${approverId},${memberRoleId},'ACTIVE')`;
+    await sql.end();
+
+    const login = async (email: string) => {
+      await page.goto('/login');
+      await page.fill('#email', email);
+      await page.fill('#password', 'password123');
+      await page.click('button[type="submit"]');
+      await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
+    };
+
+    // 1. Requester logs in and creates approval request
+    await login('e1-requester@example.com');
+    await page.goto(`/workspaces/${workspaceId}/approvals`);
+    await page.getByRole('button', { name: 'New Approval Request' }).click();
+    const createDialog = page.getByRole('dialog', { name: 'New Approval Request' });
+    await expect(createDialog).toBeVisible();
+    await createDialog.locator('#create-title').fill('Q4 Budget Request');
+    await createDialog.locator('#create-description').fill('Please approve the Q4 budget allocation.');
+    await expect(createDialog.locator('#create-approver option', { hasText: 'Approver Bob' })).toBeAttached();
+    await createDialog.locator('#create-approver').selectOption(approverId);
+    await createDialog.getByRole('button', { name: 'Submit Request' }).click();
+    await expect(createDialog).toBeHidden({ timeout: 10000 });
+
+    // Verify created request appears in Sent view
+    await page.getByRole('tab', { name: 'Sent' }).click();
+    await expect(page.getByText('Q4 Budget Request')).toBeVisible();
+
+    const dbQuery = createDatabase(databaseUrl);
+    const created = (await dbQuery.sql`SELECT id,status FROM approval_requests WHERE workspace_id=${workspaceId} AND title='Q4 Budget Request'`)[0];
+    expect(created).toBeDefined();
+    const approvalRequestId = String(created.id);
+    await dbQuery.sql.end();
+
+    // 2. Approver logs in and opens inbox
+    await page.context().clearCookies();
+    await login('e1-approver@example.com');
+    await page.goto(`/workspaces/${workspaceId}/approvals?view=inbox`);
+    await expect(page.getByText('Q4 Budget Request')).toBeVisible();
+
+    // Open selected detail
+    await page.getByText('Q4 Budget Request').click();
+    const detailDialog = page.getByRole('dialog', { name: 'Approval Detail' });
+    await expect(detailDialog).toBeVisible();
+    await expect(detailDialog.getByText('PENDING')).toBeVisible();
+    await expect(detailDialog.getByText('Requester Alice')).toBeVisible();
+
+    // Approve
+    await detailDialog.getByRole('button', { name: 'Approve' }).click();
+    const decisionModal = page.getByRole('dialog', { name: 'Confirm Approval' });
+    await expect(decisionModal).toBeVisible();
+    await decisionModal.locator('#decision-reason').fill('Looks great, approved for Q4.');
+    await decisionModal.getByRole('button', { name: 'Confirm Approval' }).click();
+    await expect(decisionModal).toBeHidden();
+    await expect(detailDialog.getByText('APPROVED', { exact: true })).toBeVisible();
+    await expect(detailDialog.getByText('Approver Bob').first()).toBeVisible();
+
+    // 3. Requester receives APPROVAL_APPROVED notification through outbox/worker
+    await page.context().clearCookies();
+    await login('e1-requester@example.com');
+    await page.waitForTimeout(2000);
+
+    const notifButton = page.getByRole('button', { name: /Notifications/i });
+    await expect(notifButton).toBeVisible();
+
+    let notificationFound = false;
+    for (let i = 0; i < 20; i++) {
+      await notifButton.click();
+      const notifItem = page.getByRole('button', { name: /Approval Approved/i });
+      if (await notifItem.isVisible().catch(() => false)) {
+        notificationFound = true;
+        await notifItem.click();
+        break;
+      }
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
+    }
+    expect(notificationFound).toBe(true);
+
+    // Assert exact final deep-link URL and selected state
+    await expect(page).toHaveURL(`/workspaces/${workspaceId}/approvals?view=sent&selected_approval_request_id=${approvalRequestId}`);
+    const selectedDetail = page.getByRole('dialog', { name: 'Approval Detail' });
+    await expect(selectedDetail).toBeVisible();
+    await expect(selectedDetail.getByText('APPROVED', { exact: true })).toBeVisible();
+    await expect(selectedDetail.getByText('Looks great, approved for Q4.')).toBeVisible();
+  });
+
+  test('phase10 e2e 2 reject + cancellation lifecycle', async ({ page }) => {
+    const { sql } = createDatabase(databaseUrl);
+    const requester = await auth.api.signUpEmail({ body: { email: 'e2-requester@example.com', password: 'password123', name: 'Requester Charlie' } });
+    const approver = await auth.api.signUpEmail({ body: { email: 'e2-approver@example.com', password: 'password123', name: 'Approver Dave' } });
+    const requesterId = String(requester.user.id);
+    const approverId = String(approver.user.id);
+    const workspaceId = 'a8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    const memberRoleId = String((await sql`SELECT id FROM roles WHERE code='MEMBER'`)[0].id);
+    await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'E2 Work','e2-work','UTC',${requesterId},true)`;
+    await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${requesterId},${memberRoleId},'ACTIVE'),(${workspaceId},${approverId},${memberRoleId},'ACTIVE')`;
+    await sql.end();
+
+    const login = async (email: string) => {
+      await page.goto('/login');
+      await page.fill('#email', email);
+      await page.fill('#password', 'password123');
+      await page.click('button[type="submit"]');
+      await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
+    };
+
+    // 1. Create Request A
+    await login('e2-requester@example.com');
+    await page.goto(`/workspaces/${workspaceId}/approvals`);
+    await page.getByRole('button', { name: 'New Approval Request' }).click();
+    const createDialog = page.getByRole('dialog', { name: 'New Approval Request' });
+    await createDialog.locator('#create-title').fill('Request A Rejection');
+    await expect(createDialog.locator('#create-approver option', { hasText: 'Approver Dave' })).toBeAttached();
+    await createDialog.locator('#create-approver').selectOption(approverId);
+    await createDialog.getByRole('button', { name: 'Submit Request' }).click();
+    await expect(createDialog).toBeHidden({ timeout: 10000 });
+
+    // 2. Approver rejects Request A with required reason
+    await page.context().clearCookies();
+    await login('e2-approver@example.com');
+    await page.goto(`/workspaces/${workspaceId}/approvals?view=inbox`);
+    await page.getByText('Request A Rejection').click();
+    const detailDialog = page.getByRole('dialog', { name: 'Approval Detail' });
+    await expect(detailDialog).toBeVisible();
+    await detailDialog.getByRole('button', { name: 'Reject' }).click();
+    const rejectModal = page.getByRole('dialog', { name: 'Confirm Rejection' });
+    await expect(rejectModal.getByRole('button', { name: 'Confirm Rejection' })).toBeDisabled();
+    await rejectModal.locator('#decision-reason').fill('Insufficient justification provided for this request.');
+    await expect(rejectModal.getByRole('button', { name: 'Confirm Rejection' })).toBeEnabled();
+    await rejectModal.getByRole('button', { name: 'Confirm Rejection' }).click();
+    await expect(rejectModal).toBeHidden();
+    await expect(detailDialog.getByText('REJECTED')).toBeVisible();
+
+    // 3. Requester sees REJECTED in Sent view with canonical reason
+    await page.context().clearCookies();
+    await login('e2-requester@example.com');
+    await page.goto(`/workspaces/${workspaceId}/approvals?view=sent`);
+    await expect(page.getByText('Request A Rejection')).toBeVisible();
+    await page.getByText('Request A Rejection').click();
+    const reqADetail = page.getByRole('dialog', { name: 'Approval Detail' });
+    await expect(reqADetail.getByText('REJECTED', { exact: true })).toBeVisible();
+    await expect(reqADetail.getByText('Insufficient justification provided for this request.')).toBeVisible();
+    await expect(reqADetail.getByText('Approver Dave').first()).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // 4. Create Request B and Cancel it
+    await page.getByRole('button', { name: 'New Approval Request' }).click();
+    const createDialogB = page.getByRole('dialog', { name: 'New Approval Request' });
+    await createDialogB.locator('#create-title').fill('Request B Cancellation');
+    await expect(createDialogB.locator('#create-approver option', { hasText: 'Approver Dave' })).toBeAttached();
+    await createDialogB.locator('#create-approver').selectOption(approverId);
+    await createDialogB.getByRole('button', { name: 'Submit Request' }).click();
+    await expect(createDialogB).toBeHidden({ timeout: 10000 });
+
+    const dbQuery = createDatabase(databaseUrl);
+    const createdB = (await dbQuery.sql`SELECT id FROM approval_requests WHERE workspace_id=${workspaceId} AND title='Request B Cancellation'`)[0];
+    const requestBId = String(createdB.id);
+    await dbQuery.sql.end();
+
+    // Open detail of Request B and cancel
+    await page.getByRole('tabpanel', { name: 'Sent' }).getByText('Request B Cancellation').click();
+    const detailB = page.getByRole('dialog', { name: 'Approval Detail' });
+    await detailB.getByRole('button', { name: 'Cancel Request' }).click();
+    const cancelModal = page.getByRole('dialog', { name: 'Confirm Cancellation' });
+    await cancelModal.locator('#decision-reason').fill('No longer needed, cancelling.');
+    await cancelModal.getByRole('button', { name: 'Confirm Cancellation' }).click();
+    await expect(cancelModal).toBeHidden();
+    await expect(detailB.getByText('CANCELLED', { exact: true })).toBeVisible();
+    await expect(detailB.getByText('No longer needed, cancelling.')).toBeVisible();
+    await expect(detailB.getByText('Requester Charlie').first()).toBeVisible();
+
+    // 5. Approver receives APPROVAL_CANCELLED notification and navigates to inbox
+    await page.context().clearCookies();
+    await login('e2-approver@example.com');
+    await page.waitForTimeout(2000);
+    const notifButton = page.getByRole('button', { name: /Notifications/i });
+    let notifFound = false;
+    for (let i = 0; i < 20; i++) {
+      await notifButton.click();
+      const notifItem = page.getByRole('button', { name: /Approval Cancelled/i });
+      if (await notifItem.isVisible().catch(() => false)) {
+        notifFound = true;
+        await notifItem.click();
+        break;
+      }
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
+    }
+    expect(notifFound).toBe(true);
+
+    // Assert exact canonical deep-link URL: view=inbox & selected_approval_request_id=${requestBId}
+    await expect(page).toHaveURL(`/workspaces/${workspaceId}/approvals?view=inbox&selected_approval_request_id=${requestBId}`);
+    const selectedB = page.getByRole('dialog', { name: 'Approval Detail' });
+    await expect(selectedB).toBeVisible();
+    await expect(selectedB.getByText('CANCELLED', { exact: true })).toBeVisible();
+    await expect(selectedB.getByText('No longer needed, cancelling.')).toBeVisible();
+  });
+
+  test('phase10 e2e 3 manager pending_approvals -> managed drilldown', async ({ page }) => {
+    const { sql } = createDatabase(databaseUrl);
+    const manager = await auth.api.signUpEmail({ body: { email: 'e3-manager@example.com', password: 'password123', name: 'Manager Morgan' } });
+    const approver = await auth.api.signUpEmail({ body: { email: 'e3-approver@example.com', password: 'password123', name: 'Approver Alex' } });
+    const requester = await auth.api.signUpEmail({ body: { email: 'e3-requester@example.com', password: 'password123', name: 'Requester Robin' } });
+    const managerId = String(manager.user.id);
+    const approverId = String(approver.user.id);
+    const requesterId = String(requester.user.id);
+    const workspaceId = 'a8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    await sql`INSERT INTO roles (code,name) VALUES ('MANAGER','Manager') ON CONFLICT (code) DO NOTHING`;
+    const managerRoleId = String((await sql`SELECT id FROM roles WHERE code='MANAGER'`)[0].id);
+    const memberRoleId = String((await sql`SELECT id FROM roles WHERE code='MEMBER'`)[0].id);
+    await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'E3 Work','e3-work','UTC',${managerId},true)`;
+    await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${managerId},${managerRoleId},'ACTIVE'),(${workspaceId},${approverId},${memberRoleId},'ACTIVE'),(${workspaceId},${requesterId},${memberRoleId},'ACTIVE')`;
+
+    // One manager manages two teams (Team 1 & Team 2)
+    const team1Id = '11111111-1111-4111-8111-111111111111';
+    const team2Id = '22222222-2222-4222-8222-222222222222';
+    await sql`INSERT INTO teams (id,workspace_id,name,manager_user_id,is_active) VALUES (${team1Id},${workspaceId},'Alpha Team',${managerId},true),(${team2Id},${workspaceId},'Beta Team',${managerId},true)`;
+    // One approver is effectively in both teams
+    await sql`INSERT INTO team_memberships (team_id,user_id,membership_role) VALUES (${team1Id},${approverId},'MEMBER'),(${team2Id},${approverId},'MEMBER')`;
+
+    // One pending approval is assigned to that approver
+    const reqId = '33333333-3333-4333-8333-333333333333';
+    const stepId = '44444444-4444-4444-8444-444444444444';
+    await sql`INSERT INTO approval_requests (id,workspace_id,requester_id,title,description,status,submitted_at) VALUES (${reqId},${workspaceId},${requesterId},'Deterministic Managed Request','Testing deduplicated manager count','PENDING',now())`;
+    await sql`INSERT INTO approval_steps (id,workspace_id,approval_request_id,approver_user_id,step_order,status) VALUES (${stepId},${workspaceId},${reqId},${approverId},1,'PENDING')`;
+    await sql.end();
+
+    await page.goto('/login');
+    await page.fill('#email', 'e3-manager@example.com');
+    await page.fill('#password', 'password123');
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
+
+    // Open Manager Dashboard
+    await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
+    await expect(page.getByRole('heading', { name: 'Manager dashboard' })).toBeVisible();
+
+    // Prove pending_approvals = 1 (deduplicated across the 2 teams)
+    const approvalsSection = page.locator('section').filter({ hasText: 'Pending approvals' });
+    await expect(approvalsSection).toBeVisible();
+    await expect(approvalsSection.getByText('1', { exact: true }).first()).toBeVisible();
+
+    // Click KPI link and verify exact drilldown URL
+    await page.getByRole('link', { name: 'View pending approvals' }).click();
+    await expect(page).toHaveURL(`/workspaces/${workspaceId}/approvals?view=managed&status=PENDING`);
+
+    // Verify Approval list displays exactly the canonical matching request once
+    await expect(page.getByText('Deterministic Managed Request')).toBeVisible();
+    const rows = page.locator('div[role="tabpanel"] > div');
+    await expect(rows).toHaveCount(1);
+  });
+
+  test('phase10 e2e 4 task comment -> mention -> notification -> selected task', async ({ page }) => {
+    const { sql } = createDatabase(databaseUrl);
+    const author = await auth.api.signUpEmail({ body: { email: 'e4-author@example.com', password: 'password123', name: 'Author Alice' } });
+    const mentioned = await auth.api.signUpEmail({ body: { email: 'e4-mentioned@example.com', password: 'password123', name: 'Mentioned Bob' } });
+    const authorId = String(author.user.id);
+    const mentionedId = String(mentioned.user.id);
+    const workspaceId = 'a8ee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+    const memberRoleId = String((await sql`SELECT id FROM roles WHERE code='MEMBER'`)[0].id);
+    await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'E4 Work','e4-work','UTC',${authorId},true)`;
+    await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${authorId},${memberRoleId},'ACTIVE'),(${workspaceId},${mentionedId},${memberRoleId},'ACTIVE')`;
+    const workflow = (await sql`SELECT id FROM workflows WHERE workspace_id=${workspaceId} AND code='DEFAULT'`)[0];
+    const todoId = String((await sql`SELECT id FROM task_statuses WHERE workflow_id=${workflow.id} AND code='TODO'`)[0].id);
+    const taskId = String((await sql`INSERT INTO tasks (workspace_id,task_key,title,workflow_id,status_id,priority,creator_id) VALUES (${workspaceId},'E4-1','Collaboration Task',${workflow.id},${todoId},'HIGH',${authorId}) RETURNING id`)[0].id);
+    await sql.end();
+
+    const login = async (email: string) => {
+      await page.goto('/login');
+      await page.fill('#email', email);
+      await page.fill('#password', 'password123');
+      await page.click('button[type="submit"]');
+      await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
+    };
+
+    // 1. Author opens Task and posts comment with structured mention
+    await login('e4-author@example.com');
+    await page.goto(`/workspaces/${workspaceId}/tasks?selected_task_id=${taskId}`);
+    const detail = page.getByRole('dialog', { name: 'Task details' });
+    await expect(detail).toBeVisible();
+
+    // Fill comment composer
+    const commentInput = detail.locator(`textarea#comment-composer-${taskId}`);
+    await expect(commentInput).toBeVisible();
+    await commentInput.fill('Hey, please review the latest updates on this task.');
+
+    // Select structured mention
+    await detail.getByRole('button', { name: /Mention.*(Member|team member)/i }).click();
+    await expect(detail.getByRole('option', { name: /Mentioned Bob/ })).toBeVisible();
+    await detail.getByRole('option', { name: /Mentioned Bob/ }).click();
+    // Close mention picker by toggling button again
+    await detail.getByRole('button', { name: /Mention.*(Member|team member)/i }).click();
+
+    // Submit comment
+    await detail.getByRole('button', { name: 'Post Comment' }).click();
+    await expect(detail.getByText('Hey, please review the latest updates on this task.')).toBeVisible();
+    await expect(detail.getByText('@Mentioned Bob')).toBeVisible();
+
+    // 2. Mentioned user receives COMMENT_MENTIONED notification
+    await page.context().clearCookies();
+    await login('e4-mentioned@example.com');
+    await page.waitForTimeout(2000);
+
+    const notifButton = page.getByRole('button', { name: /Notifications/i });
+    let notifFound = false;
+    for (let i = 0; i < 20; i++) {
+      await notifButton.click();
+      const notifItem = page.getByRole('button', { name: /You were mentioned/i });
+      if (await notifItem.isVisible().catch(() => false)) {
+        notifFound = true;
+        await notifItem.click();
+        break;
+      }
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
+    }
+    expect(notifFound).toBe(true);
+
+    // 3. Assert exact final URL and selected task state
+    await expect(page).toHaveURL(`/workspaces/${workspaceId}/tasks?selected_task_id=${taskId}`);
+    const selectedTaskDetail = page.getByRole('dialog', { name: 'Task details' });
+    await expect(selectedTaskDetail).toBeVisible();
+    await expect(selectedTaskDetail.getByText('Collaboration Task')).toBeVisible();
+    await expect(selectedTaskDetail.getByText('Hey, please review the latest updates on this task.')).toBeVisible();
+    await expect(selectedTaskDetail.getByText('@Mentioned Bob')).toBeVisible();
+  });
 });

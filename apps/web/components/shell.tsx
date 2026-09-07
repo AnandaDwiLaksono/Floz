@@ -298,7 +298,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="relative">
               <button
                 ref={bellButtonRef}
-                onClick={() => setNotificationCenterOpen(!notificationCenterOpen)}
+                onClick={() => {
+                  if (!notificationCenterOpen) {
+                    fetchNotifications();
+                  }
+                  setNotificationCenterOpen(!notificationCenterOpen);
+                }}
                 aria-label={`Notifications, ${unreadCount} unread`}
                 className="relative p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
               >

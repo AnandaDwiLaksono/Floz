@@ -4,6 +4,7 @@ $nextDistDir = ".next-e2e-$PID-$(Get-Random)"
 $previousNextDistDir = $env:FLOZ_NEXT_DIST_DIR
 $apiJob = $null
 $webJob = $null
+$workerJob = $null
 
 function Get-FreePort {
   $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
@@ -50,11 +51,14 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Database migration failed' }
   pnpm --filter @floz/api build
   if ($LASTEXITCODE -ne 0) { throw 'API build failed' }
+  pnpm --filter @floz/worker build
+  if ($LASTEXITCODE -ne 0) { throw 'Worker build failed' }
 
   $root = (Get-Location).Path
   $logDir = Join-Path $env:TEMP $name
   New-Item -ItemType Directory -Path $logDir -Force | Out-Null
   for ($attempt = 0; $attempt -lt 5; $attempt++) {
+    if ($workerJob) { Stop-Job $workerJob -ErrorAction SilentlyContinue; Remove-Job $workerJob -Force -ErrorAction SilentlyContinue; $workerJob = $null }
     if ($webJob) { Stop-Job $webJob -ErrorAction SilentlyContinue; Remove-Job $webJob -Force -ErrorAction SilentlyContinue; $webJob = $null }
     if ($apiJob) { Stop-Job $apiJob -ErrorAction SilentlyContinue; Remove-Job $apiJob -Force -ErrorAction SilentlyContinue; $apiJob = $null }
     $apiPort = Get-FreePort
@@ -95,6 +99,16 @@ try {
         pnpm start -- --hostname 127.0.0.1 > $stdout 2> $stderr
       } -ArgumentList $root, $env:NEXT_PUBLIC_API_URL, $webPort, $nextDistDir, $webStdout, $webStderr
       Wait-ForHttp "http://127.0.0.1:$webPort/login" $webJob $webStdout $webStderr 'Web'
+      $workerStdout = Join-Path $logDir "worker-$attempt.out.log"
+      $workerStderr = Join-Path $logDir "worker-$attempt.err.log"
+      $workerJob = Start-Job -ScriptBlock {
+        param($root, $databaseUrl, $stdout, $stderr)
+        Set-Location $root
+        $env:DATABASE_URL = $databaseUrl
+        $env:NODE_ENV = 'test'
+        node apps/worker/dist/main.js > $stdout 2> $stderr
+      } -ArgumentList $root, $env:DATABASE_URL, $workerStdout, $workerStderr
+      Start-Sleep -Seconds 1
       break
     } catch {
       $logs = "$(Get-Content $apiStderr -Raw -ErrorAction SilentlyContinue)$(Get-Content $webStderr -Raw -ErrorAction SilentlyContinue)"
@@ -106,6 +120,7 @@ try {
   pnpm --filter @floz/web exec playwright test
   if ($LASTEXITCODE -ne 0) { throw 'Playwright E2E failed' }
 } finally {
+  if ($workerJob) { Stop-Job $workerJob -ErrorAction SilentlyContinue; Remove-Job $workerJob -Force -ErrorAction SilentlyContinue }
   if ($webJob) { Stop-Job $webJob -ErrorAction SilentlyContinue; Remove-Job $webJob -Force -ErrorAction SilentlyContinue }
   if ($apiJob) { Stop-Job $apiJob -ErrorAction SilentlyContinue; Remove-Job $apiJob -Force -ErrorAction SilentlyContinue }
   Remove-Item -LiteralPath (Join-Path $PSScriptRoot "../apps/web/$nextDistDir") -Recurse -Force -ErrorAction SilentlyContinue

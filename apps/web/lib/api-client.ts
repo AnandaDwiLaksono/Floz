@@ -210,7 +210,7 @@ export interface ReportingKpis { completion_rate: string; overdue_rate: string; 
 export interface DashboardCount { key: string | null; count: number; }
 export interface DashboardStatusCount extends DashboardCount { position: number; id: string; }
 export interface DashboardAssigneeCount { userId: string | null; name: string | null; count: number; }
-export interface MemberDashboard { kpis: ReportingKpis; workload_by_team: DashboardCount[]; workload_by_assignee: DashboardAssigneeCount[]; unassigned: number; status_breakdown: DashboardStatusCount[]; priority_breakdown: DashboardCount[]; }
+export interface MemberDashboard { kpis: ReportingKpis; workload_by_team: DashboardCount[]; workload_by_assignee: DashboardAssigneeCount[]; unassigned: number; pending_approvals?: number; drilldown_url?: string; status_breakdown: DashboardStatusCount[]; priority_breakdown: DashboardCount[]; }
 export type Dashboard = MemberDashboard;
 export interface MyWorkTask { id: string; taskKey: string; title: string; dueAt: string; priority: string; }
 export interface MyWorkSummary { today: MyWorkTask[]; upcoming: MyWorkTask[]; overdue: MyWorkTask[]; counts: { today: number; upcoming: number; overdue: number }; }

@@ -1,9 +1,11 @@
+import { IsArray, IsOptional, IsString } from 'class-validator';
+
 export class CreateCommentDto {
-  content?: string;
-  mentioned_user_ids?: string[];
+  @IsOptional() @IsString() content?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) mentioned_user_ids?: string[];
 }
 
 export class CommentQueryDto {
-  limit?: string;
-  cursor?: string;
+  @IsOptional() @IsString() limit?: string;
+  @IsOptional() @IsString() cursor?: string;
 }

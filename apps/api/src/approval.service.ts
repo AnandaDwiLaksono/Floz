@@ -538,6 +538,7 @@ export class ApprovalService {
       task_id: row.task_id,
       task: row.task_id ? { id: row.task_id, task_key: row.task_key, title: row.task_title } : null,
       requester: { id: row.requester_id, full_name: row.requester_name },
+      approver: { id: row.approver_user_id, full_name: row.approver_name },
       title: row.title,
       description: row.description,
       status: row.status,
