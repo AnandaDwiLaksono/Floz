@@ -20,10 +20,6 @@ import {
   ChevronRight,
   X,
   AlertTriangle,
-  UserCheck,
-  Calendar,
-  FileText,
-  MessageSquare,
 } from 'lucide-react';
 
 export default function ApprovalsPage() {
@@ -236,7 +232,7 @@ export default function ApprovalsPage() {
       setIsDecisionModalOpen(null);
       setDecisionReason('');
       fetchApprovals();
-    } catch (err: unknown) {
+    } catch {
       setConflict409(true);
       setIsDecisionModalOpen(null);
       fetchDetail(detail.id);
@@ -518,12 +514,16 @@ export default function ApprovalsPage() {
                   >
                     <option value="">-- Select Eligible Approver --</option>
                     {members
-                      .filter((m) => m.id !== currentUserId && m.is_active && m.membership_status === 'ACTIVE')
-                      .map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} ({m.role})
-                        </option>
-                      ))}
+                      .filter((m) => (m.user_id || (m as unknown as { id: string }).id) !== currentUserId && m.status === 'ACTIVE')
+                      .map((m) => {
+                        const id = m.user_id || (m as unknown as { id: string }).id;
+                        const name = m.full_name || (m as unknown as { name: string }).name;
+                        return (
+                          <option key={id} value={id}>
+                            {name} ({m.role})
+                          </option>
+                        );
+                      })}
                   </select>
                 </div>
 
