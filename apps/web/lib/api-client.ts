@@ -471,6 +471,40 @@ export const api = {
       const query = searchParams.toString();
       return apiFetch<PaginatedList<ApprovalRequestSummary>>(`/workspaces/${workspaceId}/approval-requests${query ? `?${query}` : ''}`);
     },
+    get: (workspaceId: string, approvalRequestId: string) =>
+      apiFetch<{ data: ApprovalRequestDetail }>(`/workspaces/${workspaceId}/approval-requests/${approvalRequestId}`),
+    create: (
+      workspaceId: string,
+      body: { title: string; description?: string | null; task_id?: string | null; approver_user_id: string }
+    ) =>
+      apiFetch<{ data: ApprovalRequestDetail }>(`/workspaces/${workspaceId}/approval-requests`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    approve: (workspaceId: string, approvalRequestId: string, stepId: string, body?: { reason?: string | null }) =>
+      apiFetch<{ data: ApprovalRequestDetail }>(
+        `/workspaces/${workspaceId}/approval-requests/${approvalRequestId}/steps/${stepId}/approve`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body || {}),
+        }
+      ),
+    reject: (workspaceId: string, approvalRequestId: string, stepId: string, body: { reason: string }) =>
+      apiFetch<{ data: ApprovalRequestDetail }>(
+        `/workspaces/${workspaceId}/approval-requests/${approvalRequestId}/steps/${stepId}/reject`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }
+      ),
+    cancel: (workspaceId: string, approvalRequestId: string, body?: { reason?: string | null }) =>
+      apiFetch<{ data: ApprovalRequestDetail }>(
+        `/workspaces/${workspaceId}/approval-requests/${approvalRequestId}/cancel`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body || {}),
+        }
+      ),
   },
   notifications: {
     unreadCount: (workspaceId: string) =>
