@@ -64,8 +64,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
       setNotificationCenterOpen(false);
 
       // Navigate to context route or fallback
-      const route =
-        notificationRoute(activeWorkspace?.id || '', notification.entity_id || '', notification.context?.route);
+      const route = notificationRoute(
+        activeWorkspace?.id || '',
+        notification.entity_id || '',
+        notification.context?.route,
+        notification.type,
+        notification.entity_type
+      );
       router.push(route);
     },
     [activeWorkspace?.id, markRead, router]

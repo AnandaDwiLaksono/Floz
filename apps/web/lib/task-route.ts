@@ -29,6 +29,30 @@ export function tasksRoute(workspaceId: string, params: Record<string, string>) 
   return `/workspaces/${workspaceId}/tasks?${new URLSearchParams(params)}`;
 }
 
-export function notificationRoute(workspaceId: string, taskId: string, contextRoute?: string) {
-  return contextRoute || taskRoute(workspaceId, taskId);
+export function notificationRoute(
+  workspaceId: string,
+  entityId: string,
+  contextRoute?: string,
+  notificationType?: string,
+  entityType?: string
+) {
+  if (contextRoute) return contextRoute;
+
+  switch (notificationType) {
+    case 'APPROVAL_REQUESTED':
+      return `/workspaces/${workspaceId}/approvals?view=inbox&selected_approval_request_id=${entityId}`;
+    case 'APPROVAL_APPROVED':
+      return `/workspaces/${workspaceId}/approvals?view=sent&selected_approval_request_id=${entityId}`;
+    case 'APPROVAL_REJECTED':
+      return `/workspaces/${workspaceId}/approvals?view=sent&selected_approval_request_id=${entityId}`;
+    case 'APPROVAL_CANCELLED':
+      return `/workspaces/${workspaceId}/approvals?view=inbox&selected_approval_request_id=${entityId}`;
+    case 'COMMENT_MENTIONED':
+      return `/workspaces/${workspaceId}/tasks?selected_task_id=${entityId}`;
+    default:
+      if (entityType === 'APPROVAL_REQUEST') {
+        return `/workspaces/${workspaceId}/approvals?selected_approval_request_id=${entityId}`;
+      }
+      return taskRoute(workspaceId, entityId);
+  }
 }

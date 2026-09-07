@@ -1,4 +1,5 @@
-import { User, Clock } from 'lucide-react';
+import React from 'react';
+import { User, Clock, CheckCircle2, MessageSquare, AlertCircle } from 'lucide-react';
 
 export interface NotificationResource {
   id: string;
@@ -45,7 +46,22 @@ function formatRelativeTime(dateString: string): string {
 }
 
 export function NotificationItem({ notification, onSelect }: NotificationItemProps) {
-  const Icon = notification.type === 'TASK_ASSIGNED' ? User : Clock;
+  const getIcon = () => {
+    switch (notification.type) {
+      case 'APPROVAL_REQUESTED':
+      case 'APPROVAL_APPROVED':
+      case 'APPROVAL_REJECTED':
+      case 'APPROVAL_CANCELLED':
+        return CheckCircle2;
+      case 'COMMENT_MENTIONED':
+        return MessageSquare;
+      case 'TASK_ASSIGNED':
+        return User;
+      default:
+        return Clock;
+    }
+  };
+  const Icon = getIcon();
   const relativeTime = formatRelativeTime(notification.created_at);
 
   return (

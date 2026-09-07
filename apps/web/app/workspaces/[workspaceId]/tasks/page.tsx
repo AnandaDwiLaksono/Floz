@@ -226,6 +226,16 @@ export default function TasksPage() {
   }, [workspaceId, selectedTaskId, handleOpenDetail]);
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && selectedTask) {
+        setSelectedTask(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTask]);
+
+  useEffect(() => {
     if (!isCreateOpen) {
       if (wasCreateOpen.current) createTriggerRef.current?.focus();
       wasCreateOpen.current = false;
