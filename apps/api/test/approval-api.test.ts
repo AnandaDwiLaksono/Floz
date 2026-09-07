@@ -396,7 +396,7 @@ describe('Phase 10 Task 2 — Approval Creation, List & Detail API', () => {
     const beforeHistory = (await db`SELECT count(*)::int AS count FROM task_history WHERE task_id = ${fix.taskId} AND event_type = 'APPROVAL_REQUESTED'`)[0].count;
     await db.end();
 
-    const service = app.get<ApprovalService>(ApprovalService) as any;
+    const service = app.get<ApprovalService>(ApprovalService) as unknown as { detailTx: (...args: unknown[]) => Promise<unknown> };
     const spy = vi.spyOn(service, 'detailTx').mockRejectedValueOnce(new Error('forced late failure'));
 
     await request(app.getHttpServer())

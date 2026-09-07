@@ -90,7 +90,7 @@ export class ApprovalService {
         SELECT m.user_id, m.status, u.is_active
         FROM workspace_memberships m
         JOIN users u ON u.id = m.user_id
-        WHERE m.workspace_id = ${workspaceId} AND m.user_id = ${input.approver_user_id}
+        WHERE m.workspace_id = ${workspaceId} AND m.user_id = ${input.approver_user_id!}
       `)[0];
 
       if (!approverMembership) {
@@ -108,7 +108,7 @@ export class ApprovalService {
         const requesterHasAccess = await this.validateTaskAccess(sqlTx, workspaceId, input.task_id, actorId);
         if (!requesterHasAccess) throw new ForbiddenException('FORBIDDEN');
 
-        const approverHasAccess = await this.validateTaskAccess(sqlTx, workspaceId, input.task_id, input.approver_user_id);
+        const approverHasAccess = await this.validateTaskAccess(sqlTx, workspaceId, input.task_id, input.approver_user_id!);
         if (!approverHasAccess) throw new UnprocessableEntityException('INVALID_APPROVER_TARGET');
       }
 
