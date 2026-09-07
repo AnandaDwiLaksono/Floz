@@ -79,14 +79,34 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
     expect(screen.queryByRole('tab', { name: /All/i })).not.toBeInTheDocument();
   });
 
-  it('renders All tab for ADMIN (as well as Managed, Inbox, Sent)', async () => {
+  it('renders All tab for ADMIN, but NOT Managed tab', async () => {
     authState.role = 'ADMIN';
     render(<ApprovalsPage />);
 
     expect(screen.getByRole('tab', { name: /Inbox/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Sent/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Managed/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Managed/i })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /All/i })).toBeInTheDocument();
+  });
+
+  it('normalizes unauthorized view parameter to inbox in URL', async () => {
+    authState.role = 'ADMIN';
+    mockSearchParams = new URLSearchParams('view=managed');
+    render(<ApprovalsPage />);
+
+    expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('view=inbox'));
+  });
+
+  it('handles 403 safely when unauthorized view fetch fails', async () => {
+    vi.spyOn(api.approvals, 'list').mockRejectedValueOnce(new Error('FORBIDDEN'));
+    render(<ApprovalsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByText('FORBIDDEN')).toBeInTheDocument();
+    });
+    // Approvals data not exposed
+    expect(screen.queryByText('Budget Request Q4')).not.toBeInTheDocument();
   });
 
   it('synchronizes view and status changes to URL and resets cursor', async () => {

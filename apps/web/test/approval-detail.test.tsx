@@ -282,4 +282,213 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
       expect(screen.getByText(/Super Admin/i)).toBeInTheDocument();
     });
   });
+
+  describe('Authorization-Driven Action Visibility Matrix', () => {
+    it('REQUESTER: Cancel visible, Approve hidden, Reject hidden', async () => {
+      authState.userId = 'user-2'; // Requester
+      authState.role = 'MEMBER';
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+      });
+
+      expect(screen.getByRole('button', { name: /Cancel Request/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Approve$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Reject$/i })).not.toBeInTheDocument();
+    });
+
+    it('ASSIGNED APPROVER: Approve visible, Reject visible, Cancel hidden', async () => {
+      authState.userId = 'user-1'; // Assigned approver
+      authState.role = 'MEMBER';
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+      });
+
+      expect(screen.getByRole('button', { name: /^Approve$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Reject$/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Cancel Request/i })).not.toBeInTheDocument();
+    });
+
+    it("ADMIN on another user's request: Approve visible, Reject visible, Cancel visible", async () => {
+      authState.userId = 'admin-user';
+      authState.role = 'ADMIN';
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+      });
+
+      expect(screen.getByRole('button', { name: /^Approve$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Reject$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Cancel Request/i })).toBeInTheDocument();
+    });
+
+    it('ADMIN on own request: Cancel visible, Approve hidden, Reject hidden (self-approval prohibited)', async () => {
+      authState.userId = 'user-2'; // Admin is the requester
+      authState.role = 'ADMIN';
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+      });
+
+      expect(screen.getByRole('button', { name: /Cancel Request/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Approve$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Reject$/i })).not.toBeInTheDocument();
+    });
+
+    it('UNRELATED MEMBER: Approve hidden, Reject hidden, Cancel hidden', async () => {
+      authState.userId = 'unrelated-user';
+      authState.role = 'MEMBER';
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('button', { name: /^Approve$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Reject$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Cancel Request/i })).not.toBeInTheDocument();
+    });
+
+    it('TERMINAL request: all mutation controls hidden', async () => {
+      authState.userId = 'user-1';
+      authState.role = 'ADMIN';
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+      vi.spyOn(api.approvals, 'get').mockResolvedValue({
+        data: { ...mockDetail, status: 'APPROVED' },
+      });
+
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('button', { name: /^Approve$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Reject$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Cancel Request/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Reason Validation Bounds and Trimming Contract', () => {
+    it('blocks reject when reason is > 500 characters', async () => {
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /^Reject$/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /^Reject$/i }));
+
+      const confirmReject = screen.getByRole('button', { name: /Confirm Rejection/i });
+      const reasonInput = screen.getByLabelText(/Rejection Reason/i);
+      fireEvent.change(reasonInput, { target: { value: 'a'.repeat(501) } });
+
+      expect(confirmReject).toBeDisabled();
+    });
+
+    it('blocks approve when optional reason is > 500 characters', async () => {
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /^Approve$/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /^Approve$/i }));
+
+      const confirmApprove = screen.getByRole('button', { name: /Confirm Approval/i });
+      const reasonInput = screen.getByLabelText(/Reason \(Optional\)/i);
+      fireEvent.change(reasonInput, { target: { value: 'a'.repeat(501) } });
+
+      expect(confirmApprove).toBeDisabled();
+    });
+
+    it('blocks cancel when optional reason is > 500 characters', async () => {
+      authState.userId = 'user-2'; // Requester
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Cancel Request/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Cancel Request/i }));
+
+      const confirmCancel = screen.getByRole('button', { name: /Confirm Cancellation/i });
+      const reasonInput = screen.getByLabelText(/Reason \(Optional\)/i);
+      fireEvent.change(reasonInput, { target: { value: 'a'.repeat(501) } });
+
+      expect(confirmCancel).toBeDisabled();
+    });
+
+    it('trims whitespace-only optional reason to null on cancel', async () => {
+      authState.userId = 'user-2'; // Requester
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+      const cancelSpy = vi.spyOn(api.approvals, 'cancel').mockResolvedValue({
+        data: { ...mockDetail, status: 'CANCELLED' },
+      });
+
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Cancel Request/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Cancel Request/i }));
+
+      const reasonInput = screen.getByLabelText(/Reason \(Optional\)/i);
+      fireEvent.change(reasonInput, { target: { value: '   ' } });
+
+      const confirmCancel = screen.getByRole('button', { name: /Confirm Cancellation/i });
+      expect(confirmCancel).not.toBeDisabled();
+      fireEvent.click(confirmCancel);
+
+      await waitFor(() => {
+        expect(cancelSpy).toHaveBeenCalledWith('workspace-1', 'req-1', { reason: null });
+      });
+    });
+
+    it('trims whitespace-only optional reason to null on approve', async () => {
+      authState.userId = 'user-1'; // Approver
+      mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+      const approveSpy = vi.spyOn(api.approvals, 'approve').mockResolvedValue({
+        data: { ...mockDetail, status: 'APPROVED' },
+      });
+
+      render(<ApprovalsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /^Approve$/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /^Approve$/i }));
+
+      const reasonInput = screen.getByLabelText(/Reason \(Optional\)/i);
+      fireEvent.change(reasonInput, { target: { value: '   ' } });
+
+      const confirmApprove = screen.getByRole('button', { name: /Confirm Approval/i });
+      expect(confirmApprove).not.toBeDisabled();
+      fireEvent.click(confirmApprove);
+
+      await waitFor(() => {
+        expect(approveSpy).toHaveBeenCalledWith('workspace-1', 'req-1', 'step-1', { reason: null });
+      });
+    });
+  });
 });

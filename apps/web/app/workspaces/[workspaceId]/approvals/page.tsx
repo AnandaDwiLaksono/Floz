@@ -71,7 +71,7 @@ export default function ApprovalsPage() {
   const triggerRef = useRef<HTMLElement | null>(null);
 
   const role = activeWorkspace?.role || 'MEMBER';
-  const isManager = role === 'MANAGER' || role === 'ADMIN';
+  const isManager = role === 'MANAGER';
   const isAdmin = role === 'ADMIN';
   const currentUserId = user?.id || '';
 
@@ -206,6 +206,13 @@ export default function ApprovalsPage() {
 
     try {
       const trimmedReason = decisionReason.trim();
+
+      if (trimmedReason.length > 500) {
+        setActionError('Reason cannot exceed 500 characters.');
+        setActionSubmitting(false);
+        return;
+      }
+
       let updated: { data: ApprovalRequestDetail };
 
       if (isDecisionModalOpen === 'APPROVE') {
@@ -514,7 +521,12 @@ export default function ApprovalsPage() {
                   >
                     <option value="">-- Select Eligible Approver --</option>
                     {members
-                      .filter((m) => (m.user_id || (m as unknown as { id: string }).id) !== currentUserId && m.status === 'ACTIVE')
+                      .filter((m) => {
+                        const id = m.user_id || (m as unknown as { id?: string }).id;
+                        const status = m.status || (m as unknown as { membership_status?: string }).membership_status;
+                        const isActive = (m as unknown as { is_active?: boolean }).is_active ?? true;
+                        return id !== currentUserId && (status === 'ACTIVE' || status === undefined) && isActive !== false;
+                      })
                       .map((m) => {
                         const id = m.user_id || (m as unknown as { id: string }).id;
                         const name = m.full_name || (m as unknown as { name: string }).name;
@@ -805,7 +817,11 @@ export default function ApprovalsPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={actionSubmitting || (isDecisionModalOpen === 'REJECT' && decisionReason.trim().length < 3)}
+                  disabled={
+                    actionSubmitting ||
+                    (isDecisionModalOpen === 'REJECT' && (decisionReason.trim().length < 3 || decisionReason.trim().length > 500)) ||
+                    ((isDecisionModalOpen === 'APPROVE' || isDecisionModalOpen === 'CANCEL') && decisionReason.trim().length > 500)
+                  }
                   onClick={handleExecuteAction}
                   className={`px-4 py-2 text-sm font-medium text-white rounded-md transition disabled:opacity-50 ${
                     isDecisionModalOpen === 'REJECT'
