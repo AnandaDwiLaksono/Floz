@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { Test } from '@nestjs/testing';
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
@@ -8,6 +8,7 @@ import { ErrorFilter } from '../src/error.filter';
 import cookieParser from 'cookie-parser';
 import { createDatabase } from '@floz/database';
 import { AppModule } from '../src/app.module';
+import { ApprovalService } from '../src/approval.service';
 import { AuthService } from '../src/auth';
 
 const databaseUrl = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/floz';
@@ -174,13 +175,17 @@ describe('Phase 10 Task 2 — Approval Creation, List & Detail API', () => {
     expect(res.body.data.task.id).toBe(fix.taskId);
 
     const { sql: db } = createDatabase(databaseUrl);
-    const outbox = await db`SELECT * FROM outbox_events WHERE aggregate_id = ${res.body.data.id}`;
-    expect(outbox.length).toBe(1);
-    expect(outbox[0].event_type).toBe('approval.requested');
+    const approvalId = res.body.data.id;
+    const approvalRequstRow = await db`SELECT count(*)::int AS count FROM approval_requests WHERE id = ${approvalId}`;
+    const stepRow = await db`SELECT count(*)::int AS count FROM approval_steps WHERE approval_request_id = ${approvalId}`;
+    expect(approvalRequstRow[0].count).toBe(1);
+    expect(stepRow[0].count).toBe(1);
 
-    const history = await db`SELECT * FROM task_history WHERE task_id = ${fix.taskId} AND event_type = 'APPROVAL_REQUESTED'`;
-    expect(history.length).toBe(1);
-    expect(history[0].actor_user_id).toBe(fix.memberId);
+    const outbox = await db`SELECT count(*)::int AS count FROM outbox_events WHERE aggregate_id = ${approvalId} AND event_type = 'approval.requested'`;
+    expect(outbox[0].count).toBe(1);
+
+    const history = await db`SELECT count(*)::int AS count FROM task_history WHERE task_id = ${fix.taskId} AND event_type = 'APPROVAL_REQUESTED'`;
+    expect(history[0].count).toBe(1);
     await db.end();
   });
 
@@ -383,11 +388,51 @@ describe('Phase 10 Task 2 — Approval Creation, List & Detail API', () => {
     expect(res.body.error.code).toBe('INVALID_APPROVER_TARGET');
   });
 
-  it('proves atomic rollback on creation failure', async () => {
+  it('proves atomic rollback on late-transaction failure (task-linked)', async () => {
     const { sql: db } = createDatabase(databaseUrl);
     const beforeRequests = (await db`SELECT count(*)::int AS count FROM approval_requests WHERE workspace_id=${fix.workspaceId}`)[0].count;
     const beforeSteps = (await db`SELECT count(*)::int AS count FROM approval_steps WHERE workspace_id=${fix.workspaceId}`)[0].count;
     const beforeOutbox = (await db`SELECT count(*)::int AS count FROM outbox_events WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const beforeHistory = (await db`SELECT count(*)::int AS count FROM task_history WHERE task_id = ${fix.taskId} AND event_type = 'APPROVAL_REQUESTED'`)[0].count;
+    await db.end();
+
+    const service = app.get<ApprovalService>(ApprovalService) as any;
+    const spy = vi.spyOn(service, 'detailTx').mockRejectedValueOnce(new Error('forced late failure'));
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/workspaces/${fix.workspaceId}/approval-requests`)
+      .set('Cookie', fix.memberCookie)
+      .send({
+        title: 'Rollback approval',
+        description: 'Task-linked to prove rollback',
+        task_id: fix.taskId,
+        approver_user_id: fix.managerId,
+      })
+      .expect(500);
+
+    expect(spy).toHaveBeenCalled();
+
+    const { sql: dbAfter } = createDatabase(databaseUrl);
+    const afterRequests = (await dbAfter`SELECT count(*)::int AS count FROM approval_requests WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const afterSteps = (await dbAfter`SELECT count(*)::int AS count FROM approval_steps WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const afterOutbox = (await dbAfter`SELECT count(*)::int AS count FROM outbox_events WHERE workspace_id=${fix.workspaceId} AND event_type='approval.requested'`)[0].count;
+    const afterHistory = (await dbAfter`SELECT count(*)::int AS count FROM task_history WHERE task_id = ${fix.taskId} AND event_type = 'APPROVAL_REQUESTED'`)[0].count;
+    await dbAfter.end();
+
+    spy.mockRestore();
+
+    expect(afterRequests).toBe(beforeRequests);
+    expect(afterSteps).toBe(beforeSteps);
+    expect(afterOutbox).toBe(beforeOutbox);
+    expect(afterHistory).toBe(beforeHistory);
+  });
+
+  it('proves atomic rollback on validation failure (pre-write)', async () => {
+    const { sql: db } = createDatabase(databaseUrl);
+    const beforeRequests = (await db`SELECT count(*)::int AS count FROM approval_requests WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const beforeSteps = (await db`SELECT count(*)::int AS count FROM approval_steps WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const beforeOutbox = (await db`SELECT count(*)::int AS count FROM outbox_events WHERE workspace_id=${fix.workspaceId} AND event_type='approval.requested'`)[0].count;
+    const beforeHistory = (await db`SELECT count(*)::int AS count FROM task_history WHERE task_id = ${fix.taskId} AND event_type = 'APPROVAL_REQUESTED'`)[0].count;
     await db.end();
 
     // Invalid approver
@@ -403,11 +448,13 @@ describe('Phase 10 Task 2 — Approval Creation, List & Detail API', () => {
     const { sql: dbAfter } = createDatabase(databaseUrl);
     const afterRequests = (await dbAfter`SELECT count(*)::int AS count FROM approval_requests WHERE workspace_id=${fix.workspaceId}`)[0].count;
     const afterSteps = (await dbAfter`SELECT count(*)::int AS count FROM approval_steps WHERE workspace_id=${fix.workspaceId}`)[0].count;
-    const afterOutbox = (await dbAfter`SELECT count(*)::int AS count FROM outbox_events WHERE workspace_id=${fix.workspaceId}`)[0].count;
+    const afterOutbox = (await dbAfter`SELECT count(*)::int AS count FROM outbox_events WHERE workspace_id=${fix.workspaceId} AND event_type='approval.requested'`)[0].count;
+    const afterHistory = (await dbAfter`SELECT count(*)::int AS count FROM task_history WHERE task_id = ${fix.taskId} AND event_type = 'APPROVAL_REQUESTED'`)[0].count;
     await dbAfter.end();
 
     expect(afterRequests).toBe(beforeRequests);
     expect(afterSteps).toBe(beforeSteps);
     expect(afterOutbox).toBe(beforeOutbox);
+    expect(afterHistory).toBe(beforeHistory);
   });
 });

@@ -41,6 +41,7 @@ describe.skipIf(!databaseUrl)('Phase 10 Approval & Collaboration DB Constraints 
       await sql`DELETE FROM comments WHERE workspace_id=${workspaceId}`;
       await sql`DELETE FROM approval_steps WHERE workspace_id=${workspaceId}`;
       await sql`DELETE FROM approval_requests WHERE workspace_id=${workspaceId}`;
+      await sql`DELETE FROM workflow_transitions WHERE workflow_id IN (SELECT id FROM workflows WHERE workspace_id=${workspaceId})`;
       await sql`DELETE FROM tasks WHERE workspace_id=${workspaceId}`;
       await sql`DELETE FROM task_statuses WHERE workflow_id IN (SELECT id FROM workflows WHERE workspace_id=${workspaceId})`;
       await sql`DELETE FROM workflows WHERE workspace_id=${workspaceId}`;

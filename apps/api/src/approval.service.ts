@@ -153,7 +153,9 @@ export class ApprovalService {
       return this.detailTx(sqlTx, workspaceId, actorId, 'ADMIN', request.id);
     });
   }
-`
+
+  private async managedUserIds(workspaceId: string, managerUserId: string): Promise<string[]> {
+    const rows = await this.sql<{ user_id: string }[]>`
       SELECT DISTINCT tm.user_id
       FROM team_memberships tm
       JOIN teams t ON t.id = tm.team_id
