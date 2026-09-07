@@ -100,6 +100,66 @@ export interface TaskHistoryItem {
   created_at: string;
 }
 
+export interface ApprovalStep {
+  id: string;
+  step_order: number;
+  approver: { id: string; full_name: string };
+  decided_by: { id: string; full_name: string } | null;
+  status: string;
+  decision: string | null;
+  reason: string | null;
+  decided_at: string | null;
+}
+
+export interface ApprovalRequestSummary {
+  id: string;
+  workspace_id: string;
+  task_id: string | null;
+  requester: { id: string; full_name: string };
+  approver: { id: string; full_name: string };
+  title: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  submitted_at: string;
+  submitted_at_raw?: string;
+  created_at: string;
+}
+
+export interface ApprovalRequestDetail {
+  id: string;
+  workspace_id: string;
+  task_id: string | null;
+  task: { id: string; task_key: string; title: string } | null;
+  requester: { id: string; full_name: string };
+  title: string;
+  description: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  submitted_at: string;
+  completed_at: string | null;
+  cancelled_by: { id: string; full_name: string } | null;
+  cancel_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  step: ApprovalStep;
+}
+
+export interface CommentMention {
+  user_id: string;
+  full_name: string;
+}
+
+export interface Comment {
+  id: string;
+  workspace_id: string;
+  task_id: string;
+  author: { id: string; full_name: string };
+  content: string;
+  created_at: string;
+  created_at_raw?: string;
+  updated_at: string;
+  deleted_at: string | null;
+  mentions: CommentMention[];
+}
+
 export interface Workflow {
   id: string;
   name: string;
@@ -396,6 +456,21 @@ export const api = {
       });
       return apiFetch<CalendarTaskList>(`/workspaces/${workspaceId}/calendar/tasks?${searchParams.toString()}`);
     }
+  },
+  approvals: {
+    list: (
+      workspaceId: string,
+      params: { view?: 'inbox' | 'sent' | 'managed' | 'all'; status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'; team_id?: string; limit?: number; cursor?: string } = {}
+    ) => {
+      const searchParams = new URLSearchParams();
+      if (params.view) searchParams.set('view', params.view);
+      if (params.status) searchParams.set('status', params.status);
+      if (params.team_id) searchParams.set('team_id', params.team_id);
+      if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+      if (params.cursor) searchParams.set('cursor', params.cursor);
+      const query = searchParams.toString();
+      return apiFetch<PaginatedList<ApprovalRequestSummary>>(`/workspaces/${workspaceId}/approval-requests${query ? `?${query}` : ''}`);
+    },
   },
   notifications: {
     unreadCount: (workspaceId: string) =>
