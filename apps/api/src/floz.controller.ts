@@ -118,7 +118,24 @@ export class FlozController {
   @Get('workspaces/:workspaceId/dashboard/member')
   async memberDashboard(@Req() req: Request, @Param('workspaceId') wid: string) { const ctx = await this.member(req, wid); const workspace = await this.floz.workspace(wid); const evaluationAt = this.clock.now(); return ok(await getMemberDashboard(this.authService.database.db, { workspaceId: wid, userId: ctx.user.id, period: 'MTD', evaluationAt, timezone: workspace!.timezone })); }
   @Get('workspaces/:workspaceId/dashboard/manager')
-  async managerDashboard(@Req() req: Request, @Param('workspaceId') wid: string) { const ctx = await this.member(req, wid); if (!['MANAGER', 'ADMIN'].includes(ctx.membership.role)) throw new ForbiddenException('FORBIDDEN'); const workspace = await this.floz.workspace(wid); const scope = this.reportingScope(req.query as Record<string, string>, wid, workspace!.timezone); if (req.query.team_id) { if (!uuidPattern.test(String(req.query.team_id))) throw new BadRequestException('VALIDATION_ERROR'); const team = await this.floz.team(wid, String(req.query.team_id)); if (!team || !team.isActive) throw new BadRequestException('TEAM_SCOPE_MISMATCH'); if (ctx.membership.role === 'MANAGER' && team.manager_user_id !== ctx.user.id) throw new ForbiddenException('FORBIDDEN'); scope.teamIds = [String(req.query.team_id)]; } return ok(await getManagerDashboard(this.authService.database.db, { ...scope, userId: ctx.user.id })); }
+  async managerDashboard(@Req() req: Request, @Param('workspaceId') wid: string) {
+    const ctx = await this.member(req, wid);
+    if (!['MANAGER', 'ADMIN'].includes(ctx.membership.role)) throw new ForbiddenException('FORBIDDEN');
+    const workspace = await this.floz.workspace(wid);
+    const scope = this.reportingScope(req.query as Record<string, string>, wid, workspace!.timezone);
+    if (req.query.team_id) {
+      if (!uuidPattern.test(String(req.query.team_id))) throw new BadRequestException('VALIDATION_ERROR');
+      const team = await this.floz.team(wid, String(req.query.team_id));
+      if (!team || !team.isActive) throw new BadRequestException('TEAM_SCOPE_MISMATCH');
+      if (ctx.membership.role === 'MANAGER' && team.manager_user_id !== ctx.user.id) throw new ForbiddenException('FORBIDDEN');
+      scope.teamIds = [String(req.query.team_id)];
+    }
+    const dashboard = await getManagerDashboard(this.authService.database.db, { ...scope, userId: ctx.user.id });
+    const view = ctx.membership.role === 'ADMIN' ? 'all' : 'managed';
+    const teamParam = req.query.team_id ? `&team_id=${String(req.query.team_id)}` : '';
+    const drilldown_url = `/workspaces/${wid}/approvals?view=${view}&status=PENDING${teamParam}`;
+    return ok({ ...dashboard, drilldown_url });
+  }
   @Get('workspaces/:workspaceId/reports/kpis')
   async kpis(@Req() req: Request, @Param('workspaceId') wid: string) { const ctx = await this.member(req, wid); const workspace = await this.floz.workspace(wid); const teamId = req.query.team_id ? String(req.query.team_id) : undefined; if (teamId && !uuidPattern.test(teamId)) throw new BadRequestException('VALIDATION_ERROR'); const team = teamId ? await this.floz.team(wid, teamId) : null; if (teamId && (!team || !team.isActive)) throw new BadRequestException('TEAM_SCOPE_MISMATCH'); const scope = this.reportingScope(req.query as Record<string, string>, wid, workspace!.timezone); if (['MEMBER', 'FIELD_WORKER'].includes(ctx.membership.role)) scope.userId = ctx.user.id; else if (ctx.membership.role === 'MANAGER') { const managed = await this.floz.managedTeamIds(wid, ctx.user.id); if (teamId && !managed.includes(teamId)) throw new ForbiddenException('FORBIDDEN'); scope.teamIds = teamId ? [teamId] : managed; } else if (teamId) scope.teamIds = [teamId]; if (req.query.assignee_id) { const assigneeId = String(req.query.assignee_id); if (!uuidPattern.test(assigneeId)) throw new BadRequestException('VALIDATION_ERROR'); if (ctx.membership.role !== 'ADMIN' && assigneeId !== ctx.user.id) throw new ForbiddenException('FORBIDDEN'); if (!(await this.floz.membership(assigneeId, wid))) throw new BadRequestException('CROSS_WORKSPACE_REFERENCE'); scope.userId = assigneeId; } return ok(await getKpis(this.authService.database.db, scope)); }
 

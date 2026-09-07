@@ -86,7 +86,7 @@ describe('dashboard integration', () => {
     ]));
     expect(result.unassigned).toBe(1);
     expect(result.priority_breakdown.map((row) => row.key)).toEqual(['URGENT', 'HIGH', 'MEDIUM', 'LOW']);
-    expect(result).not.toHaveProperty('pending_approvals');
+    expect(result.pending_approvals).toBe(0);
   });
 
   it('does not let direct manager dashboard calls expand to unmanaged teams', async () => {
