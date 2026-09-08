@@ -303,6 +303,18 @@ describe('Phase 10 Task 4 — Task Comments & Mentions API', () => {
     expect(res.body.error.code).toBe('CROSS_WORKSPACE_REFERENCE');
   });
 
+  it('rejects a former team member from restricted task comments', async () => {
+    const { sql: db } = createDatabase(databaseUrl);
+    await db`UPDATE team_memberships SET left_at = NOW() WHERE team_id = ${fix.teamId} AND user_id = ${fix.memberId}`;
+    await db.end();
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/workspaces/${fix.workspaceId}/tasks/${fix.restrictedTaskId}/comments`)
+      .set('Cookie', fix.memberCookie)
+      .send({ content: 'Should be forbidden' })
+      .expect(403);
+  });
+
   it('rejects mention target without task access with 422 INVALID_MENTION_TARGET', async () => {
     // Member mentions Field Worker on restrictedTaskId (Field Worker is not on Team Alpha)
     const res = await request(app.getHttpServer())

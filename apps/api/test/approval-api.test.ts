@@ -365,6 +365,30 @@ describe('Phase 10 Task 2 — Approval Creation, List & Detail API', () => {
       .expect(403);
   });
 
+  it('keeps approval readable but suppresses linked task projection after requester loses team access', async () => {
+    const { sql: db } = createDatabase(databaseUrl);
+    await db`UPDATE tasks SET team_id = ${fix.team1Id} WHERE id = ${fix.taskId}`;
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/workspaces/${fix.workspaceId}/approval-requests`)
+      .set('Cookie', fix.memberCookie)
+      .send({ title: 'Restricted linked approval', task_id: fix.taskId, approver_user_id: fix.managerId })
+      .expect(201);
+    await db`UPDATE team_memberships SET left_at = NOW() WHERE team_id = ${fix.team1Id} AND user_id = ${fix.memberId}`;
+    await db.end();
+
+    const detail = await request(app.getHttpServer())
+      .get(`/api/v1/workspaces/${fix.workspaceId}/approval-requests/${created.body.data.id}`)
+      .set('Cookie', fix.memberCookie)
+      .expect(200);
+    expect(detail.body.data.task).toBeNull();
+
+    const list = await request(app.getHttpServer())
+      .get(`/api/v1/workspaces/${fix.workspaceId}/approval-requests?view=sent`)
+      .set('Cookie', fix.memberCookie)
+      .expect(200);
+    expect(list.body.data[0].task).toBeNull();
+  });
+
   it('rejects approver without task access with 422 INVALID_APPROVER_TARGET', async () => {
     const { sql: db } = createDatabase(databaseUrl);
     const otherTeam = (await db`INSERT INTO teams (workspace_id, name, is_active) VALUES (${fix.workspaceId}, 'Secret Team', true) RETURNING id`)[0];

@@ -68,7 +68,7 @@ export class ApprovalService {
     const task = (await sqlClient<{ id: string; team_id: string | null }[]>`SELECT id, team_id FROM tasks WHERE id=${taskId} AND workspace_id=${workspaceId} AND deleted_at IS NULL`)[0];
     if (!task) return false;
     if (task.team_id) {
-      const isMember = (await sqlClient<{ user_id: string }[]>`SELECT user_id FROM team_memberships WHERE team_id=${task.team_id} AND user_id=${userId}`)[0];
+      const isMember = (await sqlClient<{ user_id: string }[]>`SELECT user_id FROM team_memberships WHERE team_id=${task.team_id} AND user_id=${userId} AND left_at IS NULL`)[0];
       const isManager = (await sqlClient<{ id: string }[]>`SELECT id FROM teams WHERE id=${task.team_id} AND manager_user_id=${userId} AND is_active=true`)[0];
       const isAdmin = (await sqlClient<{ user_id: string }[]>`SELECT m.user_id FROM workspace_memberships m JOIN roles r ON r.id=m.role_id WHERE m.workspace_id=${workspaceId} AND m.user_id=${userId} AND r.code='ADMIN'`)[0];
       if (!isMember && !isManager && !isAdmin) return false;
@@ -246,7 +246,7 @@ export class ApprovalService {
     const nextCursor = hasMore && dataRows.length ? this.encodeCursor(dataRows[dataRows.length - 1]) : null;
 
     return {
-      data: dataRows.map(this.formatDetail),
+      data: await Promise.all(dataRows.map(async (row) => this.formatDetail(row, !row.task_id || await this.validateTaskAccess(this.sql, workspaceId, row.task_id, actorId)))),
       meta: {
         pagination: {
           limit,
@@ -291,7 +291,7 @@ export class ApprovalService {
 
     if (!isAuthorized) throw new ForbiddenException('FORBIDDEN');
 
-    return this.formatDetail(row);
+    return this.formatDetail(row, !row.task_id || await this.validateTaskAccess(sqlClient, workspaceId, row.task_id, actorId));
   }
 
   async detail(workspaceId: string, actorId: string, role: string, approvalRequestId: string) {
@@ -531,12 +531,12 @@ export class ApprovalService {
     });
   }
 
-  private formatDetail(row: ApprovalRequestDetailRow) {
+  private formatDetail(row: ApprovalRequestDetailRow, canReadTask: boolean) {
     return {
       id: row.id,
       workspace_id: row.workspace_id,
       task_id: row.task_id,
-      task: row.task_id ? { id: row.task_id, task_key: row.task_key, title: row.task_title } : null,
+      task: row.task_id && canReadTask ? { id: row.task_id, task_key: row.task_key, title: row.task_title } : null,
       requester: { id: row.requester_id, full_name: row.requester_name },
       approver: { id: row.approver_user_id, full_name: row.approver_name },
       title: row.title,

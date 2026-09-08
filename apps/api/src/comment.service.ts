@@ -57,7 +57,7 @@ export class CommentService {
     if (!task) return { exists: false, hasAccess: false };
 
     if (task.team_id) {
-      const isMember = (await sqlClient<{ user_id: string }[]>`SELECT user_id FROM team_memberships WHERE team_id = ${task.team_id} AND user_id = ${userId}`)[0];
+      const isMember = (await sqlClient<{ user_id: string }[]>`SELECT user_id FROM team_memberships WHERE team_id = ${task.team_id} AND user_id = ${userId} AND left_at IS NULL`)[0];
       const isManager = (await sqlClient<{ id: string }[]>`SELECT id FROM teams WHERE id = ${task.team_id} AND manager_user_id = ${userId} AND is_active = true`)[0];
       const isAdmin = (await sqlClient<{ user_id: string }[]>`SELECT m.user_id FROM workspace_memberships m JOIN roles r ON r.id = m.role_id WHERE m.workspace_id = ${workspaceId} AND m.user_id = ${userId} AND r.code = 'ADMIN'`)[0];
       if (!isMember && !isManager && !isAdmin) return { exists: true, hasAccess: false };
