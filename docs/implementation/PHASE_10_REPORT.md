@@ -37,7 +37,34 @@ Phase 10 Approval & Collaboration Core is implemented through Task 11. Task 12 d
 - Checkpoints A–E are represented by the committed Task 1–11 history. Requirements, authorization, concurrency, code-quality, and web accessibility reviews were performed in the implementation sequence; no unrecorded review claims are added here.
 - Phase 10 deliberately retains one-step application behavior, server-side authorization, transaction boundaries, plain-text rendering, soft delete, and no generic idempotency table.
 
-## Verification evidence
+## Fresh final gate evidence — supersedes draft tables below
+
+All eight gates ran sequentially after provisioning a dedicated disposable PostgreSQL/Redis environment. Exit 0 for every gate:
+
+| Gate | Duration ms | Actual result |
+|---|---:|---|
+| 1 clean DB | 132398 | 62 passed, 5 files, 0 failures/skips; migration applied |
+| 2 E2E | 147893 | 19 discovered/executed/passed, 0 failures/skips |
+| 3 worker integration | 4531 | 16 passed, 4 files, 0 failures/skips |
+| 4 lint | 16420 | 10 packages passed |
+| 5 typecheck | 14842 | 10 packages passed |
+| 6 root test run 1 | 197582 | 271 passed, 0 failures/skips |
+| 7 build | 64056 | 10 packages passed |
+| 8 root test run 2 | 177549 | 271 passed, 0 failures/skips |
+
+Each root run independently reported database 31, config 2, domain 19, API 83, web 103, worker 33. Contracts, observability, UI, validation discovered no test files and exited 0 under existing scripts. The 19 domain tests must not be mislabeled contracts tests. Build packages: database, config, contracts, domain, observability, UI, validation, API, web, worker. Dedicated DB migration ledger contains 8 rows.
+
+Prior attempt stopped at gate 3 with missing DATABASE_URL/REDIS_URL (exit 1, 3147ms; two failed suites, one skipped suite, one passed test). No tests were weakened. Dedicated containers on loopback ports 15480/16480 resolved environment setup; all gates restarted at 1. No implementation corrective commit was made. Worker integration command selects four older integration files; Phase 10 notification integration (5 tests) ran in both root runs.
+
+Full captured outputs: clean DB `tool_07eceb2a8001ekX7D4tJz2622y`, E2E `tool_07ed06b02001WQ0wJomRkpmwKI`, root run 1 `tool_07ed3594b001hA4C6HwnugkR7m`, root run 2 `tool_07ed7ab43001ygNT6XtocFV2Uk`, under `C:\Users\anand\.local\share\opencode\tool-output`. Other gate outputs are in the session transcript.
+
+External technical API, ERD, architecture, and free-bootstrap Markdown were UPDATED with implementation addenda. Earlier draft claims that external updates were unauthorized are incorrect. Product/UX inspection was partial, not a complete contract audit; DOCX canonical status was not independently established. External reconciliation remains incomplete, including comment PATCH wording and comprehensive UX synchronization.
+
+Review limitations: code inspection found approval list/detail task projections do not recheck linked-task access, task access helpers omit left_at filtering, malformed cursors are not consistently rejected, and worker actor metadata remains in outbox rather than notification rows. These require further investigation; passing gates do not establish a clean security review. No independent reviewer or full manual accessibility audit was performed. Checkpoint E acceptance is user-provided; earlier checkpoint reviews cannot be reconstructed solely from commit subjects.
+
+Task 12 draft commit is `8eac8d8`; it accidentally retained pending evidence text. This forward correction records actual evidence and the incomplete documentation/review status. Generated next-env/tsbuildinfo drift was restored with user authorization. Starting HEAD is actual `4b00b27570509335f29fda28cf8988137d543a5c`, not the originally supplied unreliable full hash.
+
+## Original draft verification table (historical, superseded)
 
 Final gates are executed sequentially below. Exact command output, exit code, duration, and package/test counts are appended after each gate completes. No prior Checkpoint E count is substituted for fresh execution.
 
