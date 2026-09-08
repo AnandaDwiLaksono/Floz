@@ -17,3 +17,4 @@ export * from './reporting-core.js';
 export * from './my-work.js';
 export * from './kpis.js';
 export * from './dashboard.js';
+export * from './workflow-core.js';
