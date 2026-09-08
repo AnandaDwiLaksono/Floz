@@ -17,32 +17,24 @@ Completed
 - Phase 7 P0 in-app notifications and reminders with assignment, due-soon, overdue, durable schedule-aware deduplication, outbox/worker/reconciliation recovery, workspace/user-isolated APIs, accessible Notification Center, polling refresh, and real-stack E2E coverage.
 - Phase 8 Dashboard, KPI Reporting & My Work, including final documentation and verification gates.
 - Phase 9 Operator Usability & Administration: ADMIN-only account provisioning with one-time temporary credentials and no auto-membership/session, profile and password management with session hygiene, no-workspace onboarding, workspace settings, member identity projection and lifecycle with last-active-admin and active-team-manager invariants under row locking, team administration with archive/restore and manager invariants, multi-assignee task creation, task filter controls with canonical `overdue=true` and cursor hygiene, calendar reschedule with context preservation, and field worker server-authoritative quick status. See `PHASE_9_REPORT.md`.
+- Phase 10 Approval & Collaboration Core through Task 11: migration 0007, approval CRUD/terminal engine, comments/mentions, worker notification mapping, manager dashboard pending approvals, web approvals and comments UX, accessibility hardening, and real-stack E2E.
 
 In Progress
-- None.
+- Phase 10 Task 12 documentation sync and final verification.
 
 Next
-- Phase 10 is not started. Await explicit direction; do not proceed automatically.
+- Final gate sequence and commit.
 
 Blocked
-- None.
+- None in product work; only pre-existing `apps/web/tsconfig.tsbuildinfo` drift is outside Task 12 ownership until resolved.
 
-Phase 9 verification
-- Complete. Clean DB (`scripts/test-clean-db.ps1`) API + auth 38/38, exit 0; E2E (`scripts/test-e2e.ps1`) 15/15 Playwright; worker integration 16/16 against real PostgreSQL + Redis; lint, typecheck, and build PASS.
-- Root `pnpm test` passed twice consecutively: database 24, config 2, contracts 19, api 52, web 58, worker 28 — zero failures/skips both runs.
-- Task 11 added ADMIN account lookup, corrected member `full_name` shape, team `isActive` contract, and task-detail refetch on row open; no migration was added in Phase 9 (zero-migration).
-- Phase 9 commits: `959a3dc`, `837c455`, `2bfe827`, `9b98a82`, `7bac4d8`, `aa16d1d`, `bd81e88`, `4b822ac`, `26ba556`, `95f1812`, `a38f113`, `6c3792c`, `5f6aa87`, `38d9bc4`, `3eac635`. Earlier Task 8–10 commits were rebased once; the rebase is documented and the current hashes above are canonical (see `PHASE_9_REPORT.md`).
-- Nonblocking: Next.js multi-lockfile warning and existing ESLint Pages warning.
+Phase 10 verification
+- Pending execution of final gates.
+- Root `pnpm test` baseline from Phase 9 remains recorded in `PHASE_9_REPORT.md`; Phase 10 needs fresh counts.
 
-Open Decisions
-- See `docs/decisions/OPEN_DECISIONS.md`.
-
-Known Limitations
-- Approval notifications, comments, mentions, attachments, audit, notification preferences UI, push, email delivery, and remaining product UI beyond Phase 9 are out of scope.
+Known limitations
+- Approval notifications, comments, mentions, attachments, audit, notification preferences UI, push, email delivery, and remaining product UI beyond Phase 10 are out of scope unless specifically added later.
 - Reporting has no historical snapshots, exports, scheduled reports, charting warehouse, saved filters, custom KPI formulas, audit analytics, or cross-workspace reporting.
 - Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported and are excluded from projection.
 - `CUSTOM` recurrence remains unsupported; password recovery/reset for existing accounts and email/push delivery remain out of scope.
-- Some pre-existing accessibility follow-ups remain: several admin dialogs lack Escape-to-close/focus-trap handling, and skip-link support is future hardening.
-- Better Auth `baseURL` is set in test env for deterministic API integration tests.
-- Web production builds pass; previous React Hook dependency warnings were cleared.
-
+- Some pre-existing accessibility follow-ups remain outside Phase 10 scope.
