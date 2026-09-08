@@ -6,19 +6,29 @@ export function useUnreadCount(workspaceId: string | undefined) {
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const fetchUnreadCount = useCallback(async () => {
     if (!workspaceId) {
-      setUnreadCount(0);
+      if (isMountedRef.current) setUnreadCount(0);
       return;
     }
     try {
-      setError(null);
+      if (isMountedRef.current) setError(null);
       const res = await api.notifications.unreadCount(workspaceId);
-      setUnreadCount(res.data.count);
+      if (isMountedRef.current) setUnreadCount(res.data.count);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to fetch unread count';
-      setError(msg);
+      if (isMountedRef.current) {
+        const msg = err instanceof Error ? err.message : 'Failed to fetch unread count';
+        setError(msg);
+      }
     }
   }, [workspaceId]);
 
@@ -29,28 +39,34 @@ export function useUnreadCount(workspaceId: string | undefined) {
     }
 
     setLoading(true);
-    fetchUnreadCount().finally(() => setLoading(false));
+    fetchUnreadCount().finally(() => {
+      if (isMountedRef.current) setLoading(false);
+    });
 
     // ~60 second polling interval when document is visible
     const intervalId = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         fetchUnreadCount();
       }
     }, 60000);
 
     const handleFocus = () => {
-      if (document.visibilityState === 'visible') {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         fetchUnreadCount();
       }
     };
 
-    window.addEventListener('visibilitychange', handleFocus);
-    window.addEventListener('focus', handleFocus);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('visibilitychange', handleFocus);
+      window.addEventListener('focus', handleFocus);
+    }
 
     return () => {
       clearInterval(intervalId);
-      window.removeEventListener('visibilitychange', handleFocus);
-      window.removeEventListener('focus', handleFocus);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('visibilitychange', handleFocus);
+        window.removeEventListener('focus', handleFocus);
+      }
     };
   }, [workspaceId, fetchUnreadCount]);
 
@@ -73,20 +89,32 @@ export function useNotifications(
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const filterReadRef = useRef(filterRead);
   filterReadRef.current = filterRead;
 
   const fetchNotifications = useCallback(async () => {
     if (!workspaceId) {
-      setNotifications([]);
-      setHasMore(false);
-      setNextCursor(null);
+      if (isMountedRef.current) {
+        setNotifications([]);
+        setHasMore(false);
+        setNextCursor(null);
+      }
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (isMountedRef.current) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
       const readParam = filterReadRef.current === null ? undefined : !filterReadRef.current;
@@ -95,14 +123,20 @@ export function useNotifications(
         limit: 20,
       });
 
-      setNotifications(res.data);
-      setHasMore(res.meta.pagination.has_more);
-      setNextCursor(res.meta.pagination.next_cursor);
+      if (isMountedRef.current) {
+        setNotifications(res.data);
+        setHasMore(res.meta.pagination.has_more);
+        setNextCursor(res.meta.pagination.next_cursor);
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to fetch notifications';
-      setError(msg);
+      if (isMountedRef.current) {
+        const msg = err instanceof Error ? err.message : 'Failed to fetch notifications';
+        setError(msg);
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [workspaceId]);
 
@@ -113,7 +147,7 @@ export function useNotifications(
   const loadMore = useCallback(async () => {
     if (!workspaceId || !hasMore || !nextCursor || loading) return;
 
-    setLoading(true);
+    if (isMountedRef.current) setLoading(true);
     try {
       const readParam = filterReadRef.current === null ? undefined : !filterReadRef.current;
       const res = await api.notifications.list(workspaceId, {
@@ -122,14 +156,20 @@ export function useNotifications(
         cursor: nextCursor,
       });
 
-      setNotifications((prev) => [...prev, ...res.data]);
-      setHasMore(res.meta.pagination.has_more);
-      setNextCursor(res.meta.pagination.next_cursor);
+      if (isMountedRef.current) {
+        setNotifications((prev) => [...prev, ...res.data]);
+        setHasMore(res.meta.pagination.has_more);
+        setNextCursor(res.meta.pagination.next_cursor);
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load more notifications';
-      setError(msg);
+      if (isMountedRef.current) {
+        const msg = err instanceof Error ? err.message : 'Failed to load more notifications';
+        setError(msg);
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [workspaceId, hasMore, nextCursor, loading]);
 
