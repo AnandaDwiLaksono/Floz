@@ -7,12 +7,12 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 
 ---
 
-## Task & Checkpoint Breakdown
+## Tasks by Checkpoint
 
 ### Checkpoint A: Database Migration & Workflow Domain Invariants
 
 #### Task 1: Drizzle Schema Modifications & Preflight Migration Safety
-- **Objective**: Apply additive schema modifications for Phase 11 and add preflight invariant verification to prevent data corruption on existing databases.
+- **Objective**: Apply additive schema modifications for Phase 11 and embed a deterministic PostgreSQL preflight block in the migration execution path to prevent data corruption on existing databases.
 - **Exact Expected Files/Modules**:
   - `database/src/schema.ts`
   - Next Drizzle migration generated under `database/drizzle/` (generated via `pnpm --filter @floz/database migration:generate`, expected prefix `0008_...sql`)
@@ -25,26 +25,49 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
   - Add Partial Unique Index: `workflows(workspace_id)` where `team_id IS NULL AND is_default = true AND is_active = true`.
   - Add Partial Unique Index: `workflows(workspace_id, team_id)` where `team_id IS NOT NULL AND is_default = true AND is_active = true`.
   - Add Partial Unique Index: `task_statuses(workflow_id)` where `is_initial = true AND is_active = true`.
-  - **Preflight Verification**: Integration test runs preflight checks verifying:
-    1. Zero duplicate `LOWER(name)` per workflow in `task_statuses`.
-    2. At most one active workspace default in `workflows`.
-    3. At most one active team default per `(workspace_id, team_id)` in `workflows`.
-    4. At most one active initial status per workflow in `task_statuses`.
-    If invariant violations are detected in preflight, the migration gate throws an error without altering or deleting operational records.
+  - **Embedded Preflight Verification**: Augment the generated migration SQL with an explicit PL/pgSQL preflight block executed before creating new unique/partial indexes:
+    ```sql
+    DO $$
+    BEGIN
+      -- 1. Check duplicate lower status names within any workflow
+      IF EXISTS (SELECT 1 FROM task_statuses GROUP BY workflow_id, LOWER(name) HAVING COUNT(*) > 1) THEN
+        RAISE EXCEPTION 'Phase 11 Preflight Violation: Duplicate case-insensitive status names exist within a workflow.';
+      END IF;
+
+      -- 2. Check duplicate active workspace defaults
+      IF EXISTS (SELECT 1 FROM workflows WHERE team_id IS NULL AND is_default = true AND is_active = true GROUP BY workspace_id HAVING COUNT(*) > 1) THEN
+        RAISE EXCEPTION 'Phase 11 Preflight Violation: Multiple active workspace default workflows exist.';
+      END IF;
+
+      -- 3. Check duplicate active team defaults
+      IF EXISTS (SELECT 1 FROM workflows WHERE team_id IS NOT NULL AND is_default = true AND is_active = true GROUP BY workspace_id, team_id HAVING COUNT(*) > 1) THEN
+        RAISE EXCEPTION 'Phase 11 Preflight Violation: Multiple active team default workflows exist for a team.';
+      END IF;
+
+      -- 4. Check duplicate active initial statuses
+      IF EXISTS (SELECT 1 FROM task_statuses WHERE is_initial = true AND is_active = true GROUP BY workflow_id HAVING COUNT(*) > 1) THEN
+        RAISE EXCEPTION 'Phase 11 Preflight Violation: Multiple active initial statuses exist within a workflow.';
+      END IF;
+    END $$;
+    ```
+    If any invariant violation exists, the migration transaction aborts and rolls back immediately without altering or deleting operational records.
 - **API/Runtime Behavior**: None.
 - **Authorization**: N/A (Database layer).
-- **Transaction Boundary**: Schema DDL executed within Drizzle migration transaction.
+- **Transaction Boundary**: Schema DDL and preflight checks executed within Drizzle migration transaction.
 - **Concurrency Behavior**: Preflight queries and index creation run during migration setup.
 - **UI Behavior**: None.
 - **Tests to Add/Update**:
-  - `database/test/workflow-migration.integration.test.ts`: Test migration application on clean DB and on pre-populated database with seeded workflows; test that partial unique constraints reject manual duplicate inserts.
+  - `database/test/workflow-migration.integration.test.ts`:
+    - Test migration application on clean DB (success).
+    - Test migration application on valid populated DB with seeded workflows (success).
+    - Test migration abort and clean rollback on a DB artificially seeded with duplicate lower status names or double defaults.
 - **Exact Focused Verification Commands**:
   - `pnpm --filter @floz/database test -- workflow-migration.integration.test.ts`
 - **Expected Forward Commit Boundary/Message**:
-  - `feat(database): add Phase 11 workflow configuration schema and migration (Task 1)`
-- **Explicit Non-Goals**: No data rewriting or automatic reassignment of invalid existing records.
+  - `feat(database): add Phase 11 workflow configuration schema, preflight safety, and migration (Task 1)`
+- **Explicit Non-Goals**: No automatic data deletion or silent data rewrite.
 - **Rollback/Recovery Considerations**: Schema additions are purely additive with non-null defaults (`version=1`, `is_active=true`). Can rollback by dropping the added indexes and columns if needed.
-- **Evidence Required at Checkpoint Review**: Clean migration output, journal record matching generated SQL, and passing integration test verifying partial unique indexes.
+- **Evidence Required at Checkpoint Review**: Clean migration output, journal record matching generated SQL, and passing integration tests verifying preflight failure on invalid data and success on valid data.
 
 ---
 
@@ -79,14 +102,12 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 - **Rollback/Recovery Considerations**: Helper module is isolated and consumed only by subsequent tasks.
 - **Evidence Required at Checkpoint Review**: Concurrency test logs demonstrating lock serializability and version mismatch rejection.
 
-**STOP CONDITION (Checkpoint A)**: Migration generated and applied clean on disposable DB; preflight safety tests pass; concurrency primitives pass serializability tests.
-
 ---
 
 ### Checkpoint B: Configuration API, Recurrence Guard & Concurrency Lifecycle
 
 #### Task 3: Workflow CRUD & Atomic Creation
-- **Objective**: Expose ADMIN-only workflow list, detail, metadata update, and atomic workflow creation endpoints.
+- **Objective**: Expose ADMIN-only workflow list, detail, metadata update, and atomic workflow creation endpoints with team validation.
 - **Exact Expected Files/Modules**:
   - `apps/api/src/workflow.dto.ts`
   - `apps/api/src/workflow.service.ts`
@@ -95,13 +116,15 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
   - `apps/api/test/workflow-api.test.ts`
 - **Database Behavior**:
   - `POST /workflows` transaction:
-    1. Validates unique `(workspace_id, code)` and `(workspace_id, name)`.
-    2. Inserts `workflows` row (`is_active = true, is_default = false, version = 1`).
-    3. Validates status set (exactly one `is_initial = true`, at least one terminal `DONE`/`CANCELLED`, unique codes `[A-Z0-9_]{2,32}`, unique lower names).
-    4. Inserts `task_statuses` rows with contiguous positions `1..N`.
-    5. Validates transitions (no self-loops `422 SELF_LOOP_NOT_ALLOWED`, transition codes map strictly to submitted status codes).
-    6. Inserts `workflow_transitions` rows with `requires_permission = false`.
-    7. Entire transaction rolls back on any error; zero partial rows created.
+    1. If `team_id` is provided: verify `SELECT id, is_active FROM teams WHERE id = :teamId AND workspace_id = :workspaceId`. If missing, throw `422 CROSS_WORKSPACE_REFERENCE`. If `is_active = false`, throw `409 TEAM_ARCHIVED`.
+    2. Validates unique `(workspace_id, code)` and `(workspace_id, name)`.
+    3. Normalizes `code` to uppercase `[A-Z0-9_]{2,64}`.
+    4. Inserts `workflows` row (`is_active = true, is_default = false, version = 1`).
+    5. Validates status set (exactly one `is_initial = true`, at least one terminal `DONE`/`CANCELLED`, unique codes `[A-Z0-9_]{2,32}`, unique lower names).
+    6. Inserts `task_statuses` rows with contiguous positions `1..N` and category-derived `is_terminal`.
+    7. Validates transitions (no self-loops `422 SELF_LOOP_NOT_ALLOWED`, transition codes map strictly to submitted status codes).
+    8. Inserts `workflow_transitions` rows with `requires_permission = false`.
+    9. Entire transaction rolls back on any error; zero partial rows created.
 - **API/Runtime Behavior**:
   - `GET /api/v1/workspaces/:workspaceId/workflows`: Active member read access. Returns workflow list with statuses.
   - `GET /api/v1/workspaces/:workspaceId/workflows/:workflowId`: Detailed tree (statuses + transition matrix).
@@ -112,19 +135,19 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 - **Concurrency Behavior**: `PATCH` validates `version` before update and increments `version = version + 1`.
 - **UI Behavior**: None.
 - **Tests to Add/Update**:
-  - `apps/api/test/workflow-api.test.ts`: Test atomic creation success; test creation rollback on invalid transition codes or missing initial status; test non-ADMIN receiving `403 FORBIDDEN`.
+  - `apps/api/test/workflow-api.test.ts`: Test atomic creation success; test creation rollback on invalid transition codes, missing initial status, or archived team; test non-ADMIN receiving `403 FORBIDDEN`.
 - **Exact Focused Verification Commands**:
   - `pnpm --filter @floz/api test -- workflow-api.test.ts`
 - **Expected Forward Commit Boundary/Message**:
   - `feat(api): add workflow atomic creation, list, detail, and metadata endpoints (Task 3)`
 - **Explicit Non-Goals**: Default switching (handled in Task 4).
 - **Rollback/Recovery Considerations**: Standard NestJS controller and service additions.
-- **Evidence Required at Checkpoint Review**: Passing API tests covering role authorization, atomic rollback, and code immutability.
+- **Evidence Required at Checkpoint Review**: Passing API tests covering role authorization, atomic rollback, and team validation.
 
 ---
 
 #### Task 4: Workflow Default Switching & Recurrence-Safe Archival
-- **Objective**: Implement explicit `set-default`, `archive`, and `restore` endpoints for workflows, enforcing recurrence template safety.
+- **Objective**: Implement explicit `set-default`, `archive`, and `restore` endpoints for workflows, enforcing recurrence template safety and testing real PostgreSQL default races.
 - **Exact Expected Files/Modules**:
   - `apps/api/src/workflow.service.ts`
   - `apps/api/src/floz.controller.ts`
@@ -134,7 +157,9 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
   - `POST /workflows/:workflowId/set-default`:
     1. Lock workspace `FOR UPDATE`.
     2. Identify target and previous default workflow in scope (`team_id IS NULL` for workspace default, `team_id = X` for team default).
-    3. Validate expected `version` on target workflow. If target is already active default AND expected `version === target.version`, return target as deterministic 200 no-op (no version bump). If `version !== target.version`, throw `409 VERSION_CONFLICT`.
+    3. Validate expected `version` on target workflow:
+       - If target is already active default AND expected `version === target.version`, return target as deterministic 200 no-op (no mutation, no version bump).
+       - If `version !== target.version`, throw `409 VERSION_CONFLICT`.
     4. Lock previous and target workflow rows in deterministic order `ORDER BY id ASC FOR UPDATE`.
     5. If previous default exists: unset `is_default = false` and bump `version = version + 1`.
     6. Set target `is_default = true` and bump `version = version + 1`.
@@ -148,26 +173,30 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
   - `POST /workflows/:workflowId/restore`:
     1. Lock workflow `FOR UPDATE`, validate `version`.
     2. Set `is_active = true, is_default = false`, bump `version = version + 1`.
-- **API/Runtime Behavior**:
-  - Endpoints accept `{ version: number }`. Return updated workflow with new version.
+- **API/Runtime Behavior**: Endpoints accept `{ version: number }`. Return updated workflow with new version.
 - **Authorization**: ADMIN only (`403 FORBIDDEN` for non-ADMIN).
 - **Transaction Boundary**: Each lifecycle operation runs in a single transaction with deterministic locking.
 - **Concurrency Behavior**: Bumps versions on both previous and target default workflows during `set-default`.
 - **UI Behavior**: None.
 - **Tests to Add/Update**:
-  - `apps/api/test/workflow-lifecycle.integration.test.ts`: Test `set-default` increments versions on both workflows; test archiving team default unsets `is_default`; test restoring does not reclaim default; test active recurrence rule blocks workflow archival (`409 RECURRENCE_DEPENDENCY_CONFLICT`); test workspace default cannot be archived (`409 CANNOT_ARCHIVE_DEFAULT_WORKFLOW`).
+  - `apps/api/test/workflow-lifecycle.integration.test.ts`:
+    - Test `set-default` increments versions on both workflows.
+    - Test concurrent `set-default` vs `set-default` in same scope (winner sets default, competitor receives `409 VERSION_CONFLICT` or cleanly handles sequence; exactly one default remains; no deadlock).
+    - Test archiving team default unsets `is_default`; test restoring does not reclaim default.
+    - Test active recurrence rule blocks workflow archival (`409 RECURRENCE_DEPENDENCY_CONFLICT`).
+    - Test workspace default cannot be archived (`409 CANNOT_ARCHIVE_DEFAULT_WORKFLOW`).
 - **Exact Focused Verification Commands**:
   - `pnpm --filter @floz/api test -- workflow-lifecycle.integration.test.ts`
 - **Expected Forward Commit Boundary/Message**:
   - `feat(api): implement workflow set-default, archive, restore, and recurrence dependency guards (Task 4)`
 - **Explicit Non-Goals**: Status-level manipulation.
 - **Rollback/Recovery Considerations**: Standard transactional service updates.
-- **Evidence Required at Checkpoint Review**: Integration test proving two-workflow version bumps, recurrence block, and team default fallback.
+- **Evidence Required at Checkpoint Review**: Integration test proving two-workflow version bumps, default race serializability, recurrence block, and team default fallback.
 
 ---
 
 #### Task 5: Status Lifecycle, Compacting Reorder & Dormant Transition Preservation
-- **Objective**: Implement status create, update, `set-initial`, archive, restore, reorder, and bulk transition replacement with dormant edge preservation and recurrence guards.
+- **Objective**: Implement status create, update, `set-initial`, archive, restore, reorder, and bulk transition replacement with dormant edge preservation and real PostgreSQL lifecycle concurrency coverage.
 - **Exact Expected Files/Modules**:
   - `apps/api/src/workflow.service.ts`
   - `apps/api/src/floz.controller.ts`
@@ -175,7 +204,7 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 - **Database Behavior**:
   - `POST /statuses`: Add status at `position = activeCount + 1`, derive `is_terminal` from `category`, bump `workflow.version`.
   - `PATCH /statuses/:statusId`: Update `name` or `category`. If `category` changes: query active tasks (`SELECT COUNT(*) FROM tasks WHERE status_id = :id AND deleted_at IS NULL`) and active recurrence rules (`SELECT COUNT(*) FROM recurrence_rules WHERE workspace_id = :workspaceId AND is_active = true AND template_snapshot->>'status_id' = :id`). If count > 0, throw `409 STATUS_CATEGORY_IN_USE`. Derive new `is_terminal`, bump `workflow.version`.
-  - `POST /statuses/:statusId/set-initial`: Validate `version`. If already initial and version matches, return no-op. Unset previous `is_initial = false`, set target `is_initial = true`, bump `workflow.version`.
+  - `POST /statuses/:statusId/set-initial`: Validate `version`. If already initial and version matches, return no-op. Unset previous `is_initial = false`, set target `is_initial = true`, bump `workflow.version`. If stale version supplied, throw `409 VERSION_CONFLICT`.
   - `POST /statuses/:statusId/archive`:
     1. Validate `version`. If `is_initial = true`, throw `409 CANNOT_ARCHIVE_INITIAL_STATUS`.
     2. **Recurrence Safety Guard**: Check active recurrence rules referencing `template_snapshot->>'status_id' = :statusId`. If found, throw `409 RECURRENCE_DEPENDENCY_CONFLICT`.
@@ -191,33 +220,36 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
     1. Lock workflow and statuses `FOR UPDATE`, validate `version`.
     2. Validate no self-loops (`422 SELF_LOOP_NOT_ALLOWED`) and no edges to inactive targets (`422 INACTIVE_TRANSITION_TARGET`).
     3. Query existing transitions. Extract dormant incoming edges where `to_status.is_active = false`.
-    4. Delete only existing active-target edges (`to_status.is_active = true`). Retain dormant incoming edges.
+    4. Delete only existing active-target edges (`to_status.is_active = true`). Retain dormant incoming edges automatically.
     5. Insert/retain submitted active-target edges, preserving `requires_permission` on retained edges and defaulting `requires_permission = false` on newly added edges.
     6. Bump `workflow.version = version + 1`.
-- **API/Runtime Behavior**:
-  - Expose status management endpoints under `/api/v1/workspaces/:workspaceId/workflows/:workflowId/...`.
+- **API/Runtime Behavior**: Expose status management endpoints under `/api/v1/workspaces/:workspaceId/workflows/:workflowId/...`.
 - **Authorization**: ADMIN only for all mutations.
 - **Transaction Boundary**: Single transaction per operation under workflow aggregate lock.
 - **Concurrency Behavior**: Every status/transition mutation validates expected version and increments `workflow.version`.
 - **UI Behavior**: None.
 - **Tests to Add/Update**:
-  - `apps/api/test/workflow-status.integration.test.ts`: Test position compaction on status archive; test status restore assigns position `N+1`; test category change blocked when tasks or recurrence rules exist (`409 STATUS_CATEGORY_IN_USE`); test transition replacement preserves dormant incoming edges to archived targets; test initial status archive is rejected (`409 CANNOT_ARCHIVE_INITIAL_STATUS`).
+  - `apps/api/test/workflow-status.integration.test.ts`:
+    - Concurrent `set-initial` vs `set-initial` (winner sets initial, loser with stale version receives `409 VERSION_CONFLICT`; exactly one active initial status remains).
+    - Stale `PATCH /statuses/:id` returns `409 VERSION_CONFLICT` with zero mutation.
+    - Stale `PUT /transitions` returns `409 VERSION_CONFLICT` with zero graph mutation.
+    - Status position compaction on archive and position `N+1` on restore.
+    - Category change blocked when tasks or recurrence rules exist (`409 STATUS_CATEGORY_IN_USE`).
+    - Transition replacement preserves dormant incoming edges to archived targets.
 - **Exact Focused Verification Commands**:
   - `pnpm --filter @floz/api test -- workflow-status.integration.test.ts`
 - **Expected Forward Commit Boundary/Message**:
   - `feat(api): add status lifecycle, compaction reordering, and transition preservation (Task 5)`
 - **Explicit Non-Goals**: Task creation or execution modification.
 - **Rollback/Recovery Considerations**: Standard isolated service additions.
-- **Evidence Required at Checkpoint Review**: Integration test output confirming position compaction, dormant edge retention, and category lock.
-
-**STOP CONDITION (Checkpoint B)**: All workflow and status lifecycle APIs implemented, protected by ADMIN authorization, recurrence guards, and optimistic concurrency versioning.
+- **Evidence Required at Checkpoint Review**: Integration test output confirming position compaction, dormant edge retention, concurrency races, and category lock.
 
 ---
 
 ### Checkpoint C: Task Runtime, Default Resolution & Recurrence Compatibility
 
-#### Task 6: Task Creation Dynamic Default Resolution & Team Scope Enforcement
-- **Objective**: Update task creation logic to dynamically resolve team defaults and workspace defaults, rejecting cross-team workflows.
+#### Task 6: Task Creation Dynamic Default Resolution & Scope Enforcement
+- **Objective**: Update task creation logic to dynamically resolve team defaults and workspace defaults, rejecting cross-team and invalid status assignments.
 - **Exact Expected Files/Modules**:
   - `database/src/task-core.ts`
   - `apps/api/src/task.service.ts`
@@ -232,7 +264,7 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
        - If `!workflow || !workflow.is_active`, throw `WORKFLOW_SCOPE_MISMATCH`.
        - If `workflow.team_id != null && workflow.team_id !== input.team_id`, throw `WORKFLOW_SCOPE_MISMATCH`.
     3. If `input.status_id` is provided:
-       - Validate status belongs to resolved workflow and `is_active = true`. Throw `STATUS_SCOPE_MISMATCH` if missing or inactive.
+       - Validate status belongs to resolved workflow and `is_active = true`. Throw `STATUS_SCOPE_MISMATCH` if missing, belonging to another workflow, or inactive.
     4. Return resolved `{ workflow_id, status_id }`.
 - **API/Runtime Behavior**: Task creation endpoint automatically maps tasks to the resolved workflow and active initial status.
 - **Authorization**: Standard active member task creation authorization.
@@ -241,23 +273,26 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 - **UI Behavior**: None.
 - **Tests to Add/Update**:
   - `database/test/task-workflow-resolution.integration.test.ts`:
-    - Task with `team_id = X` and team default -> resolves team default workflow.
-    - Task with `team_id = Y` (no team default) -> resolves workspace default workflow.
-    - Task with `team_id = null` -> resolves workspace default workflow.
-    - Explicit cross-team workflow assignment -> throws `422 WORKFLOW_SCOPE_MISMATCH`.
+    - Team task + active team default -> resolves team default workflow.
+    - Team task + active workspace-level workflow -> allowed.
+    - Team task + same-team active workflow -> allowed.
+    - Team task + different-team workflow -> throws `422 WORKFLOW_SCOPE_MISMATCH`.
+    - Task with `team_id = null` -> resolves workspace default.
     - Explicit archived workflow assignment -> throws `422 WORKFLOW_SCOPE_MISMATCH`.
+    - Provided status belonging to another workflow -> throws `400 STATUS_SCOPE_MISMATCH`.
+    - Provided status is inactive -> throws `400 STATUS_SCOPE_MISMATCH`.
 - **Exact Focused Verification Commands**:
   - `pnpm --filter @floz/database test -- task-workflow-resolution.integration.test.ts`
 - **Expected Forward Commit Boundary/Message**:
   - `feat(task): implement dynamic workflow default resolution and team scoping (Task 6)`
 - **Explicit Non-Goals**: Modifying existing task rows.
 - **Rollback/Recovery Considerations**: Default resolution strictly falls back to workspace default if team default is absent.
-- **Evidence Required at Checkpoint Review**: Integration test logs demonstrating team and workspace fallback resolution.
+- **Evidence Required at Checkpoint Review**: Integration test logs demonstrating all scoping and fallback paths.
 
 ---
 
 #### Task 7: Task Runtime Transition Enforcement & Archived Status Escape
-- **Objective**: Ensure task transition execution permits escaping from archived statuses while rejecting transitions into inactive target statuses with `422 INVALID_TRANSITION`.
+- **Objective**: Ensure task transition execution permits escaping from archived statuses while rejecting transitions into inactive target statuses with canonical `422 INVALID_TRANSITION`.
 - **Exact Expected Files/Modules**:
   - `apps/api/src/task.service.ts`
   - `apps/api/test/task-transition-archival.integration.test.ts`
@@ -288,8 +323,8 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 
 ---
 
-#### Task 8: Read Projections, Kanban Compatibility & Recurrence Guard Alignment
-- **Objective**: Update read projections across Kanban, Task List, Calendar, My Work, and Dashboards so archived status references remain visible, while preventing recurrence breakage.
+#### Task 8: Read Projections, Kanban Active Column Visibility & Recurrence Guard Alignment
+- **Objective**: Ensure Kanban displays ALL active statuses for the workflow (regardless of category) plus dynamic occupied archived columns, while keeping Phase 8 KPI CANCELLED exclusion intact.
 - **Exact Expected Files/Modules**:
   - `apps/api/src/task.service.ts`
   - `database/src/dashboard.ts`
@@ -298,7 +333,7 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
   - `apps/api/test/kanban-archived-status.integration.test.ts`
 - **Database Behavior**:
   - `task.service.ts` `kanban`:
-    - Query active statuses (`WHERE workflow_id = :id AND is_active = true AND category <> 'CANCELLED' ORDER BY position ASC, id ASC`).
+    - Query active statuses: `SELECT id, code, name, category, position FROM task_statuses WHERE workflow_id = :workflowId AND is_active = true ORDER BY position ASC, id ASC;` (ALL active statuses shown; do NOT filter `category <> 'CANCELLED'`).
     - Query tasks. If any task row has `status.is_active = false`, append a synthetic column for that archived status to the right of the board.
     - Column payload includes `status: { id, code, name, category, is_active }`.
   - Dashboard and My Work queries:
@@ -311,16 +346,14 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 - **Concurrency Behavior**: Standard read queries.
 - **UI Behavior**: None.
 - **Tests to Add/Update**:
-  - `apps/api/test/kanban-archived-status.integration.test.ts`: Verify Kanban returns archived column when tasks occupy it, and omits archived column when empty.
+  - `apps/api/test/kanban-archived-status.integration.test.ts`: Verify Kanban returns all active statuses including CANCELLED if active; verify dynamic archived column appended when tasks occupy an archived status; verify dynamic column omitted when empty.
 - **Exact Focused Verification Commands**:
   - `pnpm --filter @floz/api test -- kanban-archived-status.integration.test.ts`
 - **Expected Forward Commit Boundary/Message**:
   - `feat(task): align read projections and kanban columns with archived status states (Task 8)`
 - **Explicit Non-Goals**: Modifying KPI formulas.
 - **Rollback/Recovery Considerations**: Pure read projection adjustments.
-- **Evidence Required at Checkpoint Review**: Test output proving dynamic Kanban column projection for archived statuses.
-
-**STOP CONDITION (Checkpoint C)**: Task creation resolves defaults cleanly; task transitions permit archived status escape; Kanban projections show occupied archived columns; recurrence templates are safe.
+- **Evidence Required at Checkpoint Review**: Test output proving all active statuses shown in Kanban and dynamic columns appended for archived statuses.
 
 ---
 
@@ -408,8 +441,6 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 - **Rollback/Recovery Considerations**: Modular component.
 - **Evidence Required at Checkpoint Review**: Web component tests confirming matrix and mobile toggle functionality.
 
-**STOP CONDITION (Checkpoint D)**: Web workflow settings fully functional, responsive, keyboard-accessible, and handling concurrency conflicts smoothly.
-
 ---
 
 ### Checkpoint E: Real-Stack Playwright E2E Validation
@@ -450,8 +481,6 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 - **Explicit Non-Goals**: Modifying existing Phase 0–10 E2E assertions.
 - **Rollback/Recovery Considerations**: E2E harness creates and destroys isolated test workspaces.
 - **Evidence Required at Checkpoint Review**: Playwright test report showing all Phase 11 scenarios and all 19 Phase 0–10 regression flows passing with 0 failures.
-
-**STOP CONDITION (Checkpoint E)**: Real-stack E2E tests pass 100% across Phase 11 flows and Phase 0–10 regression flows.
 
 ---
 
@@ -509,4 +538,138 @@ Phase 11 implements workspace-admin configurable workflow structures for Floz. I
 - **Rollback/Recovery Considerations**: Documentation-only commit.
 - **Evidence Required at Checkpoint Review**: Complete Phase 11 Final Report, clean Git status, and external document inspection matrix.
 
-**STOP CONDITION (Checkpoint F)**: Checkpoint F reached. Implementation stopped awaiting explicit human final acceptance before publication.
+---
+
+## Checkpoint Review & Closure Contracts
+
+### Checkpoint A Closure Contract
+- **Included Tasks**: Tasks 1 and 2.
+- **Expected Commit Sequence**:
+  1. `feat(database): add Phase 11 workflow configuration schema, preflight safety, and migration (Task 1)`
+  2. `feat(database): add workflow aggregate locking and concurrency primitives (Task 2)`
+- **Focused Verification Commands**:
+  - `pnpm --filter @floz/database test -- workflow-migration.integration.test.ts workflow-concurrency.integration.test.ts`
+- **Relevant Regression Commands**:
+  - `pnpm --filter @floz/database test`
+  - `pnpm --filter @floz/database typecheck`
+- **Hygiene Commands**:
+  - `git diff --check`
+  - `git status --short`
+- **Evidence Required**:
+  - Output showing migration applied cleanly on clean and populated databases.
+  - Preflight failure proof on invariant-violating databases.
+  - Concurrency test logs proving serializability and version mismatch rejection.
+  - Clean git status and clean diff-check.
+- **STOP Condition**: STOP at Checkpoint A. Await explicit human acceptance before starting Checkpoint B.
+
+---
+
+### Checkpoint B Closure Contract
+- **Included Tasks**: Tasks 3, 4, and 5.
+- **Expected Commit Sequence**:
+  1. `feat(api): add workflow atomic creation, list, detail, and metadata endpoints (Task 3)`
+  2. `feat(api): implement workflow set-default, archive, restore, and recurrence dependency guards (Task 4)`
+  3. `feat(api): add status lifecycle, compaction reordering, and transition preservation (Task 5)`
+- **Focused Verification Commands**:
+  - `pnpm --filter @floz/api test -- workflow-api.test.ts workflow-lifecycle.integration.test.ts workflow-status.integration.test.ts`
+- **Relevant Regression Commands**:
+  - `pnpm --filter @floz/api test`
+  - `pnpm --filter @floz/api lint`
+  - `pnpm --filter @floz/api typecheck`
+- **Hygiene Commands**:
+  - `git diff --check`
+  - `git status --short`
+- **Evidence Required**:
+  - Output showing atomic creation and rollback.
+  - Lifecycle concurrency test output (set-default vs set-default, set-initial vs set-initial).
+  - Recurrence dependency guard test logs (`409 RECURRENCE_DEPENDENCY_CONFLICT`).
+  - Position compaction and dormant transition preservation proofs.
+  - Clean git status and clean diff-check.
+- **STOP Condition**: STOP at Checkpoint B. Await explicit human acceptance before starting Checkpoint C.
+
+---
+
+### Checkpoint C Closure Contract
+- **Included Tasks**: Tasks 6, 7, and 8.
+- **Expected Commit Sequence**:
+  1. `feat(task): implement dynamic workflow default resolution and team scoping (Task 6)`
+  2. `feat(task): enforce active target transitions and archived status escape (Task 7)`
+  3. `feat(task): align read projections and kanban columns with archived status states (Task 8)`
+- **Focused Verification Commands**:
+  - `pnpm --filter @floz/database test -- task-workflow-resolution.integration.test.ts`
+  - `pnpm --filter @floz/api test -- task-transition-archival.integration.test.ts kanban-archived-status.integration.test.ts`
+- **Relevant Regression Commands**:
+  - `pnpm --filter @floz/database test`
+  - `pnpm --filter @floz/api test`
+- **Hygiene Commands**:
+  - `git diff --check`
+  - `git status --short`
+- **Evidence Required**:
+  - Output showing team default resolution, workspace fallback, and cross-team rejection.
+  - Output showing archived status escape transition and inactive target rejection (`422 INVALID_TRANSITION`).
+  - Kanban projection test logs proving all active statuses rendered and dynamic archived columns appended.
+  - Clean git status and clean diff-check.
+- **STOP Condition**: STOP at Checkpoint C. Await explicit human acceptance before starting Checkpoint D.
+
+---
+
+### Checkpoint D Closure Contract
+- **Included Tasks**: Tasks 9, 10, and 11.
+- **Expected Commit Sequence**:
+  1. `feat(web): add workflow settings navigation, creation modal, and metadata editor (Task 9)`
+  2. `feat(web): add status editor with accessible keyboard reordering and category safety (Task 10)`
+  3. `feat(web): add responsive workflow transition matrix and mobile accordion editor (Task 11)`
+- **Focused Verification Commands**:
+  - `pnpm --filter @floz/web test -- workflow-settings.test.tsx workflow-status-list.test.tsx workflow-transition-matrix.test.tsx`
+- **Relevant Regression Commands**:
+  - `pnpm --filter @floz/web test`
+  - `pnpm --filter @floz/web lint`
+  - `pnpm --filter @floz/web typecheck`
+- **Hygiene Commands**:
+  - `git diff --check`
+  - `git status --short`
+- **Evidence Required**:
+  - Output showing Web component tests passing for switcher, metadata edit, keyboard Move Up/Down, category alert modal, matrix toggles, and mobile accordion.
+  - Clean git status and clean diff-check.
+- **STOP Condition**: STOP at Checkpoint D. Await explicit human acceptance before starting Checkpoint E.
+
+---
+
+### Checkpoint E Closure Contract
+- **Included Tasks**: Task 12.
+- **Expected Commit Sequence**:
+  1. `test(e2e): add Phase 11 real-stack workflow configuration and regression suite (Task 12)`
+- **Focused Verification Commands**:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-e2e.ps1`
+- **Relevant Regression Commands**:
+  - Full Playwright suite execution covering all Phase 11 flows and 19 Phase 0–10 regression scenarios.
+- **Hygiene Commands**:
+  - `git diff --check`
+  - `git status --short`
+- **Evidence Required**:
+  - Playwright test runner report showing 100% pass across all scenarios with 0 failures and 0 skips.
+  - Clean git status and clean diff-check.
+- **STOP Condition**: STOP at Checkpoint E. Await explicit human acceptance before starting Checkpoint F.
+
+---
+
+### Checkpoint F Closure Contract
+- **Included Tasks**: Tasks 13 and 14.
+- **Expected Commit Sequence**:
+  1. `docs: finalize phase 11 report, implementation status, and handoff (Task 14)`
+- **Focused Verification Commands (Exact 8-Gate Sequence)**:
+  1. `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-clean-db.ps1`
+  2. `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-e2e.ps1`
+  3. `pnpm --filter @floz/worker test:integration`
+  4. `pnpm lint`
+  5. `pnpm typecheck`
+  6. `pnpm test`
+  7. `pnpm build`
+  8. `pnpm test`
+- **Hygiene Commands**:
+  - `git diff --check`
+  - `git status --short`
+- **Evidence Required**:
+  - Complete Phase 11 Verification Report with all 8 gate exit codes, test counts, package breakdowns, and external document inspection matrix.
+  - Clean git status and clean diff-check.
+- **STOP Condition**: STOP at Checkpoint F. Implementation complete, awaiting explicit final human acceptance before publication.
