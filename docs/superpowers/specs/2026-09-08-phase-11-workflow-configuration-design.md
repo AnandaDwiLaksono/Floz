@@ -6,10 +6,10 @@
 Phase 10 is complete, accepted, and published (master HEAD: `0cc52c0`). The Floz platform relies on task workflows across Tasks, Kanban, Calendar, Recurrence Rules, Dashboard KPIs, and Approvals.
 
 Currently in implementation:
-- **Workflows (`workflows`)**: Table supports workspace isolation (`workspace_id`), optional team scope (`team_id`), `code`, `name`, `description`, `is_default`, `is_active`, and `created_by`. Currently, a single default workflow is statically seeded per workspace. Unique constraints exist on `(workspace_id, code)` and `(workspace_id, name)`.
-- **Statuses (`task_statuses`)**: Scoped to a workflow via `workflow_id`, with `code`, `name`, `category` (`TODO`, `IN_PROGRESS`, `DONE`, `CANCELLED`), `position`, `is_initial`, and `is_terminal`. Unique constraint on `(workflow_id, code)`.
-- **Transitions (`workflow_transitions`)**: Directed edges `(from_status_id, to_status_id)` scoped to `workflow_id` with `requires_permission` flag. Unique constraint on `(workflow_id, from_status_id, to_status_id)`.
-- **Task Assignment**: Tasks store `workflow_id` and `status_id`. Task transitions are validated server-side against `workflow_transitions`. Foreign keys in `tasks` and `task_history` prevent hard deletion of referenced `task_statuses`.
+- **Workflows (`workflows`)**: Table supports workspace isolation (`workspace_id`), optional team scope (`team_id`), `code`, `name`, `description`, `is_default`, `is_active`, and `created_by`. Unique constraints exist on `(workspace_id, code)` and `(workspace_id, name)`. Currently, a single default workflow is statically seeded per workspace.
+- **Statuses (`task_statuses`)**: Scoped to a workflow via `workflow_id`, with `code`, `name`, `category` (`TODO`, `IN_PROGRESS`, `DONE`, `CANCELLED`), `position`, `is_initial`, and `is_terminal`. Unique constraint exists on `(workflow_id, code)`.
+- **Transitions (`workflow_transitions`)**: Directed edges `(from_status_id, to_status_id)` scoped to `workflow_id` with `requires_permission` flag. Unique constraint exists on `(workflow_id, from_status_id, to_status_id)`.
+- **Task Assignment & Runtime Transitions**: Tasks store `workflow_id` and `status_id`. Task transitions (`POST /api/v1/workspaces/:workspaceId/tasks/:id/transition`) validate valid edges against `workflow_transitions` and throw canonical `422 INVALID_TRANSITION` on disallowed transitions. Foreign keys in `tasks` and `task_history` prevent hard deletion of referenced `task_statuses`.
 - **Recurrence Integration**: `recurrence_rules` store a JSON `template_snapshot` containing `workflow_id`, `status_id`, and `team_id`.
 - **Reporting & KPIs**: `reporting-core.ts` and `dashboard.ts` rely on `task_statuses.category` and `is_terminal` flags. Tasks with `category = 'DONE'` set `completed_at = NOW()`; non-DONE clears `completed_at`. Tasks with `category = 'CANCELLED'` are excluded from operational active and KPI calculations.
 
@@ -19,12 +19,12 @@ Floz requires workspace-admin configurable workflow structures (workflows, statu
 ## 3. Scope Definition
 
 ### P0 Scope (MVP)
-1. **Workflow Lifecycle**: Create (atomic aggregate), read, update metadata, set default, archive, and restore workflows.
+1. **Workflow Lifecycle**: Create (atomic aggregate producing `is_active = true, is_default = false, version = 1`), read, update metadata, set default, archive, and restore workflows.
 2. **Status Lifecycle**: Add status, update properties (name, category), set initial status, reorder active statuses, archive, and restore statuses.
-3. **Transition Configuration**: Bulk replace transition pairs for a workflow using a matrix/list model while preserving `requires_permission` on retained edges.
+3. **Transition Configuration**: Bulk replace transition pairs for active targets while automatically retaining dormant incoming edges to archived targets and preserving `requires_permission` metadata.
 4. **Aggregate Concurrency Control**: Optimistic versioning (`workflows.version`) covering the entire workflow configuration aggregate.
-5. **Runtime Compatibility & Archival**: Tasks in archived statuses remain readable and can transition OUT to active targets; transitions INTO archived statuses are prohibited.
-6. **Recurrence Safety**: Prevent archiving workflows or statuses actively referenced by enabled recurrence rules.
+5. **Runtime Compatibility & Archival**: Tasks in archived statuses remain readable and can transition OUT to active targets; transitions INTO archived statuses are prohibited (`422 INVALID_TRANSITION`).
+6. **Recurrence Safety**: Prevent archiving workflows or statuses actively referenced by enabled recurrence rules (`409 RECURRENCE_DEPENDENCY_CONFLICT`).
 7. **Web UI**: Settings interface at `/workspaces/:workspaceId/settings/workflows` with desktop transition matrix, mobile accordion list, keyboard-accessible reordering, and conflict handling.
 
 ### Deferred Scope
@@ -67,20 +67,24 @@ Floz requires workspace-admin configurable workflow structures (workflows, statu
      ```
   3. If version update returns 0 rows, rollback and throw `409 VERSION_CONFLICT` with `{ error: { code: 'VERSION_CONFLICT', message: 'Workflow modified by another user.', details: [{ current_version: workflow.version }] } }`.
 
-### C. Explicit Set-Default Lifecycle & Team Default Semantics
-- **Endpoint**: `POST /api/v1/workspaces/:workspaceId/workflows/:workflowId/set-default`
+### C. Workflow Creation & Set-Default Lifecycle
+- **Workflow Creation (`POST /api/v1/workspaces/:workspaceId/workflows`)**:
+  - Does NOT accept `is_default`. Creation always commits with `is_active = true`, `is_default = false`, and `version = 1`.
+  - Atomically creates the workflow, its initial status set (at least one initial and one terminal), and initial transition graph. Existing workspace or team default workflows remain completely untouched during workflow creation.
+- **Explicit Set-Default Lifecycle (`POST /api/v1/workspaces/:workspaceId/workflows/:workflowId/set-default`)**:
   - Body: `{ version: number }`
-- **Transaction Semantics**:
-  1. Acquire workspace row lock `FOR UPDATE`.
-  2. Identify requested workflow and current active default workflow within the same scope (`team_id IS NULL` for workspace default, or `team_id = X` for team default).
-  3. If target is already the active default (`is_default = true` and `is_active = true`): return target workflow as a deterministic no-op without mutation or version bump.
-  4. Lock affected workflow rows in deterministic ID order (`ORDER BY id ASC FOR UPDATE`).
-  5. Validate expected `version` on target workflow.
-  6. Verify target workflow is active (`is_active = true`).
-  7. If a previous default exists:
-     `UPDATE workflows SET is_default = false, version = version + 1, updated_at = NOW() WHERE id = :previousDefaultId`
-  8. `UPDATE workflows SET is_default = true, version = version + 1, updated_at = NOW() WHERE id = :workflowId`
-  9. COMMIT and return updated workflow.
+  - Setting default is the **sole canonical lifecycle operation** that mutates `is_default`.
+  - Transaction Semantics:
+    1. Acquire workspace row lock `FOR UPDATE`.
+    2. Identify target workflow and current active default workflow within the same scope (`team_id IS NULL` for workspace default, or `team_id = X` for team default).
+    3. If target workflow is already the active default (`is_default = true` and `is_active = true`): deterministic no-op, returning target workflow with no mutation and no version bump.
+    4. Lock affected workflow rows in deterministic ID order (`ORDER BY id ASC FOR UPDATE`).
+    5. Validate expected `version` on target workflow.
+    6. Verify target workflow is active (`is_active = true`).
+    7. If previous default exists:
+       `UPDATE workflows SET is_default = false, version = version + 1, updated_at = NOW() WHERE id = :previousDefaultId`
+    8. `UPDATE workflows SET is_default = true, version = version + 1, updated_at = NOW() WHERE id = :workflowId`
+    9. COMMIT and return updated workflow.
 - **Archive / Restore of Defaults**:
   - Active workspace-level default (`team_id IS NULL`): CANNOT be archived (`is_active = false`). Attempt throws `409 CANNOT_ARCHIVE_DEFAULT_WORKFLOW`.
   - Team-scoped default workflow (`team_id = X`):
@@ -105,8 +109,9 @@ Floz requires workspace-admin configurable workflow structures (workflows, statu
 
 ### E. Status Identity, Ordering & Category/Completion Mutation
 - **Code & Name Invariants**:
-  - `code`: Normalized uppercase string `[A-Z0-9_]{2,32}`, unique per workflow (`UNIQUE(workflow_id, code)`). **Immutable** after creation.
-  - `name`: Max 64 chars, trimmed. Case-insensitively unique per workflow (`UNIQUE(workflow_id, LOWER(name))`). Editable.
+  - `workflows.code`: Uppercase string `[A-Z0-9_]{2,64}`, unique per workspace (`UNIQUE(workspace_id, code)`). Immutable after creation (`PATCH /:workflowId` does NOT accept `code`).
+  - `task_statuses.code`: Uppercase string `[A-Z0-9_]{2,32}`, unique per workflow (`UNIQUE(workflow_id, code)`). Immutable after creation.
+  - `task_statuses.name`: Max 64 chars, trimmed. Case-insensitively unique per workflow (`UNIQUE(workflow_id, LOWER(name))`). Editable.
 - **Position & Reordering**:
   - Active statuses (`is_active = true`) have contiguous positions `1..N`.
   - Endpoint `PUT /:workflowId/statuses/reorder` receives `{ version: number, status_ids: string[] }`.
@@ -130,23 +135,25 @@ Floz requires workspace-admin configurable workflow structures (workflows, statu
     - Transition between other statuses logs `STATUS_CHANGED`.
     - Operational active reporting and KPI calculations exclude `category = 'CANCELLED'`.
 
-### F. Status Archival & Transition Persistence Semantics
+### F. Archived Transition Persistence & Bulk Replacement Semantics
 - **Archival Operation (`POST .../statuses/:statusId/archive`)**:
   - Sets `task_statuses.is_active = false, position = 9999`.
   - Bumps `workflow.version`.
   - **Retains all rows in `workflow_transitions`**. Existing transition records are NOT deleted.
-- **Transition Graph Runtime & Configuration Rules**:
-  - Outgoing edges from archived source: Retained and active. Existing tasks in an archived status can escape to active targets.
-  - Incoming edges to archived target: Retained in database but dormant.
-  - **Runtime Transition Execution (`POST .../tasks/:id/transition`)**: Transitioning into an inactive target status fails with canonical `400 INVALID_TRANSITION`.
-  - **Workflow Configuration API**: Attempting to add a NEW edge pointing to an archived target fails with `422 INACTIVE_TRANSITION_TARGET`.
-  - **Transition Bulk Replacement (`PUT .../transitions`)**:
-    - Retained edges preserve their existing `requires_permission` metadata.
-    - New edges default `requires_permission = false`.
-    - Self-loops (`from_status_id === to_status_id`) are rejected with `422 SELF_LOOP_NOT_ALLOWED`.
-- **Status Restoration (`POST .../statuses/:statusId/restore`)**:
-  - Sets `task_statuses.is_active = true, position = activeCount + 1`.
-  - Retained incoming edges automatically become active again.
+- **Bulk Transition Replacement Semantics (`PUT /:workflowId/transitions`)**:
+  - Body: `{ version: number, transitions: Array<{ from_status_id: string, to_status_id: string }> }`
+  - **Active-Target Edge Set**: Fully mutable through the replacement payload.
+  - **Dormant Incoming Edges to Archived Targets**: Retained automatically by the server. An omitted payload edge whose `to_status_id` is archived does NOT delete the transition row, and preserves its existing `requires_permission` flag.
+  - **Archived Source -> Active Target**: May remain or be explicitly configured as a valid escape edge.
+  - **New Edge -> Inactive Target**: Attempting to add a NEW edge pointing to an inactive target status fails with `422 INACTIVE_TRANSITION_TARGET`.
+  - **Self-Loops**: Disallowed; `from_status_id === to_status_id` throws `422 SELF_LOOP_NOT_ALLOWED`.
+  - **Restoring an Archived Status (`POST .../statuses/:statusId/restore`)**:
+    - Sets `task_statuses.is_active = true, position = activeCount + 1`.
+    - Retained dormant incoming edges automatically become active again.
+    - After restoration, admin may remove those now-active edges through normal `PUT /transitions` replacement.
+- **Task Runtime Transition Contract (`POST .../tasks/:id/transition`)**:
+  - Transitioning into an inactive target status or non-configured transition continues throwing canonical `422 INVALID_TRANSITION`.
+  - Existing tasks in an archived status can escape along configured edges to active targets.
 
 ### G. Workflow Archival & Recurrence Safety
 - **Workflow Archival (`POST .../workflows/:workflowId/archive`)**:
@@ -164,6 +171,7 @@ Floz requires workspace-admin configurable workflow structures (workflows, statu
   - If current filtered tasks occupy an archived status, a dynamic "Archived: [Status Name]" column is appended to the right.
   - The archived column is visually marked with an "Archived" badge and cannot accept dropped cards.
   - Cards in the archived column display valid dropdown escape transitions to active statuses.
+  - Kanban board continues catching `422 INVALID_TRANSITION` and `409 VERSION_CONFLICT` to display user feedback and refresh board state.
 - **Task List, Calendar, My Work, Dashboards**: Display status name normally with an "(Archived)" badge if `is_active = false`.
 
 ---
@@ -202,15 +210,15 @@ CREATE UNIQUE INDEX task_statuses_active_initial_idx ON task_statuses (workflow_
 
 ### Endpoints
 1. `GET /` : List active and optionally archived workflows.
-2. `POST /` : Create workflow atomically.
-   - Body: `{ name, code, description?, team_id?, is_default?, statuses: [{ code, name, category, is_initial }], transitions: [{ from_code, to_code }] }`
+2. `POST /` : Create workflow atomically (`is_default` omitted; commits `is_active = true, is_default = false, version = 1`).
+   - Body: `{ name: string, code: string, description?: string, team_id?: string, statuses: Array<{ code: string, name: string, category: string, is_initial: boolean }>, transitions: Array<{ from_code: string, to_code: string }> }`
 3. `GET /:workflowId` : Get full workflow definition with statuses and transitions.
-4. `PATCH /:workflowId` : Update metadata (`name`, `description`, `version`).
+4. `PATCH /:workflowId` : Update metadata (`name`, `description`, `version`; does NOT accept `code` or `is_default`).
 5. `POST /:workflowId/set-default` : Set workflow as active default (`{ version: number }`).
 6. `POST /:workflowId/archive` : Soft-delete workflow (`{ version: number }`).
 7. `POST /:workflowId/restore` : Restore workflow as non-default (`{ version: number }`).
-8. `POST /:workflowId/statuses` : Add a new status (`{ name, code, category, version }`).
-9. `PATCH /:workflowId/statuses/:statusId` : Update status (`{ name?, category?, version }`).
+8. `POST /:workflowId/statuses` : Add a new status (`{ name: string, code: string, category: string, version: number }`).
+9. `PATCH /:workflowId/statuses/:statusId` : Update status (`{ name?: string, category?: string, version: number }`).
 10. `POST /:workflowId/statuses/:statusId/set-initial` : Set status as active initial (`{ version: number }`).
 11. `POST /:workflowId/statuses/:statusId/archive` : Soft-delete status (`{ version: number }`).
 12. `POST /:workflowId/statuses/:statusId/restore` : Restore status (`{ version: number }`).
@@ -219,7 +227,6 @@ CREATE UNIQUE INDEX task_statuses_active_initial_idx ON task_statuses (workflow_
 
 ### Error Contracts
 - `400 VALIDATION_ERROR`: Invalid field formats or invalid transition graph constraints.
-- `400 INVALID_TRANSITION`: Task transition runtime error when attempting an invalid or inactive target status transition.
 - `403 FORBIDDEN`: Non-ADMIN attempting workflow configuration mutation.
 - `404 NOT_FOUND`: Workflow or status ID not found in workspace.
 - `409 VERSION_CONFLICT`: Stale aggregate `version` provided.
@@ -227,6 +234,7 @@ CREATE UNIQUE INDEX task_statuses_active_initial_idx ON task_statuses (workflow_
 - `409 CANNOT_ARCHIVE_INITIAL_STATUS`: Attempt to archive active initial status.
 - `409 STATUS_CATEGORY_IN_USE`: Attempt to change category on a status currently referenced by tasks or active recurrence rules.
 - `409 RECURRENCE_DEPENDENCY_CONFLICT`: Active recurrence rules depend on the workflow or status being archived.
+- `422 INVALID_TRANSITION`: Task transition runtime error when attempting an invalid or inactive target status transition.
 - `422 WORKFLOW_SCOPE_MISMATCH`: Workflow team assignment incompatible with task or team scope.
 - `422 INACTIVE_TRANSITION_TARGET`: Workflow configuration API rejected an edge to an inactive status.
 - `422 SELF_LOOP_NOT_ALLOWED`: Transition where `from_status_id === to_status_id`.
@@ -246,7 +254,7 @@ CREATE UNIQUE INDEX task_statuses_active_initial_idx ON task_statuses (workflow_
    - **Keyboard Accessibility**: "Move Up" and "Move Down" buttons on each card.
    - Actions: "Set as Initial", "Edit", "Archive" (with confirmation dialog).
 3. **Transition Management Section**:
-   - **Desktop (>=768px)**: Matrix grid. Rows = From Status, Columns = To Status. Checkbox at intersection. Disabled self-loop diagonal.
+   - **Desktop (>=768px)**: Matrix grid. Rows = From Status, Columns = To Status. Checkbox at intersection. Disabled self-loop diagonal. Dormant edges to archived targets shown disabled with visual dormant tag.
    - **Mobile / Narrow (<768px)**: Responsive accordion list grouped by "From Status". Expanding reveals toggle switches for valid target statuses.
 4. **Stale State & Conflict UX**:
    - Displays toast on `409 VERSION_CONFLICT` with "Reload Configuration" button.
