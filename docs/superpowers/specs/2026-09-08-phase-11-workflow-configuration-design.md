@@ -1,6 +1,6 @@
 # Phase 11: Workflow Configuration Design
 
-**Status**: DRAFT DESIGN / AWAITING APPROVAL
+**Status**: FINAL DESIGN / APPROVED FOR IMPLEMENTATION PLANNING
 
 ## 1. Current State Reconstructed
 Phase 10 is complete, accepted, and published (master HEAD: `0cc52c0`). The Floz platform relies on task workflows across Tasks, Kanban, Calendar, Recurrence Rules, Dashboard KPIs, and Approvals.
