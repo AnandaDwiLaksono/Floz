@@ -27,9 +27,9 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
       (${userA}, 'usera@example.com', 'User A'),
       (${userB}, 'userb@example.com', 'User B'),
       (${adminUser}, 'admin@example.com', 'Admin User')`;
-    
+
     await sql`INSERT INTO workspaces (id, name, slug, created_by) VALUES (${workspaceId}, 'Test WS', 'test-ws', ${userA})`;
-    
+
     // Minimal task setup for foreign key references if needed
     const wf = (await sql<{ id: string }[]>`INSERT INTO workflows (workspace_id, code, name, is_default, is_active, created_by) VALUES (${workspaceId}, 'DEF', 'Default', true, true, ${userA}) RETURNING id`)[0].id;
     const st = (await sql<{ id: string }[]>`INSERT INTO task_statuses (workflow_id, code, name, category, position, is_initial) VALUES (${wf}, 'TODO', 'To Do', 'TODO', 1, true) RETURNING id`)[0].id;
@@ -44,7 +44,7 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
     const approvalRequestId = randomUUID();
     const payload = { approval_request_id: approvalRequestId, step_id: randomUUID(), approver_user_id: userB, requester_id: userA, title: 'Please approve this' };
     const inserted = await sql<{ id: string }[]>`INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload, status, available_at) VALUES (${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.requested', ${JSON.stringify(payload)}::jsonb, 'PENDING', NOW()) RETURNING id`;
-    
+
     const dispatched = await dispatchOutboxBatch({ db: sql, queue: { add: vi.fn() } as unknown as import('bullmq').Queue, now: new Date(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(dispatched).toBe(1);
 
@@ -61,7 +61,7 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
 
     const reNotifications = await sql`SELECT * FROM notifications WHERE entity_id = ${approvalRequestId}`;
     expect(reNotifications.length).toBe(1); // STILL 1
-    
+
     // Verify dedup ledger
     const dedups = await sql`SELECT * FROM notification_dedup_ledger WHERE dedup_key = ${`approval-requested-${approvalRequestId}`}`;
     expect(dedups.length).toBe(1);
@@ -72,7 +72,7 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
     // userA requested, adminUser decided (ADMIN override)
     const payload = { approval_request_id: approvalRequestId, step_id: randomUUID(), decision: 'APPROVED', requester_id: userA, decided_by_user_id: adminUser, reason: 'Looks good' };
     await sql<{ id: string }[]>`INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload, status, available_at) VALUES (${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.decided', ${JSON.stringify(payload)}::jsonb, 'PENDING', NOW()) RETURNING id`;
-    
+
     const dispatched = await dispatchOutboxBatch({ db: sql, queue: { add: vi.fn() } as unknown as import('bullmq').Queue, now: new Date(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(dispatched).toBe(1);
 
@@ -82,7 +82,7 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
     expect(notifications[0].type).toBe('APPROVAL_APPROVED');
     expect(notifications[0].entity_type).toBe('APPROVAL_REQUEST');
     expect(notifications[0].entity_id).toBe(approvalRequestId);
-    
+
     // Check outbox event payload retains decided_by_user_id
     const outbox = (await sql<{ payload: { decided_by_user_id: string; approval_request_id: string } }[]>`SELECT payload FROM outbox_events WHERE aggregate_id = ${approvalRequestId}`)[0];
     expect(outbox.payload.decided_by_user_id).toBe(adminUser);
@@ -97,7 +97,7 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
     const approvalRequestId = randomUUID();
     const payload = { approval_request_id: approvalRequestId, step_id: randomUUID(), decision: 'REJECTED', requester_id: userA, decided_by_user_id: adminUser, reason: 'Not compliant' };
     await sql<{ id: string }[]>`INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload, status, available_at) VALUES (${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.decided', ${JSON.stringify(payload)}::jsonb, 'PENDING', NOW()) RETURNING id`;
-    
+
     const dispatched = await dispatchOutboxBatch({ db: sql, queue: { add: vi.fn() } as unknown as import('bullmq').Queue, now: new Date(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(dispatched).toBe(1);
 
@@ -116,7 +116,7 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
     const approvalRequestId = randomUUID();
     const payload = { approval_request_id: approvalRequestId, approver_user_id: userB, cancelled_by_user_id: adminUser, cancel_reason: 'No longer needed' };
     await sql<{ id: string }[]>`INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload, status, available_at) VALUES (${workspaceId}, 'approval_request', ${approvalRequestId}, 'approval.cancelled', ${JSON.stringify(payload)}::jsonb, 'PENDING', NOW()) RETURNING id`;
-    
+
     const dispatched = await dispatchOutboxBatch({ db: sql, queue: { add: vi.fn() } as unknown as import('bullmq').Queue, now: new Date(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(dispatched).toBe(1);
 
@@ -135,7 +135,7 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
     const commentId = randomUUID();
     const payload = { comment_id: commentId, task_id: taskId, mentioned_user_id: userB, author_id: userA };
     const inserted = await sql<{ id: string }[]>`INSERT INTO outbox_events(workspace_id, aggregate_type, aggregate_id, event_type, payload, status, available_at) VALUES (${workspaceId}, 'comment', ${commentId}, 'comment.mentioned', ${JSON.stringify(payload)}::jsonb, 'PENDING', NOW()) RETURNING id`;
-    
+
     const dispatched = await dispatchOutboxBatch({ db: sql, queue: { add: vi.fn() } as unknown as import('bullmq').Queue, now: new Date(), claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry });
     expect(dispatched).toBe(1);
 
@@ -151,7 +151,7 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
 
     const reNotifications = await sql`SELECT * FROM notifications WHERE entity_id = ${taskId} AND type = 'COMMENT_MENTIONED'`;
     expect(reNotifications.length).toBe(1); // STILL 1
-    
+
     const dedups = await sql`SELECT * FROM notification_dedup_ledger WHERE dedup_key = ${`comment-mention-${commentId}-${userB}`}`;
     expect(dedups.length).toBe(1);
   });

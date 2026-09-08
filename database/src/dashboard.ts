@@ -61,14 +61,14 @@ export async function getManagerDashboard(db: DatabaseClient, input: DashboardIn
   const admin = await db.execute(sql`SELECT 1 FROM workspace_memberships JOIN roles ON roles.id = workspace_memberships.role_id WHERE workspace_id = ${input.workspaceId} AND user_id = ${input.userId} AND status = 'ACTIVE' AND roles.code = 'ADMIN'`);
   if (admin.length) {
     const predicate = input.teamIds ? input.teamIds.length ? sql`tasks.team_id IN ${sql`(${sql.join(input.teamIds.map((id) => sql`${id}`), sql`, `)})`}` : sql`false` : sql`true`;
-    
+
     // pending approvals for ADMIN: all workspace pending steps, optionally filtered by team_id
-    const approvalsPredicate = input.teamIds && input.teamIds.length 
-      ? sql`EXISTS (SELECT 1 FROM team_memberships tm WHERE tm.user_id = approval_steps.approver_user_id AND tm.team_id IN ${sql`(${sql.join(input.teamIds.map((id) => sql`${id}`), sql`, `)})`})` 
+    const approvalsPredicate = input.teamIds && input.teamIds.length
+      ? sql`EXISTS (SELECT 1 FROM team_memberships tm WHERE tm.user_id = approval_steps.approver_user_id AND tm.team_id IN ${sql`(${sql.join(input.teamIds.map((id) => sql`${id}`), sql`, `)})`})`
       : sql`true`;
     const pendingApprovalsRows = await db.execute(sql`SELECT COUNT(DISTINCT approval_steps.id)::int AS count FROM approval_steps WHERE workspace_id = ${input.workspaceId} AND status = 'PENDING' AND ${approvalsPredicate}`);
     const pending_approvals = Number((pendingApprovalsRows[0] as unknown as { count: number }).count);
-    
+
     const [kpis, projection] = await Promise.all([getKpis(db, { ...input, userId: undefined }), project(db, input, predicate)]);
     return { kpis, ...projection, pending_approvals };
   }
@@ -76,14 +76,14 @@ export async function getManagerDashboard(db: DatabaseClient, input: DashboardIn
   const managed = (teamIds as unknown as Array<{ id: string }>).map(({ id }) => id);
   const ids = input.teamIds ? input.teamIds.filter((id) => managed.includes(id)) : managed;
   const predicate = ids.length ? sql`tasks.team_id IN ${sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`}` : sql`false`;
-  
+
   // pending approvals for MANAGER: assigned directly to manager OR assigned to effective members of teams canonically managed
-  const approvalsPredicate = ids.length 
+  const approvalsPredicate = ids.length
     ? sql`(approval_steps.approver_user_id = ${input.userId} OR EXISTS (SELECT 1 FROM team_memberships tm WHERE tm.user_id = approval_steps.approver_user_id AND tm.team_id IN ${sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`}))`
     : sql`approval_steps.approver_user_id = ${input.userId}`;
   const pendingApprovalsRows = await db.execute(sql`SELECT COUNT(DISTINCT approval_steps.id)::int AS count FROM approval_steps WHERE workspace_id = ${input.workspaceId} AND status = 'PENDING' AND ${approvalsPredicate}`);
   const pending_approvals = Number((pendingApprovalsRows[0] as unknown as { count: number }).count);
-  
+
   const [kpis, projection] = await Promise.all([getKpis(db, { ...input, teamIds: ids }), project(db, input, predicate)]);
   return { kpis, ...projection, pending_approvals };
 }
