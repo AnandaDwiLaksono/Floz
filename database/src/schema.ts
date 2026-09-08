@@ -115,10 +115,16 @@ export const workflows = pgTable('workflows', {
   description: text('description'),
   isDefault: boolean('is_default').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
+  version: integer('version').notNull().default(1),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: now(),
   updatedAt: updated()
-}, (table) => ({ workspaceName: unique().on(table.workspaceId, table.name), workspaceCode: unique().on(table.workspaceId, table.code) }));
+}, (table) => ({
+  workspaceName: unique().on(table.workspaceId, table.name),
+  workspaceCode: unique().on(table.workspaceId, table.code),
+  activeWorkspaceDefault: uniqueIndex('workflows_active_workspace_default_idx').on(table.workspaceId).where(sql`team_id IS NULL AND is_default = true AND is_active = true`),
+  activeTeamDefault: uniqueIndex('workflows_active_team_default_idx').on(table.workspaceId, table.teamId).where(sql`team_id IS NOT NULL AND is_default = true AND is_active = true`)
+}));
 
 export const taskStatuses = pgTable('task_statuses', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -129,8 +135,13 @@ export const taskStatuses = pgTable('task_statuses', {
   position: integer('position').notNull(),
   isInitial: boolean('is_initial').notNull().default(false),
   isTerminal: boolean('is_terminal').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
   createdAt: now()
-}, (table) => ({ workflowCode: unique().on(table.workflowId, table.code) }));
+}, (table) => ({
+  workflowCode: unique().on(table.workflowId, table.code),
+  workflowNameLower: uniqueIndex('task_statuses_workflow_name_lower_idx').on(table.workflowId, sql`LOWER(${table.name})`),
+  activeInitial: uniqueIndex('task_statuses_active_initial_idx').on(table.workflowId).where(sql`is_initial = true AND is_active = true`)
+}));
 
 export const workflowTransitions = pgTable('workflow_transitions', {
   id: uuid('id').primaryKey().defaultRandom(),
