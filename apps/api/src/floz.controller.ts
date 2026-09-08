@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth';
 import { FlozService } from './floz.service';
@@ -11,6 +11,21 @@ import { ApprovalService } from './approval.service';
 import type { CreateApprovalRequestDto, ApprovalQueryDto, ApproveStepDto, RejectStepDto, CancelApprovalDto } from './approval.dto';
 import { CommentService } from './comment.service';
 import type { CreateCommentDto, CommentQueryDto } from './comment.dto';
+import { WorkflowService } from './workflow.service';
+import type {
+  ArchiveStatusDto,
+  ArchiveWorkflowDto,
+  CreateStatusDto,
+  CreateWorkflowDto,
+  ReorderStatusesDto,
+  ReplaceTransitionsDto,
+  RestoreStatusDto,
+  RestoreWorkflowDto,
+  SetStatusInitialDto,
+  SetWorkflowDefaultDto,
+  UpdateStatusDto,
+  UpdateWorkflowDto
+} from './workflow.dto';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
 
@@ -21,7 +36,16 @@ const urlPattern = /^https?:\/\/.+/i;
 
 @Controller()
 export class FlozController {
-  constructor(@Inject(AuthService) private readonly authService: AuthService, @Inject(FlozService) private readonly floz: FlozService, @Inject(TaskService) private readonly tasks: TaskService, @Inject(RecurrenceService) private readonly recurrence: RecurrenceService, @Inject(ApprovalService) private readonly approvals: ApprovalService, @Inject(CommentService) private readonly comments: CommentService, @Inject(ReportingClock) private readonly clock: ReportingClock) {}
+  constructor(
+    @Inject(AuthService) private readonly authService: AuthService,
+    @Inject(FlozService) private readonly floz: FlozService,
+    @Inject(TaskService) private readonly tasks: TaskService,
+    @Inject(RecurrenceService) private readonly recurrence: RecurrenceService,
+    @Inject(ApprovalService) private readonly approvals: ApprovalService,
+    @Inject(CommentService) private readonly comments: CommentService,
+    @Inject(ReportingClock) private readonly clock: ReportingClock,
+    @Inject(WorkflowService) private readonly workflowService: WorkflowService
+  ) {}
 
   private get auth() { return this.authService.auth; }
 
@@ -140,7 +164,96 @@ export class FlozController {
   async kpis(@Req() req: Request, @Param('workspaceId') wid: string) { const ctx = await this.member(req, wid); const workspace = await this.floz.workspace(wid); const teamId = req.query.team_id ? String(req.query.team_id) : undefined; if (teamId && !uuidPattern.test(teamId)) throw new BadRequestException('VALIDATION_ERROR'); const team = teamId ? await this.floz.team(wid, teamId) : null; if (teamId && (!team || !team.isActive)) throw new BadRequestException('TEAM_SCOPE_MISMATCH'); const scope = this.reportingScope(req.query as Record<string, string>, wid, workspace!.timezone); if (['MEMBER', 'FIELD_WORKER'].includes(ctx.membership.role)) scope.userId = ctx.user.id; else if (ctx.membership.role === 'MANAGER') { const managed = await this.floz.managedTeamIds(wid, ctx.user.id); if (teamId && !managed.includes(teamId)) throw new ForbiddenException('FORBIDDEN'); scope.teamIds = teamId ? [teamId] : managed; } else if (teamId) scope.teamIds = [teamId]; if (req.query.assignee_id) { const assigneeId = String(req.query.assignee_id); if (!uuidPattern.test(assigneeId)) throw new BadRequestException('VALIDATION_ERROR'); if (ctx.membership.role !== 'ADMIN' && assigneeId !== ctx.user.id) throw new ForbiddenException('FORBIDDEN'); if (!(await this.floz.membership(assigneeId, wid))) throw new BadRequestException('CROSS_WORKSPACE_REFERENCE'); scope.userId = assigneeId; } return ok(await getKpis(this.authService.database.db, scope)); }
 
   @Get('workspaces/:workspaceId/workflows')
-  async workflows(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); return ok(await this.tasks.workflows(wid)); }
+  async workflows(@Req() req: Request, @Param('workspaceId') wid: string) {
+    await this.member(req, wid);
+    return ok(await this.workflowService.list(wid));
+  }
+
+  @Get('workspaces/:workspaceId/workflows/:workflowId')
+  async workflowDetail(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string) {
+    await this.member(req, wid);
+    return ok(await this.workflowService.detail(wid, workflowId));
+  }
+
+  @Post('workspaces/:workspaceId/workflows')
+  async createWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateWorkflowDto) {
+    const ctx = await this.admin(req, wid);
+    return ok(await this.workflowService.create(wid, ctx.user.id, body));
+  }
+
+  @Patch('workspaces/:workspaceId/workflows/:workflowId')
+  async updateWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: UpdateWorkflowDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.update(wid, workflowId, body));
+  }
+
+  @Post('workspaces/:workspaceId/workflows/:workflowId/set-default')
+  @HttpCode(200)
+  async setDefaultWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: SetWorkflowDefaultDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.setDefault(wid, workflowId, body));
+  }
+
+  @Post('workspaces/:workspaceId/workflows/:workflowId/archive')
+  @HttpCode(200)
+  async archiveWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: ArchiveWorkflowDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.archive(wid, workflowId, body));
+  }
+
+  @Post('workspaces/:workspaceId/workflows/:workflowId/restore')
+  @HttpCode(200)
+  async restoreWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: RestoreWorkflowDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.restore(wid, workflowId, body));
+  }
+
+  @Post('workspaces/:workspaceId/workflows/:workflowId/statuses')
+  async addWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: CreateStatusDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.addStatus(wid, workflowId, body));
+  }
+
+  @Patch('workspaces/:workspaceId/workflows/:workflowId/statuses/:statusId')
+  async updateWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @Body() body: UpdateStatusDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.updateStatus(wid, workflowId, statusId, body));
+  }
+
+  @Post('workspaces/:workspaceId/workflows/:workflowId/statuses/:statusId/set-initial')
+  @HttpCode(200)
+  async setInitialWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @Body() body: SetStatusInitialDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.setInitialStatus(wid, workflowId, statusId, body));
+  }
+
+  @Post('workspaces/:workspaceId/workflows/:workflowId/statuses/:statusId/archive')
+  @HttpCode(200)
+  async archiveWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @Body() body: ArchiveStatusDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.archiveStatus(wid, workflowId, statusId, body));
+  }
+
+  @Post('workspaces/:workspaceId/workflows/:workflowId/statuses/:statusId/restore')
+  @HttpCode(200)
+  async restoreWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @Body() body: RestoreStatusDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.restoreStatus(wid, workflowId, statusId, body));
+  }
+
+  @Put('workspaces/:workspaceId/workflows/:workflowId/statuses/reorder')
+  @HttpCode(200)
+  async reorderWorkflowStatuses(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: ReorderStatusesDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.reorderStatuses(wid, workflowId, body));
+  }
+
+  @Put('workspaces/:workspaceId/workflows/:workflowId/transitions')
+  @HttpCode(200)
+  async replaceWorkflowTransitions(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: ReplaceTransitionsDto) {
+    await this.admin(req, wid);
+    return ok(await this.workflowService.replaceTransitions(wid, workflowId, body));
+  }
   @Get('workspaces/:workspaceId/kanban')
   async kanban(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); return ok(await this.tasks.kanban(wid, req.query as KanbanQueryDto)); }
   @Get('workspaces/:workspaceId/calendar/tasks')

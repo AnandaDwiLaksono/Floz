@@ -10,7 +10,7 @@ const messages: Record<string, string> = {
   VALIDATION_ERROR: 'One or more fields are invalid.',
   CROSS_WORKSPACE_REFERENCE: 'Referenced resource does not belong to the current workspace.',
   INVALID_TRANSITION: 'The requested status change is not allowed.',
-  VERSION_CONFLICT: 'Task modified by another user.',
+  VERSION_CONFLICT: 'Resource modified by another user.',
   DUPLICATE_EMAIL: 'An account with this email already exists.',
   LAST_ACTIVE_ADMIN: 'At least one active admin is required.',
   ACTIVE_TEAM_MANAGER: 'Active team managers must remain active managers.',
@@ -20,7 +20,20 @@ const messages: Record<string, string> = {
   INVALID_APPROVER_TARGET: 'Selected approver is not authorized for the linked task.',
   INVALID_MENTION_TARGET: 'Mentioned user is not authorized for the linked task.',
   SELF_APPROVAL_NOT_ALLOWED: 'Self-approval is not allowed.',
-  APPROVAL_NOT_PENDING: 'Approval request is no longer pending.'
+  APPROVAL_NOT_PENDING: 'Approval request is no longer pending.',
+  CANNOT_ARCHIVE_DEFAULT_WORKFLOW: 'Default workflow cannot be archived.',
+  CANNOT_ARCHIVE_INITIAL_STATUS: 'Initial status cannot be archived.',
+  RECURRENCE_DEPENDENCY_CONFLICT: 'Active recurrence rules reference this workflow or status.',
+  STATUS_CATEGORY_IN_USE: 'Cannot change status category while tasks or recurrence rules reference it.',
+  DUPLICATE_WORKFLOW_CODE: 'A workflow with this code already exists in the workspace.',
+  DUPLICATE_WORKFLOW_NAME: 'A workflow with this name already exists in the workspace.',
+  DUPLICATE_STATUS_CODE: 'A status with this code already exists in the workflow.',
+  DUPLICATE_STATUS_NAME: 'A status with this name already exists in the workflow.',
+  SELF_LOOP_NOT_ALLOWED: 'Self-loop transitions are not allowed.',
+  INACTIVE_TRANSITION_TARGET: 'Transition target status is inactive.',
+  INVALID_STATUS_CATEGORY: 'Invalid status category.',
+  WORKFLOW_SCOPE_MISMATCH: 'Workflow does not match team or workspace scope.',
+  STATUS_SCOPE_MISMATCH: 'Status does not belong to workflow or is inactive.'
 };
 
 const unprocessableCodes = new Set([
@@ -28,7 +41,12 @@ const unprocessableCodes = new Set([
   'INACTIVE_APPROVER',
   'INVALID_APPROVER_TARGET',
   'INVALID_MENTION_TARGET',
-  'SELF_APPROVAL_NOT_ALLOWED'
+  'SELF_APPROVAL_NOT_ALLOWED',
+  'INVALID_TRANSITION',
+  'SELF_LOOP_NOT_ALLOWED',
+  'INACTIVE_TRANSITION_TARGET',
+  'INVALID_STATUS_CATEGORY',
+  'WORKFLOW_SCOPE_MISMATCH'
 ]);
 
 @Catch()

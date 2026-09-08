@@ -10,6 +10,7 @@ import { NotificationService } from './notification.service';
 import { ApprovalService } from './approval.service';
 import { CommentService } from './comment.service';
 import { ReportingClock } from './reporting-clock';
+import { WorkflowService } from './workflow.service';
 
-@Module({ controllers: [HealthController, FlozController, NotificationController], providers: [AuthService, FlozService, TaskService, RecurrenceService, NotificationService, ApprovalService, CommentService, ReportingClock] })
+@Module({ controllers: [HealthController, FlozController, NotificationController], providers: [AuthService, FlozService, TaskService, RecurrenceService, NotificationService, ApprovalService, CommentService, ReportingClock, WorkflowService] })
 export class AppModule {}
