@@ -17,24 +17,24 @@ Completed
 - Phase 7 P0 in-app notifications and reminders with assignment, due-soon, overdue, durable schedule-aware deduplication, outbox/worker/reconciliation recovery, workspace/user-isolated APIs, accessible Notification Center, polling refresh, and real-stack E2E coverage.
 - Phase 8 Dashboard, KPI Reporting & My Work, including final documentation and verification gates.
 - Phase 9 Operator Usability & Administration: ADMIN-only account provisioning with one-time temporary credentials and no auto-membership/session, profile and password management with session hygiene, no-workspace onboarding, workspace settings, member identity projection and lifecycle with last-active-admin and active-team-manager invariants under row locking, team administration with archive/restore and manager invariants, multi-assignee task creation, task filter controls with canonical `overdue=true` and cursor hygiene, calendar reschedule with context preservation, and field worker server-authoritative quick status. See `PHASE_9_REPORT.md`.
-- Phase 10 Approval & Collaboration Core through Task 11: migration 0007, approval CRUD/terminal engine, comments/mentions, worker notification mapping, manager dashboard pending approvals, web approvals and comments UX, accessibility hardening, and real-stack E2E.
+- Phase 10 Approval & Collaboration Core: migration 0007 (`0007_bizarre_kabuki.sql`), one-step approval engine with terminal row-locking and canonical audit outbox/history, task comments with soft delete, structured mentions, in-app approval/mention notification worker handlers, manager/admin pending approvals dashboard metrics, web approval list/detail/create/decision/cancel UX with accessibility and keyboard navigation, and real-stack Playwright E2E coverage. See `PHASE_10_REPORT.md`.
 
 In Progress
-- Phase 10 Task 12 documentation sync and final verification.
+- None. Checkpoint F reached.
 
 Next
-- Final gate sequence and commit.
+- Phase 11 is not started. Await explicit direction; do not proceed automatically.
 
 Blocked
-- None in product work; only pre-existing `apps/web/tsconfig.tsbuildinfo` drift is outside Task 12 ownership until resolved.
+- None.
 
 Phase 10 verification
-- Pending execution of final gates.
-- Root `pnpm test` baseline from Phase 9 remains recorded in `PHASE_9_REPORT.md`; Phase 10 needs fresh counts.
+- Complete. Clean DB (`scripts/test-clean-db.ps1`) 64/64 passed, exit 0; E2E (`scripts/test-e2e.ps1`) 19/19 Playwright passed, exit 0; worker integration 16/16 passed against real PostgreSQL + Redis; lint, typecheck, and build PASS.
+- Root `pnpm test` passed twice consecutively with zero failures/skips: database 31, config 2, domain 19, api 85, web 103, worker 33 = 273 tests per run.
+- Task 12 resolved active team membership filtering, linked task authorization, and component unmount race conditions via forward commits `0413ae7` and `04de057`.
 
 Known limitations
-- Approval notifications, comments, mentions, attachments, audit, notification preferences UI, push, email delivery, and remaining product UI beyond Phase 10 are out of scope unless specifically added later.
+- Approval workflow configuration, multi-step/quorum/reassignment, attachments, rich text/reactions, notification preferences UI, push, email delivery, and remaining product UI beyond Phase 10 are out of scope.
 - Reporting has no historical snapshots, exports, scheduled reports, charting warehouse, saved filters, custom KPI formulas, audit analytics, or cross-workspace reporting.
 - Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported and are excluded from projection.
 - `CUSTOM` recurrence remains unsupported; password recovery/reset for existing accounts and email/push delivery remain out of scope.
-- Some pre-existing accessibility follow-ups remain outside Phase 10 scope.
