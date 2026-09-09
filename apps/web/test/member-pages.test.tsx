@@ -33,7 +33,7 @@ vi.mock('../lib/api-client', async (load) => {
   };
 });
 
-const task = { id: 'task-1', taskKey: 'TASK-1', title: 'Inspect pump', dueAt: '2026-09-01T09:00:00.000Z', priority: 'HIGH' };
+const task = { id: 'task-1', taskKey: 'TASK-1', title: 'Inspect pump', dueAt: '2026-09-01T09:00:00.000Z', priority: 'HIGH', status: { id: 'st-1', code: 'OPEN', name: 'Open', category: 'UNSTARTED', is_active: true } };
 const emptyWork: MyWorkSummary = { today: [], upcoming: [], overdue: [], counts: { today: 0, upcoming: 0, overdue: 0 } };
 const dashboard: MemberDashboard = {
   kpis: {
@@ -71,6 +71,13 @@ describe('Task 8 member pages', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(text);
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(api.workspaces.myWork).toHaveBeenCalledTimes(2));
+  });
+
+  it.each([true, false])('renders canonical My Work status with archived badge only when inactive (%s)', async (is_active) => {
+    vi.mocked(api.workspaces.myWork).mockResolvedValue({ data: { ...emptyWork, today: [{ ...task, status: { ...task.status, is_active } }], counts: { today: 1, upcoming: 0, overdue: 0 } }, meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' } });
+    render(<MyWorkPage />);
+    expect(await screen.findByText(/Open/)).toBeInTheDocument();
+    expect(screen.queryByText('Archived') !== null).toBe(!is_active);
   });
 
   it('renders complete My Work empty state', async () => {

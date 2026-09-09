@@ -17,6 +17,7 @@ describe.skipIf(!databaseUrl)('my work integration', () => {
   let cancelledStatusId: string;
   let terminalStatusId: string;
   let otherActiveStatusId: string;
+  let archivedStatusId: string;
 
   const cleanup = async () => {
     for (const id of [workspaceId, otherWorkspaceId]) {
@@ -44,7 +45,9 @@ describe.skipIf(!databaseUrl)('my work integration', () => {
       activeStatusId = statuses.find((status) => !status.is_terminal)!.id;
       terminalStatusId = statuses.find((status) => status.is_terminal && status.category !== 'CANCELLED')!.id;
       cancelledStatusId = randomUUID();
+      archivedStatusId = randomUUID();
       await sql`INSERT INTO task_statuses(id,workflow_id,code,name,category,position,is_terminal) VALUES(${cancelledStatusId},${workflowId},${'CANCELLED_MY_WORK'},'Cancelled My Work','CANCELLED',999,false)`;
+      await sql`INSERT INTO task_statuses(id,workflow_id,code,name,category,position,is_terminal,is_active) VALUES(${archivedStatusId},${workflowId},'ARCHIVED_REVIEW','Archived Review','IN_PROGRESS',998,false,false)`;
       otherActiveStatusId = (await sql<{ id: string }[]>`SELECT id FROM task_statuses WHERE workflow_id=${otherWorkflowId} AND NOT is_terminal LIMIT 1`)[0].id;
 
       const insertTask = async (key: string, dueAt: string, statusId = activeStatusId, owner = userId, workspace = workspaceId, workflow = workflowId, deletedAt: string | null = null) => {
@@ -55,6 +58,7 @@ describe.skipIf(!databaseUrl)('my work integration', () => {
 
       await insertTask('TODAY-B', '2026-09-01T10:00:00Z');
       await insertTask('TODAY-A', '2026-09-01T10:00:00Z');
+      await insertTask('TODAY-ARCHIVED', '2026-09-01T10:30:00Z', archivedStatusId);
       await insertTask('OVERDUE', '2026-08-31T23:59:59Z');
       await insertTask('PRIOR-DAY', '2026-08-31T16:59:59Z');
       await insertTask('EQUAL', '2026-09-01T12:00:00Z');
@@ -82,11 +86,13 @@ describe.skipIf(!databaseUrl)('my work integration', () => {
   it('projects assigned active tasks into timezone-aware, ordered buckets and counts', async () => {
     const result = await getMyWorkSummary(db, { workspaceId, userId, date: '2026-09-01', timezone: 'Asia/Jakarta' });
 
-    expect(result.today.map((task) => task.taskKey)).toEqual(['OVERDUE', 'TODAY-A', 'TODAY-B', 'EQUAL']);
+    expect(result.today.map((task) => task.taskKey)).toEqual(['OVERDUE', 'TODAY-A', 'TODAY-B', 'TODAY-ARCHIVED', 'EQUAL']);
     expect(result.upcoming.map((task) => task.taskKey)).toEqual(['TOMORROW', 'UPCOMING-END']);
     expect(result.overdue.map((task) => task.taskKey)).toEqual(['PRIOR-DAY']);
-    expect(result.counts).toEqual({ today: 4, upcoming: 2, overdue: 1 });
+    expect(result.counts).toEqual({ today: 5, upcoming: 2, overdue: 1 });
     expect(result.today.filter((task) => result.overdue.some((overdue) => overdue.id === task.id))).toEqual([]);
+    expect(result.today.find((task) => task.taskKey === 'TODAY-A')?.status).toMatchObject({ id: activeStatusId, is_active: true });
+    expect(result.today.find((task) => task.taskKey === 'TODAY-ARCHIVED')?.status).toEqual({ id: archivedStatusId, code: 'ARCHIVED_REVIEW', name: 'Archived Review', category: 'IN_PROGRESS', is_active: false });
   });
 
   it('excludes cancelled status even when fixture marks it non-terminal', async () => {

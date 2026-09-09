@@ -195,6 +195,8 @@ describe('Read Projections, Kanban & Recurrence Compatibility (Task 8)', () => {
       .expect(201);
 
     const taskId = task.body.data.id;
+    const before = await request(f.app.getHttpServer()).get(`${base}/my-work`).set('Cookie', f.memberCookie).query({ date: '2026-09-05' }).expect(200);
+    expect(before.body.data.upcoming.find((t: { id: string }) => t.id === taskId).status).toEqual({ id: f.todoId, code: 'TODO', name: 'To Do', category: 'TODO', is_active: true });
 
     const { sql: client } = createDatabase(databaseUrl);
     await client`UPDATE tasks SET status_id=${f.archivedStatus1Id} WHERE id=${taskId}`;
@@ -236,7 +238,7 @@ describe('Read Projections, Kanban & Recurrence Compatibility (Task 8)', () => {
       .query({ date: '2026-09-05' })
       .expect(200);
     const foundInMyWork = myWorkRes.body.data.upcoming.find((t: { id: string }) => t.id === taskId);
-    expect(foundInMyWork).toBeDefined();
+    expect(foundInMyWork).toMatchObject({ status: { id: f.archivedStatus1Id, code: 'OLD_REV', name: 'Old Review', category: 'IN_PROGRESS', is_active: false } });
   });
 
   it('4. recurrence rule create and update cannot target archived workflow or archived status', async () => {

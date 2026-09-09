@@ -62,7 +62,7 @@ function TaskSection({
                   >
                     <strong>{task.title}</strong>
                     <span className="block text-xs text-gray-500">
-                      {task.taskKey} · {task.priority} · {new Date(task.dueAt).toLocaleString()}
+                      {task.taskKey} · {task.status.name}{task.status.is_active === false && <span className="ml-1 rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">Archived</span>} · {task.priority} · {new Date(task.dueAt).toLocaleString()}
                     </span>
                   </button>
                   <button

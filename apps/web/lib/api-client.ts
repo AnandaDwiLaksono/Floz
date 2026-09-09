@@ -212,7 +212,7 @@ export interface DashboardStatusCount extends DashboardCount { position: number;
 export interface DashboardAssigneeCount { userId: string | null; name: string | null; count: number; }
 export interface MemberDashboard { kpis: ReportingKpis; workload_by_team: DashboardCount[]; workload_by_assignee: DashboardAssigneeCount[]; unassigned: number; pending_approvals?: number; drilldown_url?: string; status_breakdown: DashboardStatusCount[]; priority_breakdown: DashboardCount[]; }
 export type Dashboard = MemberDashboard;
-export interface MyWorkTask { id: string; taskKey: string; title: string; dueAt: string; priority: string; }
+export interface MyWorkTask { id: string; taskKey: string; title: string; dueAt: string; priority: string; status: { id: string; code: string; name: string; category: string; is_active: boolean }; }
 export interface MyWorkSummary { today: MyWorkTask[]; upcoming: MyWorkTask[]; overdue: MyWorkTask[]; counts: { today: number; upcoming: number; overdue: number }; }
 
 export interface Team {
