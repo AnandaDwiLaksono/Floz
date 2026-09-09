@@ -48,11 +48,11 @@ export class WorkflowService {
   private async lockWorkflowAggregate(tx: TransactionSql, workspaceId: string, workflowId: string, expectedVersion: number) {
     try {
       return await lockWorkflowAggregateTx(tx, workspaceId, workflowId, expectedVersion);
-    } catch (err: any) {
-      if (err?.message === 'NOT_FOUND') {
+    } catch (err: unknown) {
+      if ((err as { message?: string })?.message === 'NOT_FOUND') {
         throw new NotFoundException('NOT_FOUND');
       }
-      if (err?.message === 'VERSION_CONFLICT') {
+      if ((err as { message?: string })?.message === 'VERSION_CONFLICT') {
         throw new ConflictException('VERSION_CONFLICT');
       }
       throw err;
@@ -62,8 +62,8 @@ export class WorkflowService {
   private async bumpWorkflowVersion(tx: TransactionSql, workflowId: string, expectedVersion: number) {
     try {
       return await bumpWorkflowVersionTx(tx, workflowId, expectedVersion);
-    } catch (err: any) {
-      if (err?.message === 'VERSION_CONFLICT') {
+    } catch (err: unknown) {
+      if ((err as { message?: string })?.message === 'VERSION_CONFLICT') {
         throw new ConflictException('VERSION_CONFLICT');
       }
       throw err;
@@ -151,7 +151,8 @@ export class WorkflowService {
   async create(workspaceId: string, actorId: string, input: CreateWorkflowDto) {
     this.validateUuid(workspaceId);
     this.validateUuid(actorId);
-    if ((input as any).is_default !== undefined || (input as any).code === undefined || !input.name?.trim()) {
+    const rawInput = input as unknown as Record<string, unknown>;
+    if (rawInput.is_default !== undefined || rawInput.code === undefined || !input.name?.trim()) {
       throw new BadRequestException('VALIDATION_ERROR');
     }
 
@@ -299,10 +300,11 @@ export class WorkflowService {
     this.validateUuid(workflowId);
     this.validateVersion(input.version);
 
+    const rawInput = input as unknown as Record<string, unknown>;
     if (
-      (input as any).code !== undefined ||
-      (input as any).is_default !== undefined ||
-      (input as any).team_id !== undefined
+      rawInput.code !== undefined ||
+      rawInput.is_default !== undefined ||
+      rawInput.team_id !== undefined
     ) {
       throw new BadRequestException('VALIDATION_ERROR');
     }
@@ -510,7 +512,8 @@ export class WorkflowService {
     this.validateUuid(statusId);
     this.validateVersion(input.version);
 
-    if ((input as any).code !== undefined) {
+    const rawInput = input as unknown as Record<string, unknown>;
+    if (rawInput.code !== undefined) {
       throw new BadRequestException('VALIDATION_ERROR');
     }
 

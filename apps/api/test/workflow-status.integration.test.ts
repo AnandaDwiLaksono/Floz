@@ -150,7 +150,7 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
         .send({ category: 'CANCELLED', version: 1 })
         .expect(200);
       
-      const s3 = res.body.data.statuses.find((s: any) => s.id === fix.status3Id);
+      const s3 = res.body.data.statuses.find((s: { id: string }) => s.id === fix.status3Id);
       expect(s3.category).toBe('CANCELLED');
       expect(s3.is_terminal).toBe(true);
       expect(res.body.data.version).toBe(2);
@@ -179,7 +179,7 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
       
       expect(conflictRes.body.error.code).toBe('VERSION_CONFLICT');
       
-      const initials = successRes.body.data.statuses.filter((s: any) => s.is_initial);
+      const initials = successRes.body.data.statuses.filter((s: { is_initial: boolean }) => s.is_initial);
       expect(initials.length).toBe(1);
       expect(initials[0].id).toBe(fix.status2Id);
       expect(successRes.body.data.version).toBe(3);
@@ -202,12 +202,12 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
 
       // Verify returned statuses compacted
       const statuses = res.body.data.statuses;
-      const archivedS3 = statuses.find((s: any) => s.id === fix.status3Id);
+      const archivedS3 = statuses.find((s: { id: string }) => s.id === fix.status3Id);
       expect(archivedS3.is_active).toBe(false);
       expect(archivedS3.position).toBe(9999);
-      expect(statuses.find((s: any) => s.id === fix.status1Id).position).toBe(1);
-      expect(statuses.find((s: any) => s.id === fix.status2Id).position).toBe(2);
-      expect(statuses.find((s: any) => s.id === fix.lockedStatusId).position).toBe(3);
+      expect(statuses.find((s: { id: string }) => s.id === fix.status1Id).position).toBe(1);
+      expect(statuses.find((s: { id: string }) => s.id === fix.status2Id).position).toBe(2);
+      expect(statuses.find((s: { id: string }) => s.id === fix.lockedStatusId).position).toBe(3);
 
       // Verify dormant transitions are retained in DB
       const { sql: client } = createDatabase(databaseUrl);
@@ -247,12 +247,12 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
 
       expect(res.body.data.version).toBe(6);
       
-      const s3 = res.body.data.statuses.find((s: any) => s.id === fix.status3Id);
+      const s3 = res.body.data.statuses.find((s: { id: string }) => s.id === fix.status3Id);
       expect(s3).toBeDefined();
       expect(s3.position).toBe(4); // activeCount + 1
 
       const edges = res.body.data.transitions;
-      const revivedEdge = edges.find((e: any) => e.to_status_id === fix.status3Id);
+      const revivedEdge = edges.find((e: { to_status_id: string }) => e.to_status_id === fix.status3Id);
       expect(revivedEdge).toBeDefined(); // returned by detail view since it's active again
       expect(revivedEdge.from_status_id).toBe(fix.status2Id);
     });
