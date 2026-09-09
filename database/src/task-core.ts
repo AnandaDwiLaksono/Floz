@@ -9,11 +9,65 @@ export type TaskPatchInput = { title?: string; description?: string | null; prio
 export type TaskAssignPatchInput = { version: number; assignees: TaskAssigneeInput[] };
 
 export async function validateTaskTemplateReferences(sql: TransactionSql, workspaceId: string, input: TaskCreationInput): Promise<TaskTemplateReferences> {
-  const workflow = (await sql<{ workflow_id: string; status_id: string }[]>`SELECT w.id AS workflow_id,s.id AS status_id FROM workflows w JOIN task_statuses s ON s.workflow_id=w.id AND s.is_initial WHERE w.workspace_id=${workspaceId} AND w.id=COALESCE(${input.workflow_id ?? null},(SELECT id FROM workflows WHERE workspace_id=${workspaceId} AND is_default AND is_active LIMIT 1)) AND w.is_active LIMIT 1`)[0];
-  if (!workflow) throw new Error('WORKFLOW_SCOPE_MISMATCH');
-  if (input.status_id && !(await sql`SELECT id FROM task_statuses WHERE id=${input.status_id} AND workflow_id=${workflow.workflow_id}`)[0]) throw new Error('STATUS_SCOPE_MISMATCH');
-  if (input.team_id && !(await sql`SELECT id FROM teams WHERE id=${input.team_id} AND workspace_id=${workspaceId}`)[0]) throw new Error('TEAM_SCOPE_MISMATCH');
-  return workflow;
+  if (input.team_id) {
+    const team = (await sql<{ id: string }[]>`SELECT id FROM teams WHERE id=${input.team_id} AND workspace_id=${workspaceId}`)[0];
+    if (!team) throw new Error('TEAM_SCOPE_MISMATCH');
+  }
+
+  let workflowId: string | undefined;
+
+  if (input.workflow_id) {
+    const wf = (await sql<{ id: string; team_id: string | null; is_active: boolean }[]>`SELECT id, team_id, is_active FROM workflows WHERE id=${input.workflow_id} AND workspace_id=${workspaceId}`)[0];
+    if (!wf || !wf.is_active) {
+      throw new Error('WORKFLOW_SCOPE_MISMATCH');
+    }
+
+    if (input.team_id) {
+      if (wf.team_id && wf.team_id !== input.team_id) {
+        throw new Error('WORKFLOW_SCOPE_MISMATCH');
+      }
+    } else {
+      if (wf.team_id !== null) {
+        throw new Error('WORKFLOW_SCOPE_MISMATCH');
+      }
+    }
+    workflowId = wf.id;
+  } else {
+    if (input.team_id) {
+      const teamDefault = (await sql<{ id: string }[]>`SELECT id FROM workflows WHERE workspace_id=${workspaceId} AND team_id=${input.team_id} AND is_default AND is_active LIMIT 1`)[0];
+      if (teamDefault) {
+        workflowId = teamDefault.id;
+      } else {
+        const wsDefault = (await sql<{ id: string }[]>`SELECT id FROM workflows WHERE workspace_id=${workspaceId} AND team_id IS NULL AND is_default AND is_active LIMIT 1`)[0];
+        if (wsDefault) {
+          workflowId = wsDefault.id;
+        }
+      }
+    } else {
+      const wsDefault = (await sql<{ id: string }[]>`SELECT id FROM workflows WHERE workspace_id=${workspaceId} AND team_id IS NULL AND is_default AND is_active LIMIT 1`)[0];
+      if (wsDefault) {
+        workflowId = wsDefault.id;
+      }
+    }
+
+    if (!workflowId) {
+      throw new Error('WORKFLOW_SCOPE_MISMATCH');
+    }
+  }
+
+  const initialStatus = (await sql<{ id: string }[]>`SELECT id FROM task_statuses WHERE workflow_id=${workflowId} AND is_initial AND is_active LIMIT 1`)[0];
+  if (!initialStatus) {
+    throw new Error('WORKFLOW_SCOPE_MISMATCH');
+  }
+
+  if (input.status_id) {
+    const status = (await sql<{ id: string }[]>`SELECT id FROM task_statuses WHERE id=${input.status_id} AND workflow_id=${workflowId} AND is_active LIMIT 1`)[0];
+    if (!status) {
+      throw new Error('STATUS_SCOPE_MISMATCH');
+    }
+  }
+
+  return { workflow_id: workflowId, status_id: input.status_id ?? initialStatus.id };
 }
 
 export async function createTaskRecordTx(sql: TransactionSql, workspaceId: string, actorId: string, input: TaskCreationInput, workflow: TaskTemplateReferences) {
