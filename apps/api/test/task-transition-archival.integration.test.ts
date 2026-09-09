@@ -278,4 +278,80 @@ describe('Task Runtime Transition Enforcement & Archived Status Escape (Task 7)'
     const lastHistory = historyRes.body.data[historyRes.body.data.length - 1];
     expect(lastHistory.event_type).toBe('REOPENED');
   });
+
+  it('7. existing tasks remain readable and executable after workflow is archived', async () => {
+    const base = `/api/v1/workspaces/${f.workspaceId}`;
+
+    // Create existing task while workflow is active
+    const created = await request(f.app.getHttpServer())
+      .post(`${base}/tasks`)
+      .set('Cookie', f.adminCookie)
+      .send({ title: 'Archived Workflow Task', workflow_id: f.workflowId, status_id: f.todoStatusId })
+      .expect(201);
+
+    const taskId = created.body.data.id;
+    const initialVersion = created.body.data.version;
+
+    // Archive the workflow directly in database
+    const { sql: client } = createDatabase(databaseUrl);
+    await client`UPDATE workflows SET is_active = false WHERE id = ${f.workflowId}`;
+    await client.end();
+
+    // 1. GET Task -> still readable
+    const detailRes = await request(f.app.getHttpServer())
+      .get(`${base}/tasks/${taskId}`)
+      .set('Cookie', f.adminCookie)
+      .expect(200);
+    expect(detailRes.body.data.id).toBe(taskId);
+
+    // 2. GET available-transitions -> active target (inProgressStatusId) still available
+    const transitionsRes = await request(f.app.getHttpServer())
+      .get(`${base}/tasks/${taskId}/available-transitions`)
+      .set('Cookie', f.adminCookie)
+      .expect(200);
+    const targetIds = transitionsRes.body.data.map((t: { to_status_id: string }) => t.to_status_id);
+    expect(targetIds).toContain(f.inProgressStatusId);
+
+    // 3. POST transition TODO -> IN_PROGRESS -> succeeds, version increments, history recorded
+    const transitionRes = await request(f.app.getHttpServer())
+      .post(`${base}/tasks/${taskId}/transitions`)
+      .set('Cookie', f.adminCookie)
+      .send({ version: initialVersion, to_status_id: f.inProgressStatusId })
+      .expect(201);
+
+    expect(transitionRes.body.task.status.id).toBe(f.inProgressStatusId);
+    expect(transitionRes.body.task.version).toBe(initialVersion + 1);
+
+    const historyRes = await request(f.app.getHttpServer())
+      .get(`${base}/tasks/${taskId}/history`)
+      .set('Cookie', f.adminCookie)
+      .expect(200);
+    const lastHistory = historyRes.body.data[historyRes.body.data.length - 1];
+    expect(lastHistory.to_status_id).toBe(f.inProgressStatusId);
+
+    // 4. Transition to archived target status while workflow is archived -> 422 INVALID_TRANSITION
+    await request(f.app.getHttpServer())
+      .post(`${base}/tasks/${taskId}/transitions`)
+      .set('Cookie', f.adminCookie)
+      .send({ version: transitionRes.body.task.version, to_status_id: f.archivedStatusId })
+      .expect(422)
+      .expect(({ body }) => {
+        expect(body.error.code).toBe('INVALID_TRANSITION');
+      });
+
+    // 5. Creating a new task with archived workflow -> rejected
+    await request(f.app.getHttpServer())
+      .post(`${base}/tasks`)
+      .set('Cookie', f.adminCookie)
+      .send({ title: 'New Task Archived Workflow', workflow_id: f.workflowId, status_id: f.todoStatusId })
+      .expect(422)
+      .expect(({ body }) => {
+        expect(body.error.code).toBe('WORKFLOW_SCOPE_MISMATCH');
+      });
+
+    // Restore workflow active state for cleanup/subsequent tests
+    const { sql: cleanupClient } = createDatabase(databaseUrl);
+    await cleanupClient`UPDATE workflows SET is_active = true WHERE id = ${f.workflowId}`;
+    await cleanupClient.end();
+  });
 });

@@ -191,7 +191,7 @@ describe('Read Projections, Kanban & Recurrence Compatibility (Task 8)', () => {
     const task = await request(f.app.getHttpServer())
       .post(`${base}/tasks`)
       .set('Cookie', f.adminCookie)
-      .send({ title: 'Task Detail Test', workflow_id: f.workflowId, status_id: f.todoId, due_at: '2026-09-10T12:00:00.000Z' })
+      .send({ title: 'Task Detail Test', workflow_id: f.workflowId, status_id: f.todoId, due_at: '2026-09-10T12:00:00.000Z', assignees: [{ user_id: f.memberId, is_primary: true }] })
       .expect(201);
 
     const taskId = task.body.data.id;
@@ -207,6 +207,7 @@ describe('Read Projections, Kanban & Recurrence Compatibility (Task 8)', () => {
       .expect(200);
     expect(detailRes.body.data.status.id).toBe(f.archivedStatus1Id);
     expect(detailRes.body.data.status.name).toBe('Old Review');
+    expect(detailRes.body.data.status.is_active).toBe(false);
 
     // 2. Task List
     const listRes = await request(f.app.getHttpServer())
@@ -215,6 +216,7 @@ describe('Read Projections, Kanban & Recurrence Compatibility (Task 8)', () => {
       .expect(200);
     const foundInList = listRes.body.data.find((t: { id: string }) => t.id === taskId);
     expect(foundInList).toBeDefined();
+    expect(foundInList.status.is_active).toBe(false);
 
     // 3. Calendar
     const calRes = await request(f.app.getHttpServer())
@@ -225,6 +227,16 @@ describe('Read Projections, Kanban & Recurrence Compatibility (Task 8)', () => {
     const foundInCal = calRes.body.data.find((t: { id: string }) => t.id === taskId);
     expect(foundInCal).toBeDefined();
     expect(foundInCal.status.id).toBe(f.archivedStatus1Id);
+    expect(foundInCal.status.is_active).toBe(false);
+
+    // 4. My Work - archived non-terminal status task assigned to user remains present
+    const myWorkRes = await request(f.app.getHttpServer())
+      .get(`${base}/my-work`)
+      .set('Cookie', f.memberCookie)
+      .query({ date: '2026-09-05' })
+      .expect(200);
+    const foundInMyWork = myWorkRes.body.data.upcoming.find((t: { id: string }) => t.id === taskId);
+    expect(foundInMyWork).toBeDefined();
   });
 
   it('4. recurrence rule create and update cannot target archived workflow or archived status', async () => {
