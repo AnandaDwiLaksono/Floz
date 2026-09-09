@@ -160,6 +160,23 @@ export interface Comment {
   mentions: CommentMention[];
 }
 
+export interface WorkflowStatus {
+  id: string;
+  code: string;
+  name: string;
+  category: 'TODO' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+  position: number;
+  is_initial: boolean;
+  is_terminal: boolean;
+  is_active: boolean;
+}
+
+export interface WorkflowTransition {
+  from_status_id: string;
+  to_status_id: string;
+  requires_permission: boolean;
+}
+
 export interface Workflow {
   id: string;
   name: string;
@@ -167,6 +184,34 @@ export interface Workflow {
   is_default: boolean;
   is_active: boolean;
   statuses: TaskStatus[];
+}
+
+export interface WorkflowListItem {
+  id: string;
+  workspace_id: string;
+  team_id: string | null;
+  code: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  version: number;
+}
+
+export interface WorkflowDetail {
+  id: string;
+  workspace_id: string;
+  team_id: string | null;
+  code: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  statuses: WorkflowStatus[];
+  transitions: WorkflowTransition[];
 }
 
 export interface KanbanCardSummary {
@@ -344,6 +389,34 @@ export const api = {
     createTeam: (workspaceId: string, body: { name: string; description?: string; manager_user_id?: string | null }) => apiFetch<{ data: Team }>(`/workspaces/${workspaceId}/teams`, { method: 'POST', body: JSON.stringify(body) }),
     workflows: (workspaceId: string) =>
       apiFetch<{ data: Workflow[] }>(`/workspaces/${workspaceId}/workflows`),
+    workflowList: (workspaceId: string) =>
+      apiFetch<{ data: WorkflowListItem[] }>(`/workspaces/${workspaceId}/workflows?include_archived=true`),
+    workflowDetail: (workspaceId: string, workflowId: string) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}`),
+    createWorkflow: (workspaceId: string, body: { name: string; code: string; description?: string | null; team_id?: string | null; statuses: { name: string; code: string; category: string; is_initial: boolean }[]; transitions: { from_status_code: string; to_status_code: string }[] }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows`, { method: 'POST', body: JSON.stringify(body) }),
+    updateWorkflow: (workspaceId: string, workflowId: string, body: { name?: string; description?: string | null; version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    setDefaultWorkflow: (workspaceId: string, workflowId: string, body: { version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/set-default`, { method: 'POST', body: JSON.stringify(body) }),
+    archiveWorkflow: (workspaceId: string, workflowId: string, body: { version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/archive`, { method: 'POST', body: JSON.stringify(body) }),
+    restoreWorkflow: (workspaceId: string, workflowId: string, body: { version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/restore`, { method: 'POST', body: JSON.stringify(body) }),
+    addWorkflowStatus: (workspaceId: string, workflowId: string, body: { name: string; code: string; category: string; version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/statuses`, { method: 'POST', body: JSON.stringify(body) }),
+    updateWorkflowStatus: (workspaceId: string, workflowId: string, statusId: string, body: { name?: string; category?: string; version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/statuses/${statusId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    setInitialStatus: (workspaceId: string, workflowId: string, statusId: string, body: { version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/statuses/${statusId}/set-initial`, { method: 'POST', body: JSON.stringify(body) }),
+    archiveWorkflowStatus: (workspaceId: string, workflowId: string, statusId: string, body: { version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/statuses/${statusId}/archive`, { method: 'POST', body: JSON.stringify(body) }),
+    restoreWorkflowStatus: (workspaceId: string, workflowId: string, statusId: string, body: { version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/statuses/${statusId}/restore`, { method: 'POST', body: JSON.stringify(body) }),
+    reorderWorkflowStatuses: (workspaceId: string, workflowId: string, body: { status_ids: string[]; version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/statuses/reorder`, { method: 'PUT', body: JSON.stringify(body) }),
+    replaceWorkflowTransitions: (workspaceId: string, workflowId: string, body: { transitions: { from_status_id: string; to_status_id: string }[]; version: number }) =>
+      apiFetch<{ data: WorkflowDetail }>(`/workspaces/${workspaceId}/workflows/${workflowId}/transitions`, { method: 'PUT', body: JSON.stringify(body) }),
   },
   tasks: {
     list: (workspaceId: string, params: Record<string, string | number | undefined> = {}) => {

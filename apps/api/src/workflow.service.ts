@@ -70,7 +70,7 @@ export class WorkflowService {
     }
   }
 
-  async list(workspaceId: string) {
+  async list(workspaceId: string, includeArchived = false) {
     this.validateUuid(workspaceId);
     const workflows = await this.sql`
       SELECT
@@ -102,7 +102,7 @@ export class WorkflowService {
         ) AS statuses
       FROM workflows w
       LEFT JOIN task_statuses s ON s.workflow_id = w.id
-      WHERE w.workspace_id = ${workspaceId} AND w.is_active = true
+      WHERE w.workspace_id = ${workspaceId} ${includeArchived ? this.sql`` : this.sql`AND w.is_active = true`}
       GROUP BY w.id
       ORDER BY w.is_default DESC, w.name ASC
     `;

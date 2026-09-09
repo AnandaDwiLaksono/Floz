@@ -50,6 +50,7 @@ export default function WorkspaceSettingsPage() {
         <Link href={`/workspaces/${workspaceId}/settings/workspace`} className="px-3 py-1.5 text-sm font-semibold rounded bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">Workspace</Link>
         <Link href={`/workspaces/${workspaceId}/settings/members`} className="px-3 py-1.5 text-sm font-medium rounded hover:bg-gray-100 dark:hover:bg-gray-800">Members</Link>
         <Link href={`/workspaces/${workspaceId}/settings/teams`} className="px-3 py-1.5 text-sm font-medium rounded hover:bg-gray-100 dark:hover:bg-gray-800">Teams</Link>
+        <Link href={`/workspaces/${workspaceId}/settings/workflows`} className="px-3 py-1.5 text-sm font-medium rounded hover:bg-gray-100 dark:hover:bg-gray-800">Workflows</Link>
       </div>
 
       {loading ? (

@@ -166,7 +166,8 @@ export class FlozController {
   @Get('workspaces/:workspaceId/workflows')
   async workflows(@Req() req: Request, @Param('workspaceId') wid: string) {
     await this.member(req, wid);
-    return ok(await this.workflowService.list(wid));
+    const includeArchived = req.query.include_archived === 'true';
+    return ok(await this.workflowService.list(wid, includeArchived));
   }
 
   @Get('workspaces/:workspaceId/workflows/:workflowId')
