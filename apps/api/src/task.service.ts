@@ -78,9 +78,22 @@ export class TaskService {
     if (query.priority && prioritiesFilter.length !== query.priority.split(',').length) throw new BadRequestException('VALIDATION_ERROR');
     const workflow = (await this.sql<{ id: string; name: string; team_id: string | null }[]>`SELECT id,name,team_id FROM workflows WHERE workspace_id=${workspaceId} AND is_active AND id=COALESCE(${query.workflow_id ?? null},(SELECT id FROM workflows WHERE workspace_id=${workspaceId} AND is_active AND is_default LIMIT 1))`)[0];
     if (!workflow) throw new NotFoundException('NOT_FOUND');
-    const statuses = await this.sql<{ id: string; code: string; name: string; category: string; position: number }[]>`SELECT id,code,name,category,position FROM task_statuses WHERE workflow_id=${workflow.id} AND category <> 'CANCELLED' ORDER BY position ASC,id ASC`;
+    const activeStatuses = await this.sql<{ id: string; code: string; name: string; category: string; position: number; is_active: boolean }[]>`SELECT id,code,name,category,position,is_active FROM task_statuses WHERE workflow_id=${workflow.id} AND is_active = true ORDER BY position ASC,id ASC`;
     const rows = await this.sql<(TaskRow & { assignees: AssigneeRow[] })[]>`SELECT t.*,s.code AS status_code,s.name AS status_name,s.category AS status_category,COALESCE((SELECT json_agg(json_build_object('user_id',ta.user_id,'is_primary',ta.is_primary,'full_name',u.name) ORDER BY ta.is_primary DESC,u.name) FROM task_assignees ta JOIN users u ON u.id=ta.user_id WHERE ta.task_id=t.id),'[]') AS assignees FROM tasks t JOIN task_statuses s ON s.id=t.status_id WHERE t.workspace_id=${workspaceId} AND t.workflow_id=${workflow.id} AND t.deleted_at IS NULL AND (${query.team_id ?? null}::uuid IS NULL OR t.team_id=${query.team_id ?? null}) AND (${query.assignee_id ?? null}::uuid IS NULL OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id=t.id AND ta.user_id=${query.assignee_id ?? null})) AND (${prioritiesFilter.length ? this.sql` t.priority IN ${this.sql(prioritiesFilter)}` : this.sql` TRUE`}) AND (${query.due_from ?? null}::timestamptz IS NULL OR t.due_at >= ${query.due_from ?? null}) AND (${query.due_to ?? null}::timestamptz IS NULL OR t.due_at <= ${query.due_to ?? null}) ORDER BY t.due_at ASC NULLS LAST,t.task_key ASC`;
-    return { workflow, columns: statuses.map((status) => { const cards = rows.filter((row) => row.status_id === status.id).map((row) => this.task(row, row.assignees)); return { status, task_count: cards.length, cards }; }) };
+    const activeColumns = activeStatuses.map((status) => { const cards = rows.filter((row) => row.status_id === status.id).map((row) => this.task(row, row.assignees)); return { status, task_count: cards.length, cards }; });
+    const activeStatusIds = new Set(activeStatuses.map((s) => s.id));
+    const occupiedArchivedStatusIds = Array.from(new Set(rows.filter((row) => !activeStatusIds.has(row.status_id)).map((row) => row.status_id)));
+    const occupiedArchivedColumns = [];
+    if (occupiedArchivedStatusIds.length > 0) {
+      const archivedStatuses = await this.sql<{ id: string; code: string; name: string; category: string; position: number; is_active: boolean }[]>`SELECT id,code,name,category,position,is_active FROM task_statuses WHERE id IN ${this.sql(occupiedArchivedStatusIds)} ORDER BY position ASC,id ASC`;
+      for (const archStatus of archivedStatuses) {
+        const cards = rows.filter((row) => row.status_id === archStatus.id).map((row) => this.task(row, row.assignees));
+        if (cards.length > 0) {
+          occupiedArchivedColumns.push({ status: { id: archStatus.id, code: archStatus.code, name: archStatus.name.startsWith('Archived: ') ? archStatus.name : `Archived: ${archStatus.name}`, category: archStatus.category, position: archStatus.position, is_active: false }, task_count: cards.length, cards });
+        }
+      }
+    }
+    return { workflow, columns: [...activeColumns, ...occupiedArchivedColumns] };
   }
   async list(workspaceId: string, query: TaskQueryDto) {
     const dueFrom = this.parseIsoTimestamp(query.due_from);

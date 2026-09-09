@@ -49,7 +49,7 @@ export class RecurrenceService {
         nextRunAt = resolveNextOccurrence({ frequency: input.frequency, intervalValue: input.interval_value, timezone: input.timezone, startAt: new Date(input.start_at), endAt: input.end_at ? new Date(input.end_at) : null, occurrenceLimit: input.occurrence_limit ?? null, generatedCount: 1, latestGeneratedScheduledFor: firstAt });
       } catch (error) { rethrowRecurrenceValidation(error); }
       await this.validateAssignees(sql, workspaceId, input.assignee_ids ?? []);
-      const workflow = await validateTaskTemplateReferences(sql, workspaceId, { title: input.title, description: input.description ?? null, workflow_id: input.workflow_id, priority: input.priority, team_id: input.team_id, start_at: firstAt.toISOString(), due_at: null });
+      const workflow = await validateTaskTemplateReferences(sql, workspaceId, { title: input.title, description: input.description ?? null, workflow_id: input.workflow_id, status_id: input.status_id, priority: input.priority, team_id: input.team_id, start_at: firstAt.toISOString(), due_at: null });
       const created = (await sql<{ id: string }[]>`INSERT INTO recurrence_rules(workspace_id,name,frequency,interval_value,start_at,end_at,occurrence_limit,timezone,next_run_at,is_active,generated_count,rule_config,template_snapshot,created_by) VALUES(${workspaceId},${input.name},${input.frequency},${input.interval_value},${input.start_at},${input.end_at ?? null},${input.occurrence_limit ?? null},${input.timezone},${nextRunAt?.toISOString() ?? null},true,1,${JSON.stringify({})}::jsonb,${JSON.stringify(input)}::jsonb,${actorId}) RETURNING id`)[0];
       const taskRow = await createTaskRecordTx(sql, workspaceId, actorId, { title: input.title, description: input.description ?? null, priority: input.priority, workflow_id: workflow.workflow_id, status_id: workflow.status_id, team_id: input.team_id, start_at: firstAt.toISOString(), due_at: null }, workflow);
       await createTaskAssigneesTx(sql, workspaceId, taskRow.id, actorId, (input.assignee_ids ?? []).map((user_id) => ({ user_id, is_primary: user_id === input.primary_assignee_id })));
@@ -80,7 +80,17 @@ export class RecurrenceService {
       const current = await this.getRule(sql, workspaceId, id);
        if (input.assignee_ids || input.primary_assignee_id) await this.validateAssignees(sql, workspaceId, [...(input.assignee_ids ?? []), ...(input.primary_assignee_id ? [input.primary_assignee_id] : [])]);
        if (input.team_id && !(await sql`SELECT id FROM teams WHERE id=${input.team_id} AND workspace_id=${workspaceId}`)[0]) throw new BadRequestException('TEAM_SCOPE_MISMATCH');
-       if (input.workflow_id && !(await sql`SELECT id FROM workflows WHERE id=${input.workflow_id} AND workspace_id=${workspaceId}`)[0]) throw new BadRequestException('WORKFLOW_SCOPE_MISMATCH');
+       const targetTeamId = input.team_id !== undefined ? input.team_id : (current.template_snapshot as Record<string, unknown>)?.team_id as string | null | undefined;
+       const targetWorkflowId = input.workflow_id !== undefined ? input.workflow_id : (current.template_snapshot as Record<string, unknown>)?.workflow_id as string | undefined;
+       const targetStatusId = input.status_id !== undefined ? input.status_id : (current.template_snapshot as Record<string, unknown>)?.status_id as string | undefined;
+       if (input.workflow_id !== undefined || input.status_id !== undefined || input.team_id !== undefined) {
+         await validateTaskTemplateReferences(sql, workspaceId, {
+           workflow_id: targetWorkflowId,
+           status_id: targetStatusId,
+           team_id: targetTeamId,
+           title: 'validation'
+         });
+       }
        const latest = (await sql<{ scheduled_for: Date }[]>`SELECT scheduled_for FROM recurrence_occurrences WHERE recurrence_rule_id=${id} ORDER BY scheduled_for DESC LIMIT 1`)[0]?.scheduled_for ?? current.start_at;
        const changed = input.frequency || input.interval_value || input.timezone || input.start_at || input.end_at !== undefined || input.occurrence_limit !== undefined;
        const schedule = { ...this.schedule(current), frequency: (input.frequency ?? current.frequency) as 'DAILY' | 'WEEKLY' | 'MONTHLY', intervalValue: input.interval_value ?? current.interval_value, timezone: input.timezone ?? current.timezone, startAt: new Date(input.start_at ?? current.start_at), endAt: input.end_at === undefined ? current.end_at : input.end_at ? new Date(input.end_at) : null, occurrenceLimit: input.occurrence_limit === undefined ? current.occurrence_limit : input.occurrence_limit };

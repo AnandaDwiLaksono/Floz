@@ -17,7 +17,7 @@ const databaseUrl = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@lo
 process.env.DATABASE_URL = databaseUrl;
 process.env.BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET ?? 'test-secret-at-least-32-characters-long';
 
-type Fixture = { adminCookie: string; memberCookie: string; outsiderCookie: string; adminId: string; memberId: string; outsiderId: string; workspaceId: string; otherWorkspaceId: string; workflowId: string; todoId: string; doingId: string; doneId: string };
+type Fixture = { adminCookie: string; memberCookie: string; outsiderCookie: string; adminId: string; memberId: string; outsiderId: string; workspaceId: string; otherWorkspaceId: string; workflowId: string; todoId: string; doingId: string; doneId: string; cancelledId: string };
 
 async function createApp(canonicalErrors = false) {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -63,7 +63,7 @@ async function fixture(app: INestApplication): Promise<Fixture> {
   const status = (code: string) => String(workflow.find((row) => row.code === code)!.status_id);
   await db2.end();
 
-  return { adminCookie: await login(app, 'admin@example.com'), memberCookie: await login(app, 'member@example.com'), outsiderCookie: await login(app, 'outsider@example.com'), adminId, memberId, outsiderId, workspaceId, otherWorkspaceId, workflowId, todoId: status('TODO'), doingId: status('IN_PROGRESS'), doneId: status('DONE') };
+  return { adminCookie: await login(app, 'admin@example.com'), memberCookie: await login(app, 'member@example.com'), outsiderCookie: await login(app, 'outsider@example.com'), adminId, memberId, outsiderId, workspaceId, otherWorkspaceId, workflowId, todoId: status('TODO'), doingId: status('IN_PROGRESS'), doneId: status('DONE'), cancelledId: status('CANCELLED') };
 }
 
 describe('API', () => {
@@ -384,7 +384,7 @@ describe('API', () => {
     await request(app!.getHttpServer()).post(`/api/v1/workspaces/${f.otherWorkspaceId}/tasks`).set('Cookie', f.outsiderCookie).send({ title: 'Other task', priority: 'URGENT' }).expect(201);
     const board = await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.workspaceId}/kanban`).set('Cookie', f.memberCookie).query({ workflow_id: f.workflowId, priority: 'HIGH,URGENT', assignee_id: f.memberId, due_from: '2026-08-01T00:00:00.000Z', due_to: '2026-08-02T00:00:00.000Z' }).expect(200);
     expect(board.body.data.workflow.id).toBe(f.workflowId);
-    expect(board.body.data.columns.map((column: { status: { id: string } }) => column.status.id)).toEqual([f.todoId, f.doingId, f.doneId]);
+    expect(board.body.data.columns.map((column: { status: { id: string } }) => column.status.id)).toEqual([f.todoId, f.doingId, f.doneId, f.cancelledId]);
     expect(board.body.data.columns[0]).toMatchObject({ task_count: 1, cards: [{ id: first.body.data.id, title: 'Due first', assignees: [{ user_id: f.memberId, is_primary: true, full_name: 'Member' }] }] });
     expect(board.body.data.columns.flatMap((column: { cards: { title: string }[] }) => column.cards).map((card: { title: string }) => card.title)).not.toContain('Other task');
     await request(app!.getHttpServer()).get(`/api/v1/workspaces/${f.otherWorkspaceId}/kanban`).set('Cookie', f.memberCookie).expect(404);

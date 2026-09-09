@@ -3,7 +3,7 @@ import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Mat
 
 export const recurrenceFrequencies = ['DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'] as const;
 
-type RecurrenceTemplate = { title?: string; description?: string | null; workflow_id?: string; priority?: string; team_id?: string | null; assignee_ids?: string[]; primary_assignee_id?: string | null; due_time?: string | null };
+type RecurrenceTemplate = { title?: string; description?: string | null; workflow_id?: string; status_id?: string; priority?: string; team_id?: string | null; assignee_ids?: string[]; primary_assignee_id?: string | null; due_time?: string | null };
 
 @ValidatorConstraint({ name: 'exclusiveEnd', async: false })
 class ExclusiveEnd implements ValidatorConstraintInterface {
@@ -26,6 +26,7 @@ export class CreateRecurringTaskDto implements RecurrenceTemplate {
   @IsString() title!: string;
   @IsOptional() @IsString() description?: string | null;
   @IsOptional() @IsUUID() workflow_id?: string;
+  @IsOptional() @IsUUID() status_id?: string;
   @IsOptional() @IsString() priority?: string;
   @IsOptional() @IsUUID() team_id?: string | null;
   @IsOptional() @IsUUID('4', { each: true }) assignee_ids?: string[];
@@ -37,11 +38,11 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const timezonePattern = /^[A-Za-z_]+(?:[\/-][A-Za-z0-9_+\-]+)+$/;
 
 export function validateCreateRecurringTask(input: CreateRecurringTaskDto) {
-  if (input.frequency === 'CUSTOM' || !input.interval_value || input.interval_value < 1 || (input.occurrence_limit !== undefined && input.occurrence_limit < 1) || (input.end_at && input.occurrence_limit !== undefined) || !input.timezone || !timezonePattern.test(input.timezone) || (input.workflow_id !== undefined && !uuidPattern.test(input.workflow_id)) || (input.team_id !== undefined && input.team_id !== null && !uuidPattern.test(input.team_id)) || (input.primary_assignee_id !== undefined && input.primary_assignee_id !== null && !uuidPattern.test(input.primary_assignee_id)) || (input.assignee_ids && input.assignee_ids.some((id) => !uuidPattern.test(id)))) throw new Error('VALIDATION_ERROR');
+  if (input.frequency === 'CUSTOM' || !input.interval_value || input.interval_value < 1 || (input.occurrence_limit !== undefined && input.occurrence_limit < 1) || (input.end_at && input.occurrence_limit !== undefined) || !input.timezone || !timezonePattern.test(input.timezone) || (input.workflow_id !== undefined && !uuidPattern.test(input.workflow_id)) || (input.status_id !== undefined && !uuidPattern.test(input.status_id)) || (input.team_id !== undefined && input.team_id !== null && !uuidPattern.test(input.team_id)) || (input.primary_assignee_id !== undefined && input.primary_assignee_id !== null && !uuidPattern.test(input.primary_assignee_id)) || (input.assignee_ids && input.assignee_ids.some((id) => !uuidPattern.test(id)))) throw new Error('VALIDATION_ERROR');
 }
 
 export function validateUpdateRecurrenceRule(input: UpdateRecurrenceRuleDto) {
-  if (input.frequency === 'CUSTOM' || (input.interval_value !== undefined && input.interval_value < 1) || (input.occurrence_limit !== undefined && input.occurrence_limit !== null && input.occurrence_limit < 1) || (input.end_at && input.occurrence_limit !== undefined) || (input.timezone !== undefined && !timezonePattern.test(input.timezone)) || (input.workflow_id !== undefined && !uuidPattern.test(input.workflow_id)) || (input.team_id !== undefined && input.team_id !== null && !uuidPattern.test(input.team_id)) || (input.primary_assignee_id !== undefined && input.primary_assignee_id !== null && !uuidPattern.test(input.primary_assignee_id)) || (input.assignee_ids && input.assignee_ids.some((id) => !uuidPattern.test(id)))) throw new Error('VALIDATION_ERROR');
+  if (input.frequency === 'CUSTOM' || (input.interval_value !== undefined && input.interval_value < 1) || (input.occurrence_limit !== undefined && input.occurrence_limit !== null && input.occurrence_limit < 1) || (input.end_at && input.occurrence_limit !== undefined) || (input.timezone !== undefined && !timezonePattern.test(input.timezone)) || (input.workflow_id !== undefined && !uuidPattern.test(input.workflow_id)) || (input.status_id !== undefined && !uuidPattern.test(input.status_id)) || (input.team_id !== undefined && input.team_id !== null && !uuidPattern.test(input.team_id)) || (input.primary_assignee_id !== undefined && input.primary_assignee_id !== null && !uuidPattern.test(input.primary_assignee_id)) || (input.assignee_ids && input.assignee_ids.some((id) => !uuidPattern.test(id)))) throw new Error('VALIDATION_ERROR');
 }
 
 export class UpdateRecurrenceRuleDto {
@@ -55,6 +56,7 @@ export class UpdateRecurrenceRuleDto {
   @IsOptional() @IsString() title?: string;
   @IsOptional() @IsString() description?: string | null;
   @IsOptional() @IsUUID() workflow_id?: string;
+  @IsOptional() @IsUUID() status_id?: string;
   @IsOptional() @IsString() priority?: string;
   @IsOptional() @IsUUID() team_id?: string | null;
   @IsOptional() @IsUUID('4', { each: true }) assignee_ids?: string[];
