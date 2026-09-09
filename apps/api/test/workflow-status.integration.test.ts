@@ -157,18 +157,87 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
     });
   });
 
+  describe('set-initial Target Rules', () => {
+    it('proves rejected attempts leave initial and version unchanged', async () => {
+      // current version is 2, current initial is fix.status1Id
+      // 1. Rejected: active DONE status
+      const { sql: client } = createDatabase(databaseUrl);
+      const doneStatusId = randomUUID();
+      await client`INSERT INTO task_statuses (id, workflow_id, code, name, category, position, is_initial, is_terminal, is_active) VALUES (${doneStatusId}, ${fix.workflowId}, 'TEMP_DONE', 'Temp Done', 'DONE', 5, false, true, true)`;
+
+      const resDone = await request(fix.app.getHttpServer())
+        .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/statuses/${doneStatusId}/set-initial`)
+        .set('Cookie', fix.adminCookie)
+        .send({ version: 2 })
+        .expect(400);
+      expect(resDone.body.error.code).toBe('VALIDATION_ERROR');
+
+      // 2. Rejected: active CANCELLED status (status3Id was set to CANCELLED in Category Safety above)
+      const resCancelled = await request(fix.app.getHttpServer())
+        .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/statuses/${fix.status3Id}/set-initial`)
+        .set('Cookie', fix.adminCookie)
+        .send({ version: 2 })
+        .expect(400);
+      expect(resCancelled.body.error.code).toBe('VALIDATION_ERROR');
+
+      // 3. Rejected: archived status
+      const tempArchivedId = randomUUID();
+      await client`INSERT INTO task_statuses (id, workflow_id, code, name, category, position, is_initial, is_terminal, is_active) VALUES (${tempArchivedId}, ${fix.workflowId}, 'TEMP_ARCH', 'Temp Arch', 'TODO', 6, false, false, false)`;
+
+      const resArchived = await request(fix.app.getHttpServer())
+        .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/statuses/${tempArchivedId}/set-initial`)
+        .set('Cookie', fix.adminCookie)
+        .send({ version: 2 })
+        .expect(404);
+      expect(resArchived.body.error.code).toBe('NOT_FOUND');
+
+      // Verify zero mutation for rejected cases:
+      const wf = await client`SELECT version FROM workflows WHERE id=${fix.workflowId}`;
+      expect(wf[0].version).toBe(2);
+      const initials = await client`SELECT id FROM task_statuses WHERE workflow_id=${fix.workflowId} AND is_initial=true`;
+      expect(initials.length).toBe(1);
+      expect(initials[0].id).toBe(fix.status1Id);
+
+      // Clean up temp rows
+      await client`DELETE FROM task_statuses WHERE id IN (${doneStatusId}, ${tempArchivedId})`;
+      await client.end();
+
+      // 4. Allowed: active IN_PROGRESS target (status2Id)
+      const resInProgress = await request(fix.app.getHttpServer())
+        .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/statuses/${fix.status2Id}/set-initial`)
+        .set('Cookie', fix.adminCookie)
+        .send({ version: 2 })
+        .expect(200);
+      expect(resInProgress.body.data.version).toBe(3);
+      const init1 = resInProgress.body.data.statuses.filter((s: { is_initial: boolean }) => s.is_initial);
+      expect(init1.length).toBe(1);
+      expect(init1[0].id).toBe(fix.status2Id);
+
+      // 5. Allowed: active TODO target (status1Id)
+      const resTodo = await request(fix.app.getHttpServer())
+        .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/statuses/${fix.status1Id}/set-initial`)
+        .set('Cookie', fix.adminCookie)
+        .send({ version: 3 })
+        .expect(200);
+      expect(resTodo.body.data.version).toBe(4);
+      const init2 = resTodo.body.data.statuses.filter((s: { is_initial: boolean }) => s.is_initial);
+      expect(init2.length).toBe(1);
+      expect(init2[0].id).toBe(fix.status1Id);
+    });
+  });
+
   describe('set-initial Race', () => {
     it('concurrent set-initial results in one winner and one VERSION_CONFLICT', async () => {
-      // current version is 2
+      // current version is now 4
       const req1 = request(fix.app.getHttpServer())
         .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/statuses/${fix.status2Id}/set-initial`)
         .set('Cookie', fix.adminCookie)
-        .send({ version: 2 });
+        .send({ version: 4 });
 
       const req2 = request(fix.app.getHttpServer())
         .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/statuses/${fix.status2Id}/set-initial`)
         .set('Cookie', fix.adminCookie)
-        .send({ version: 2 });
+        .send({ version: 4 });
 
       const [res1, res2] = await Promise.all([req1, req2]);
       const statuses = [res1.status, res2.status].sort();
@@ -182,7 +251,7 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
       const initials = successRes.body.data.statuses.filter((s: { is_initial: boolean }) => s.is_initial);
       expect(initials.length).toBe(1);
       expect(initials[0].id).toBe(fix.status2Id);
-      expect(successRes.body.data.version).toBe(3);
+      expect(successRes.body.data.version).toBe(5);
     });
   });
 
@@ -190,15 +259,15 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
     let s3ArchivedVersion: number;
 
     it('archives status, triggering position compaction and retaining dormant transitions', async () => {
-      // current version is 3
+      // current version is 5
       const res = await request(fix.app.getHttpServer())
         .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/statuses/${fix.status3Id}/archive`)
         .set('Cookie', fix.adminCookie)
-        .send({ version: 3 })
+        .send({ version: 5 })
         .expect(200);
 
       s3ArchivedVersion = res.body.data.version;
-      expect(s3ArchivedVersion).toBe(4);
+      expect(s3ArchivedVersion).toBe(6);
 
       // Verify returned statuses compacted
       const statuses = res.body.data.statuses;
@@ -222,14 +291,14 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
         .put(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/transitions`)
         .set('Cookie', fix.adminCookie)
         .send({
-          version: 4,
+          version: 6,
           transitions: [
             { from_status_id: fix.status1Id, to_status_id: fix.lockedStatusId, requires_permission: false }
           ]
         })
         .expect(200);
 
-      expect(res.body.data.version).toBe(5);
+      expect(res.body.data.version).toBe(7);
 
       // Verify dormant transitions still present in DB
       const { sql: client } = createDatabase(databaseUrl);
@@ -242,10 +311,10 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
       const res = await request(fix.app.getHttpServer())
         .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.workflowId}/statuses/${fix.status3Id}/restore`)
         .set('Cookie', fix.adminCookie)
-        .send({ version: 5 })
+        .send({ version: 7 })
         .expect(200);
 
-      expect(res.body.data.version).toBe(6);
+      expect(res.body.data.version).toBe(8);
       
       const s3 = res.body.data.statuses.find((s: { id: string }) => s.id === fix.status3Id);
       expect(s3).toBeDefined();

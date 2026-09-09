@@ -240,6 +240,45 @@ describe('Task 3 — Workflow CRUD & Atomic Creation Integration', () => {
       expect(res.body.error.code).toBe('TEAM_ARCHIVED');
     });
 
+    it('rejects creation when initial status category is DONE or CANCELLED', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/workspaces/${fix.workspaceId}/workflows`)
+        .set('Cookie', fix.adminCookie)
+        .send({
+          ...validPayload,
+          name: 'Invalid Init DONE WF',
+          code: 'INVALID_INIT_DONE',
+          statuses: [
+            { name: 'Finished', code: 'FIN', category: 'DONE', is_initial: true },
+            { name: 'Closed', code: 'CLS', category: 'CANCELLED', is_initial: false }
+          ],
+          transitions: [{ from_status_code: 'FIN', to_status_code: 'CLS' }]
+        })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/workspaces/${fix.workspaceId}/workflows`)
+        .set('Cookie', fix.adminCookie)
+        .send({
+          ...validPayload,
+          name: 'Invalid Init CANCELLED WF',
+          code: 'INVALID_INIT_CANCELLED',
+          statuses: [
+            { name: 'Canceled', code: 'CNC', category: 'CANCELLED', is_initial: true },
+            { name: 'Completed', code: 'CMP', category: 'DONE', is_initial: false }
+          ],
+          transitions: [{ from_status_code: 'CNC', to_status_code: 'CMP' }]
+        })
+        .expect(400);
+
+      const { sql: client } = createDatabase(databaseUrl);
+      const wfRows = await client`SELECT COUNT(*)::int as count FROM workflows WHERE code IN ('INVALID_INIT_DONE', 'INVALID_INIT_CANCELLED')`;
+      expect(wfRows[0].count).toBe(0);
+      const statusRows = await client`SELECT COUNT(*)::int as count FROM task_statuses WHERE code IN ('FIN', 'CLS', 'CNC', 'CMP')`;
+      expect(statusRows[0].count).toBe(0);
+      await client.end();
+    });
+
     it('rejects self-loop transition with 422 SELF_LOOP_NOT_ALLOWED', async () => {
       const res = await request(app.getHttpServer())
         .post(`/api/v1/workspaces/${fix.workspaceId}/workflows`)
@@ -318,6 +357,59 @@ describe('Task 3 — Workflow CRUD & Atomic Creation Integration', () => {
       expect(res.body.data.name).toBe('Updated Default Workflow');
       expect(res.body.data.description).toBe('New description');
       expect(res.body.data.version).toBe(2);
+    });
+  });
+
+  describe('ADMIN-only Authorization & Cross-Workspace Visibility on All Mutation Families', () => {
+    const validPayload = {
+      name: 'Custom Workflow',
+      code: 'custom_wf',
+      description: 'Test creation',
+      statuses: [
+        { name: 'Backlog', code: 'BACKLOG', category: 'TODO', is_initial: true },
+        { name: 'Completed', code: 'FINISHED', category: 'DONE', is_initial: false }
+      ],
+      transitions: [{ from_status_code: 'BACKLOG', to_status_code: 'FINISHED' }]
+    };
+
+    it('proves non-ADMIN receives 403 and outsider receives 404 for all mutation endpoints', async () => {
+      const mutations = [
+        // Workflow mutations
+        { method: 'post', path: `/api/v1/workspaces/${fix.workspaceId}/workflows`, body: validPayload },
+        { method: 'patch', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}`, body: { name: 'Patch Wf', version: 2 } },
+        { method: 'post', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/set-default`, body: { version: 2 } },
+        { method: 'post', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/archive`, body: { version: 2 } },
+        { method: 'post', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/restore`, body: { version: 2 } },
+
+        // Status & Transition mutations
+        { method: 'post', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/statuses`, body: { name: 'S_New', code: 'S_NEW', category: 'TODO', version: 2 } },
+        { method: 'patch', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/statuses/${randomUUID()}`, body: { name: 'S_Patch', version: 2 } },
+        { method: 'post', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/statuses/${randomUUID()}/set-initial`, body: { version: 2 } },
+        { method: 'post', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/statuses/${randomUUID()}/archive`, body: { version: 2 } },
+        { method: 'post', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/statuses/${randomUUID()}/restore`, body: { version: 2 } },
+        { method: 'put', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/statuses/reorder`, body: { status_ids: [], version: 2 } },
+        { method: 'put', path: `/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.defaultWorkflowId}/transitions`, body: { transitions: [], version: 2 } }
+      ];
+
+      for (const m of mutations) {
+        // Non-ADMIN member -> 403 FORBIDDEN
+        const reqMember = request(app.getHttpServer());
+        const callerMember = (reqMember as unknown as Record<string, (url: string) => request.Test>)[m.method];
+        const resMember = await callerMember.call(reqMember, m.path)
+          .set('Cookie', fix.memberCookie)
+          .send(m.body);
+        expect(resMember.status).toBe(403);
+        expect(resMember.body.error.code).toBe('FORBIDDEN');
+
+        // Outsider -> 404 NOT_FOUND
+        const reqOutsider = request(app.getHttpServer());
+        const callerOutsider = (reqOutsider as unknown as Record<string, (url: string) => request.Test>)[m.method];
+        const resOutsider = await callerOutsider.call(reqOutsider, m.path)
+          .set('Cookie', fix.outsiderCookie)
+          .send(m.body);
+        expect(resOutsider.status).toBe(404);
+        expect(resOutsider.body.error.code).toBe('NOT_FOUND');
+      }
     });
   });
 });
