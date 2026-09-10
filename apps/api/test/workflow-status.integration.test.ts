@@ -76,9 +76,9 @@ async function createFixture(): Promise<Fixture> {
   await client`INSERT INTO task_statuses (id, workflow_id, code, name, category, position, is_initial, is_terminal, is_active) VALUES (${status1Id}, ${workflowId}, 'S1', 'S1', 'TODO', 1, true, false, true)`;
   await client`INSERT INTO task_statuses (id, workflow_id, code, name, category, position, is_initial, is_terminal, is_active) VALUES (${status2Id}, ${workflowId}, 'S2', 'S2', 'IN_PROGRESS', 2, false, false, true)`;
   await client`INSERT INTO task_statuses (id, workflow_id, code, name, category, position, is_initial, is_terminal, is_active) VALUES (${status3Id}, ${workflowId}, 'S3', 'S3', 'DONE', 3, false, true, true)`;
-  
+
   await client`INSERT INTO task_statuses (id, workflow_id, code, name, category, position, is_initial, is_terminal, is_active) VALUES (${lockedStatusId}, ${workflowId}, 'LOCKED', 'Locked', 'IN_PROGRESS', 4, false, false, true)`;
-  
+
   // Create a task referencing lockedStatusId
   const taskId = randomUUID();
   await client`INSERT INTO tasks (id, workspace_id, task_key, title, workflow_id, status_id, priority, creator_id, version) VALUES (${taskId}, ${workspaceId}, 'TSK-1', 'Test', ${workflowId}, ${lockedStatusId}, 'MEDIUM', ${admin.user.id}, 1)`;
@@ -113,7 +113,7 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
         .expect(409);
 
       expect(res.body.error.code).toBe('VERSION_CONFLICT');
-      
+
       const { sql: client } = createDatabase(databaseUrl);
       const rows = await client`SELECT s.name, w.version FROM task_statuses s JOIN workflows w ON w.id=s.workflow_id WHERE s.id=${fix.status1Id}`;
       expect(rows[0].name).toBe('S1'); // Unchanged
@@ -149,7 +149,7 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
         .set('Cookie', fix.adminCookie)
         .send({ category: 'CANCELLED', version: 1 })
         .expect(200);
-      
+
       const s3 = res.body.data.statuses.find((s: { id: string }) => s.id === fix.status3Id);
       expect(s3.category).toBe('CANCELLED');
       expect(s3.is_terminal).toBe(true);
@@ -245,9 +245,9 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
 
       const successRes = res1.status === 200 ? res1 : res2;
       const conflictRes = res1.status === 409 ? res1 : res2;
-      
+
       expect(conflictRes.body.error.code).toBe('VERSION_CONFLICT');
-      
+
       const initials = successRes.body.data.statuses.filter((s: { is_initial: boolean }) => s.is_initial);
       expect(initials.length).toBe(1);
       expect(initials[0].id).toBe(fix.status2Id);
@@ -315,7 +315,7 @@ describe('Task 5 — Status Lifecycle, Reorder & Transition Preservation Integra
         .expect(200);
 
       expect(res.body.data.version).toBe(8);
-      
+
       const s3 = res.body.data.statuses.find((s: { id: string }) => s.id === fix.status3Id);
       expect(s3).toBeDefined();
       expect(s3.position).toBe(4); // activeCount + 1

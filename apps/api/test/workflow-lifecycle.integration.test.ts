@@ -159,7 +159,7 @@ describe('Task 4 — Workflow Set-Default & Archival Lifecycle Integration', () 
       // If req1 (wsWorkflow3Id, version 1) wins, it sets wsWorkflow3Id as default (version 2) and bumps wsWorkflow2Id (version 3, is_default=false).
       // Then req2 (wsWorkflow2Id, version 2) attempts to set wsWorkflow2Id as default, but its version is now stale (3 vs expected 2), throwing 409 VERSION_CONFLICT.
       // Or if req2 wins first, wsWorkflow2Id is already default, returning 200 no-op.
-      
+
       const req1 = request(fix.app.getHttpServer())
         .post(`/api/v1/workspaces/${fix.workspaceId}/workflows/${fix.wsWorkflow3Id}/set-default`)
         .set('Cookie', fix.adminCookie)
@@ -171,7 +171,7 @@ describe('Task 4 — Workflow Set-Default & Archival Lifecycle Integration', () 
         .send({ version: 2 }); // Valid initial version for req2
 
       const [res1, res2] = await Promise.all([req1, req2]);
-      
+
       // Both requests complete cleanly without unhandled errors/deadlocks
       expect([200, 409]).toContain(res1.status);
       expect([200, 409]).toContain(res2.status);
@@ -180,12 +180,12 @@ describe('Task 4 — Workflow Set-Default & Archival Lifecycle Integration', () 
       const { sql: client } = createDatabase(databaseUrl);
       const defaults = await client`SELECT id, version FROM workflows WHERE workspace_id = ${fix.workspaceId} AND team_id IS NULL AND is_default = true`;
       expect(defaults.length).toBe(1);
-      
+
       const wf2 = await client`SELECT version FROM workflows WHERE id = ${fix.wsWorkflow2Id}`;
       const wf3 = await client`SELECT version FROM workflows WHERE id = ${fix.wsWorkflow3Id}`;
       expect(wf2[0].version).toBeGreaterThan(1);
       expect(wf3[0].version).toBeGreaterThan(0);
-      
+
       await client.end();
     });
   });

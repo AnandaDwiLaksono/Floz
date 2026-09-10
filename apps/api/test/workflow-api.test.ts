@@ -72,7 +72,7 @@ async function createFixture(app: INestApplication): Promise<Fixture> {
   await client`DELETE FROM workflow_transitions WHERE workflow_id IN (SELECT id FROM workflows WHERE workspace_id=${workspaceId})`;
   await client`DELETE FROM task_statuses WHERE workflow_id IN (SELECT id FROM workflows WHERE workspace_id=${workspaceId})`;
   await client`DELETE FROM workflows WHERE workspace_id=${workspaceId}`;
-  
+
   await client`INSERT INTO workspace_memberships (workspace_id, user_id, role_id, status) VALUES (${workspaceId}, ${admin.user.id}, ${adminRoleId}, 'ACTIVE')`;
   await client`INSERT INTO workspace_memberships (workspace_id, user_id, role_id, status) VALUES (${workspaceId}, ${member.user.id}, ${memberRoleId}, 'ACTIVE')`;
 
