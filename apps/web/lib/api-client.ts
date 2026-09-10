@@ -52,6 +52,7 @@ export interface TaskStatus {
   category: string;
   is_initial?: boolean;
   is_terminal?: boolean;
+  is_active?: boolean;
 }
 
 export interface Task {
