@@ -31,7 +31,7 @@ describe('Task 5 — Approval & Mention Outbox Worker Notification Handlers', ()
     await sql`INSERT INTO workspaces (id, name, slug, created_by) VALUES (${workspaceId}, 'Test WS', 'test-ws', ${userA})`;
 
     // Minimal task setup for foreign key references if needed
-    const wf = (await sql<{ id: string }[]>`INSERT INTO workflows (workspace_id, code, name, is_default, is_active, created_by) VALUES (${workspaceId}, 'DEF', 'Default', true, true, ${userA}) RETURNING id`)[0].id;
+    const wf = (await sql<{ id: string }[]>`INSERT INTO workflows (workspace_id, code, name, is_default, is_active, created_by) VALUES (${workspaceId}, 'DEF', 'Default', false, true, ${userA}) RETURNING id`)[0].id;
     const st = (await sql<{ id: string }[]>`INSERT INTO task_statuses (workflow_id, code, name, category, position, is_initial) VALUES (${wf}, 'TODO', 'To Do', 'TODO', 1, true) RETURNING id`)[0].id;
     await sql`INSERT INTO tasks (id, workspace_id, task_key, title, workflow_id, status_id, creator_id) VALUES (${taskId}, ${workspaceId}, 'TSK-1', 'Notification Task', ${wf}, ${st}, ${userA})`;
   });

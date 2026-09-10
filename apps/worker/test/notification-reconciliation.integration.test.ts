@@ -34,7 +34,7 @@ describeIntegration('notification worker and reconciliation integration', () => 
     await sql`INSERT INTO users(id,email,name) VALUES(${ids.user},${`${ids.user}@notif.test`},'Notif User'),(${ids.assignee},${`${ids.assignee}@notif.test`},'Notif Assignee')`;
     await sql`INSERT INTO workspaces(id,name,slug,created_by) VALUES(${ids.workspace},'Notif Workspace',${`notif-${ids.workspace}`},${ids.user})`;
     await sql`INSERT INTO workspace_memberships(workspace_id,user_id,role_id) VALUES(${ids.workspace},${ids.user},${ids.role}),(${ids.workspace},${ids.assignee},${ids.role})`;
-    await sql`INSERT INTO workflows(id,workspace_id,code,name,is_default,created_by) VALUES(${ids.workflow},${ids.workspace},'NOTIF','Notification Workflow',true,${ids.user})`;
+    await sql`INSERT INTO workflows(id,workspace_id,code,name,is_default,created_by) VALUES(${ids.workflow},${ids.workspace},'NOTIF','Notification Workflow',false,${ids.user})`;
     await sql`INSERT INTO task_statuses(id,workflow_id,code,name,category,position,is_initial,is_terminal) VALUES
       (${ids.openStatus},${ids.workflow},'TODO','To do','OPEN',1,true,false),
       (${ids.completedStatus},${ids.workflow},'DONE','Done','COMPLETED',2,false,true)`;

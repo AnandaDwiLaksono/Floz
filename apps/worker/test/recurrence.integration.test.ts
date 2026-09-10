@@ -39,7 +39,7 @@ describe('recurrence generation integration', () => {
     await sql`INSERT INTO workspaces(id,name,slug,created_by) VALUES(${ids.workspace},'Recurrence',${`recurrence-${ids.workspace}`},${ids.user}),(${ids.otherWorkspace},'Other',${`other-${ids.otherWorkspace}`},${ids.user})`;
     await sql`INSERT INTO workspace_memberships(workspace_id,user_id,role_id) VALUES(${ids.workspace},${ids.user},${ids.role}),(${ids.workspace},${ids.assignee},${ids.role}),(${ids.otherWorkspace},${ids.outsider},${ids.role})`;
     await sql`INSERT INTO teams(id,workspace_id,name) VALUES(${ids.team},${ids.workspace},'Ops'),(${ids.badTeam},${ids.otherWorkspace},'Bad Ops')`;
-    await sql`INSERT INTO workflows(id,workspace_id,code,name,is_default,created_by) VALUES(${ids.workflow},${ids.workspace},'REC','Recurrence',true,${ids.user})`;
+    await sql`INSERT INTO workflows(id,workspace_id,code,name,is_default,created_by) VALUES(${ids.workflow},${ids.workspace},'REC','Recurrence',false,${ids.user})`;
     await sql`INSERT INTO task_statuses(id,workflow_id,code,name,category,position,is_initial) VALUES(${ids.status},${ids.workflow},'TODO','To do','OPEN',1,true),(${ids.nonInitialStatus},${ids.workflow},'READY','Ready','OPEN',2,false)`;
     await sql`INSERT INTO recurrence_rules(id,workspace_id,name,frequency,interval_value,start_at,timezone,next_run_at,is_active,generated_count,template_snapshot,created_by) VALUES
       (${ids.rule},${ids.workspace},'Daily','DAILY',1,'2026-08-29T09:00:00.000Z','UTC','2026-08-30T09:00:00.000Z',true,1,${JSON.stringify({ title: 'Generated', description: 'Canonical', workflow_id: ids.workflow, priority: 'HIGH', team_id: ids.team, assignee_ids: [ids.assignee], primary_assignee_id: ids.assignee, due_time: '17:30:00' })}::jsonb,${ids.user}),
