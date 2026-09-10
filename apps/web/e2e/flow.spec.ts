@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import type { WorkflowDetail } from '../lib/api-client';
 import { createDatabase, accounts, sessions, users, verifications } from '@floz/database';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -38,9 +39,12 @@ test.describe('Floz Kanban', () => {
     await expect(page.getByRole('heading', { name: 'Kanban' })).toBeVisible();
     await page.getByLabel('Priority').selectOption('HIGH');
     await expect(page.getByText('Kanban Task')).toBeVisible();
+    const transitionSaved = page.waitForResponse(r => r.url().includes('/transitions') && r.request().method() === 'POST');
     await page.getByLabel('Change status for Kanban Task').selectOption({ label: 'In progress' });
+    expect((await transitionSaved).ok()).toBe(true);
     await expect(page.locator('section').filter({ hasText: 'In progress' }).getByText('1', { exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: /Kanban Task/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Task details' })).toBeVisible();
     await expect(page.getByText('Change Status')).toBeVisible();
     await expect(page.getByRole('dialog', { name: 'Task details' }).getByText('In progress', { exact: true })).toBeVisible();
     await page.goto(`/workspaces/${workspaceId}/kanban`);
@@ -131,7 +135,7 @@ test.describe('Floz Kanban', () => {
     await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'Test Work','test-work','Asia/Jakarta',${String(admin.user.id)},true)`;
     await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${String(admin.user.id)},${adminRoleId},'ACTIVE'),(${workspaceId},${String(member.user.id)},${memberRoleId},'ACTIVE')`;
     await sql`INSERT INTO teams (id,workspace_id,name,is_active) VALUES (${teamId},${workspaceId},'Ops',true)`;
-    await sql`INSERT INTO workflows (id,workspace_id,code,name,is_default,is_active,created_by) VALUES (${workflowId},${workspaceId},'CALENDAR','Calendar workflow',true,true,${String(admin.user.id)})`;
+    await sql`INSERT INTO workflows (id,workspace_id,code,name,is_default,is_active,created_by) VALUES (${workflowId},${workspaceId},'CALENDAR','Calendar workflow',false,true,${String(admin.user.id)})`;
     await sql`INSERT INTO task_statuses (id,workflow_id,code,name,category,position,is_initial,is_terminal) VALUES (${todoStatusId},${workflowId},'TODO','To do','todo',1,true,false)`;
     const scheduled = String((await sql`INSERT INTO tasks (workspace_id,task_key,title,workflow_id,status_id,priority,team_id,creator_id,start_at,due_at) VALUES (${workspaceId},'TASK-1','Scheduled',${workflowId},${todoStatusId},'HIGH',${teamId},${String(admin.user.id)},'2026-08-10T02:00:00.000Z','2026-08-10T03:00:00.000Z') RETURNING id`)[0].id);
     await sql`INSERT INTO task_assignees (task_id,user_id,is_primary,assigned_by) VALUES (${scheduled},${String(member.user.id)},true,${String(admin.user.id)})`;
@@ -375,7 +379,7 @@ test.describe('Floz Kanban', () => {
     const adminRoleId = String((await sql`SELECT id FROM roles WHERE code='ADMIN'`)[0].id);
     await sql`INSERT INTO workspaces (id,name,slug,timezone,created_by,is_active) VALUES (${workspaceId},'Resched Work','resched-work','Asia/Jakarta',${String(admin.user.id)},true)`;
     await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) VALUES (${workspaceId},${String(admin.user.id)},${adminRoleId},'ACTIVE')`;
-    await sql`INSERT INTO workflows (id,workspace_id,code,name,is_default,is_active,created_by) VALUES (${workflowId},${workspaceId},'RESCHED','Resched workflow',true,true,${String(admin.user.id)})`;
+    await sql`INSERT INTO workflows (id,workspace_id,code,name,is_default,is_active,created_by) VALUES (${workflowId},${workspaceId},'RESCHED','Resched workflow',false,true,${String(admin.user.id)})`;
     await sql`INSERT INTO task_statuses (id,workflow_id,code,name,category,position,is_initial,is_terminal) VALUES (${todoStatusId},${workflowId},'TODO','To do','todo',1,true,false)`;
     const taskId = String((await sql`INSERT INTO tasks (workspace_id,task_key,title,workflow_id,status_id,priority,creator_id,start_at,due_at) VALUES (${workspaceId},'RS-1','Resched Task',${workflowId},${todoStatusId},'HIGH',${String(admin.user.id)},'2026-08-10T02:00:00.000Z','2026-08-10T03:00:00.000Z') RETURNING id`)[0].id);
     await sql.end();
@@ -1069,5 +1073,234 @@ test.describe('Floz Kanban', () => {
     await expect(selectedTaskDetail.getByText('Collaboration Task')).toBeVisible();
     await expect(selectedTaskDetail.getByText('Hey, please review the latest updates on this task.')).toBeVisible();
     await expect(selectedTaskDetail.getByText('@Mentioned Bob')).toBeVisible();
+  });
+});
+
+const workflowWorkspaceId = 'aaee46bf-5d8f-4ba1-b3fb-0750fb9e7e7c';
+const workflowPath = `/workspaces/${workflowWorkspaceId}/settings/workflows`;
+const workflowStatuses = [['TRIAGE', 'TODO'], ['DEV', 'IN_PROGRESS'], ['QA', 'IN_PROGRESS'], ['PROD', 'DONE']] as const;
+const workflowEdges = [['TRIAGE', 'DEV'], ['DEV', 'QA'], ['QA', 'PROD']];
+
+async function workflowLogin(page: Page, email = 'workflow-admin@example.com') {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: /sign in/i }).click();
+  await expect(page).toHaveURL(`/workspaces/${workflowWorkspaceId}/tasks`);
+}
+
+async function configureWorkflow(page: Page, code = 'CUSTOM', teamId = ''): Promise<WorkflowDetail> {
+  await page.goto(workflowPath);
+  await page.getByRole('button', { name: 'New Workflow' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create Workflow' });
+  await dialog.locator('#wf_name').fill(code);
+  await dialog.locator('#wf_code').fill(code);
+  await dialog.locator('#wf_team').selectOption(teamId);
+  for (let i = 0; i < 3; i++) await dialog.getByRole('button', { name: 'Remove', exact: true }).first().click();
+  for (const [name, category] of workflowStatuses) {
+    await dialog.getByPlaceholder('Name', { exact: true }).fill(name);
+    await dialog.getByPlaceholder('CODE', { exact: true }).fill(name);
+    await dialog.getByPlaceholder('CODE', { exact: true }).locator('..').getByRole('combobox').selectOption(category);
+    await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  }
+  await dialog.getByPlaceholder('Name', { exact: true }).locator('../..').locator('div').filter({ has: page.getByText('TRIAGE', { exact: true }) }).filter({ has: page.getByRole('button', { name: 'Set Initial' }) }).last().getByRole('button', { name: 'Set Initial' }).click();
+  for (const [from, to] of workflowEdges) await dialog.getByRole('checkbox', { name: `Transition from ${from} to ${to}`, exact: true }).check();
+  expect(await dialog.locator('input[type="checkbox"]:checked').count()).toBe(3);
+  const created = page.waitForResponse(r => r.url().endsWith(`/workspaces/${workflowWorkspaceId}/workflows`) && r.request().method() === 'POST');
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  const response = await created;
+  expect(response.ok()).toBe(true);
+  const workflow: WorkflowDetail = (await response.json()).data;
+  await expect(dialog).toBeHidden();
+  const defaultResponse = page.waitForResponse(r => r.url().endsWith(`/workflows/${workflow.id}/set-default`) && r.request().method() === 'POST');
+  await page.getByRole('region', { name: 'Workflow Details' }).getByRole('button', { name: 'Set Default' }).click();
+  expect((await defaultResponse).ok()).toBe(true);
+  await expect(page.getByText('Workflow set as default.', { exact: true })).toBeVisible();
+  return workflow;
+}
+
+async function workflowTask(page: Page, title: string, teamId = '') {
+  await page.goto(`/workspaces/${workflowWorkspaceId}/tasks`);
+  await page.getByRole('button', { name: 'New Task' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create Task' });
+  await dialog.locator('#title').fill(title);
+  if (teamId) await dialog.locator('#team_id').selectOption(teamId);
+  const posted = page.waitForResponse(r => r.url().endsWith(`/workspaces/${workflowWorkspaceId}/tasks`) && r.request().method() === 'POST');
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  const response = await posted;
+  expect(response.ok()).toBe(true);
+  expect(response.request().postDataJSON()).not.toHaveProperty('workflow_id');
+  if (teamId) expect(response.request().postDataJSON().team_id).toBe(teamId);
+  await expect(dialog).toBeHidden();
+  return (await response.json()).data;
+}
+
+test.describe('Phase11 Task12 workflow browser acceptance', () => {
+  test.beforeEach(async () => {
+    await resetDb();
+    const { sql } = createDatabase(databaseUrl);
+    try {
+      for (const [email, role] of [['workflow-admin@example.com', 'ADMIN'], ['workflow-admin2@example.com', 'ADMIN'], ['workflow-member@example.com', 'MEMBER']]) {
+        const user = await auth.api.signUpEmail({ body: { email, password: 'password123', name: email } });
+        if (email === 'workflow-admin@example.com') await sql`INSERT INTO workspaces (id,name,slug,created_by,is_active) VALUES (${workflowWorkspaceId},'Workflow acceptance','workflow-acceptance',${String(user.user.id)},true)`;
+        await sql`INSERT INTO workspace_memberships (workspace_id,user_id,role_id,status) SELECT ${workflowWorkspaceId},${String(user.user.id)},id,'ACTIVE' FROM roles WHERE code=${role}`;
+      }
+    } finally { await sql.end(); }
+  });
+
+  test('A admin configures custom workflow; member creates and traverses all edges', async ({ page }) => {
+    await workflowLogin(page);
+    const workflow = await configureWorkflow(page);
+    const { sql } = createDatabase(databaseUrl);
+    try {
+      const statuses = await sql`SELECT id,code,category,is_initial,is_terminal FROM task_statuses WHERE workflow_id=${workflow.id} ORDER BY position`;
+      expect(statuses.map(s => [s.code, s.category, s.is_initial, s.is_terminal])).toEqual(workflowStatuses.map(([code, category]) => [code, category, code === 'TRIAGE', code === 'PROD']));
+      const edges = await sql`SELECT f.code AS source,t.code AS target FROM workflow_transitions e JOIN task_statuses f ON f.id=e.from_status_id JOIN task_statuses t ON t.id=e.to_status_id WHERE e.workflow_id=${workflow.id} ORDER BY f.position`;
+      expect(edges.map(e => [e.source, e.target])).toEqual(workflowEdges);
+      await page.context().clearCookies();
+      await workflowLogin(page, 'workflow-member@example.com');
+      const task = await workflowTask(page, 'Custom member task');
+      const initial = (await sql`SELECT workflow_id,status_id,version,completed_at,creator_id FROM tasks WHERE id=${task.id}`)[0];
+      expect(initial).toMatchObject({ workflow_id: workflow.id, status_id: statuses[0].id, completed_at: null });
+      expect((await sql`SELECT r.code FROM workspace_memberships m JOIN roles r ON r.id=m.role_id WHERE m.workspace_id=${workflowWorkspaceId} AND m.user_id=${initial.creator_id}`)[0].code).toBe('MEMBER');
+      const initialVersion = Number(initial.version);
+      await page.goto(`/workspaces/${workflowWorkspaceId}/kanban?workflow_id=${workflow.id}`);
+      await expect(page.getByRole('region', { name: 'TRIAGE', exact: true }).getByText('Custom member task')).toBeVisible();
+      for (let i = 1; i < statuses.length; i++) {
+        const response = page.waitForResponse(r => r.url().includes(`/tasks/${task.id}/transitions`) && r.request().method() === 'POST');
+        const refreshed = page.waitForResponse(r => r.url().includes('/kanban') && r.request().method() === 'GET' && r.headers()['content-type']?.includes('application/json') === true);
+        await page.getByLabel('Change status for Custom member task').selectOption(String(statuses[i].id));
+        const transitioned = await response;
+        expect(transitioned.ok(), await transitioned.text()).toBe(true);
+        await refreshed;
+        await expect.poll(async () => (await sql`SELECT status_id,version FROM tasks WHERE id=${task.id}`)[0]).toMatchObject({ status_id: statuses[i].id, version: initialVersion + i });
+        await expect(page.getByRole('region', { name: String(statuses[i].code), exact: true }).getByText('Custom member task')).toBeVisible();
+        await page.reload();
+        await expect(page.getByRole('region', { name: String(statuses[i].code), exact: true }).getByText('Custom member task')).toBeVisible();
+      }
+      expect((await sql`SELECT completed_at FROM tasks WHERE id=${task.id}`)[0].completed_at).not.toBeNull();
+    } finally { await sql.end(); }
+  });
+
+  test('B team default takes precedence; Beta falls back to workspace default without workflow_id', async ({ page }) => {
+    const { sql } = createDatabase(databaseUrl);
+    try {
+      const teams = await sql`INSERT INTO teams (workspace_id,name,is_active) VALUES (${workflowWorkspaceId},'Alpha',true),(${workflowWorkspaceId},'Beta',true) RETURNING id,name`;
+      const alpha = String(teams.find(t => t.name === 'Alpha')!.id), beta = String(teams.find(t => t.name === 'Beta')!.id);
+      await workflowLogin(page);
+      const workspace = await configureWorkflow(page, 'WORKSPACE');
+      const team = await configureWorkflow(page, 'ALPHA', alpha);
+      expect(team.id).not.toBe(workspace.id);
+      expect((await sql`SELECT id FROM workflows WHERE workspace_id=${workflowWorkspaceId} AND team_id=${beta} AND is_default`).length).toBe(0);
+      expect((await sql`SELECT id FROM workflows WHERE workspace_id=${workflowWorkspaceId} AND is_default AND is_active ORDER BY id`).map(w => w.id).sort()).toEqual([workspace.id, team.id].sort());
+      for (const [teamId, workflow, title] of [[alpha, team, 'Alpha task'], [beta, workspace, 'Beta task']] as const) {
+        const task = await workflowTask(page, title, teamId);
+        const initial = workflow.statuses.find(s => s.is_initial)!;
+        expect((await sql`SELECT team_id,workflow_id,status_id FROM tasks WHERE id=${task.id}`)[0]).toMatchObject({ team_id: teamId, workflow_id: workflow.id, status_id: initial.id });
+        await page.goto(`/workspaces/${workflowWorkspaceId}/kanban?workflow_id=${workflow.id}`);
+        await expect(page.getByRole('region', { name: 'TRIAGE', exact: true }).getByText(title)).toBeVisible();
+      }
+      expect(team.statuses.find(s => s.is_initial)!.id).not.toBe(workspace.statuses.find(s => s.is_initial)!.id);
+    } finally { await sql.end(); }
+  });
+
+  test('C occupied archived QA is non-droppable and escapes to PROD', async ({ page }) => {
+    await workflowLogin(page);
+    const workflow = await configureWorkflow(page);
+    const { sql } = createDatabase(databaseUrl);
+    try {
+      const task = await workflowTask(page, 'QA occupant');
+      const active = await workflowTask(page, 'Active source');
+      await page.goto(`/workspaces/${workflowWorkspaceId}/kanban?workflow_id=${workflow.id}`);
+      for (const name of ['DEV', 'QA']) {
+        const response = page.waitForResponse(r => r.url().includes(`/tasks/${task.id}/transitions`) && r.request().method() === 'POST');
+        await page.getByLabel('Change status for QA occupant').selectOption({ label: name });
+        expect((await response).ok()).toBe(true);
+        await expect.poll(async () => (await sql`SELECT s.code FROM tasks t JOIN task_statuses s ON s.id=t.status_id WHERE t.id=${task.id}`)[0].code).toBe(name);
+        await page.reload();
+      }
+      await page.goto(workflowPath);
+      await page.getByRole('button', { name: /^CUSTOMDefaultWorkspaceActive$/ }).click();
+      await page.getByRole('group', { name: 'QA', exact: true }).getByRole('button', { name: 'Archive', exact: true }).click();
+      const archivedResponse = page.waitForResponse(r => r.url().endsWith('/archive') && r.request().method() === 'POST');
+      await page.getByRole('dialog', { name: 'Confirm Archive Status' }).getByRole('button', { name: 'Archive', exact: true }).click();
+      expect((await archivedResponse).ok()).toBe(true);
+      await expect(page.getByRole('dialog', { name: 'Confirm Archive Status' })).toBeHidden();
+      await page.goto(`/workspaces/${workflowWorkspaceId}/kanban?workflow_id=${workflow.id}`);
+      const column = page.getByRole('region', { name: 'Archived: QA (archived, drop unavailable)', exact: true });
+      await expect(column).toBeVisible();
+      await expect(column.getByText('QA occupant', { exact: true })).toHaveCount(1);
+      await expect(page.getByText('QA occupant', { exact: true })).toHaveCount(1);
+      await expect(column.getByText('Drop unavailable')).toBeVisible();
+      await expect(column).toHaveClass(/border-dashed/);
+      await expect(page.getByLabel('Change status for Active source').getByRole('option', { name: /QA/ })).toHaveCount(0);
+      const before = await sql`SELECT id,status_id,version FROM tasks WHERE id IN (${task.id},${active.id}) ORDER BY id`;
+      const requests: string[] = [];
+      page.on('request', r => { if (/\/tasks\/[^/]+\/transitions?/.test(r.url())) requests.push(r.url()); });
+      const transfer = await page.evaluateHandle(() => new DataTransfer());
+      await page.getByRole('article').filter({ hasText: 'Active source' }).dispatchEvent('dragstart', { dataTransfer: transfer });
+      expect(await column.evaluate(el => el.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() })))).toBe(true);
+      await column.dispatchEvent('drop', { dataTransfer: transfer });
+      await page.getByRole('article').filter({ hasText: 'Active source' }).dispatchEvent('dragend', { dataTransfer: transfer });
+      await page.reload();
+      await expect(column.getByText('QA occupant')).toBeVisible();
+      expect(requests).toEqual([]);
+      expect(await sql`SELECT id,status_id,version FROM tasks WHERE id IN (${task.id},${active.id}) ORDER BY id`).toEqual(before);
+      const escaped = page.waitForResponse(r => r.url().includes(`/tasks/${task.id}/transitions`) && r.request().method() === 'POST');
+      await page.getByLabel('Change status for QA occupant').selectOption({ label: 'PROD' });
+      expect((await escaped).ok()).toBe(true);
+      await expect.poll(async () => (await sql`SELECT status_id FROM tasks WHERE id=${task.id}`)[0].status_id).toBe(workflow.statuses.find(s => s.code === 'PROD')!.id);
+      await page.reload();
+      await expect(page.getByRole('region', { name: 'PROD', exact: true }).getByText('QA occupant')).toBeVisible();
+      await expect(column).toHaveCount(0);
+      await transfer.dispose();
+    } finally { await sql.end(); }
+  });
+
+  test('D separate admin sessions reject stale transition save once and reload latest aggregate', async ({ page, browser }) => {
+    await workflowLogin(page);
+    const workflow = await configureWorkflow(page);
+    const context = await browser.newContext();
+    const second = await context.newPage();
+    const { sql } = createDatabase(databaseUrl);
+    try {
+      await workflowLogin(second, 'workflow-admin2@example.com');
+      await second.goto(workflowPath);
+      await second.getByRole('button', { name: /^CUSTOMDefaultWorkspaceActive$/ }).click();
+      const version = (await sql`SELECT version FROM workflows WHERE id=${workflow.id}`)[0].version;
+      for (const session of [page, second]) await expect(session.getByRole('region', { name: 'Workflow Details' }).getByText(`v${version}`, { exact: true })).toBeVisible();
+      const matrix = second.getByRole('region', { name: 'Transitions', exact: true });
+      await matrix.getByRole('checkbox', { name: 'Transition from TRIAGE to PROD', exact: true }).check();
+      const reordered = page.waitForResponse(r => r.url().endsWith(`/workflows/${workflow.id}/statuses/reorder`) && r.request().method() === 'PUT');
+      await page.getByRole('button', { name: 'Move QA up', exact: true }).click();
+      const reorderResponse = await reordered;
+      expect(reorderResponse.ok()).toBe(true);
+      const latest: WorkflowDetail = (await reorderResponse.json()).data;
+      expect(latest.version).toBe(version + 1);
+      expect((await sql`SELECT version FROM workflows WHERE id=${workflow.id}`)[0].version).toBe(version + 1);
+      const saves: number[] = [];
+      second.on('request', r => { if (r.url().endsWith(`/workflows/${workflow.id}/transitions`) && r.method() === 'PUT') saves.push(r.postDataJSON().version); });
+      const conflict = second.waitForResponse(r => r.url().endsWith(`/workflows/${workflow.id}/transitions`) && r.request().method() === 'PUT');
+      await matrix.getByRole('button', { name: 'Save', exact: true }).click();
+      const failed = await conflict;
+      expect(failed.status()).toBe(409);
+      expect(await failed.text()).toContain('VERSION_CONFLICT');
+      await expect(matrix.getByRole('alert')).toContainText('Configuration changed elsewhere');
+      await expect(matrix.getByRole('checkbox', { name: 'Transition from TRIAGE to PROD', exact: true })).toBeChecked();
+      const reload = second.waitForResponse(r => r.url().endsWith(`/workflows/${workflow.id}`) && r.request().method() === 'GET');
+      await matrix.getByRole('alert').getByRole('button', { name: 'Reload Configuration' }).click();
+      expect((await reload).ok()).toBe(true);
+      await expect(second.getByRole('region', { name: 'Workflow Details' }).getByText(`v${version + 1}`, { exact: true })).toBeVisible();
+      const order = latest.statuses.slice().sort((a, b) => a.position - b.position);
+      expect(order.map(s => s.code)).toEqual(['TRIAGE', 'QA', 'DEV', 'PROD']);
+      expect(await second.getByRole('region', { name: 'Statuses', exact: true }).locator('[data-status-id]').evaluateAll(elements => elements.map(el => el.getAttribute('data-status-id')))).toEqual(order.map(s => s.id));
+      for (const from of latest.statuses) for (const to of latest.statuses) {
+        if (from.id !== to.id) await expect(matrix.getByRole('checkbox', { name: `Transition from ${from.name} to ${to.name}`, exact: true })).toBeChecked({ checked: latest.transitions.some(e => e.from_status_id === from.id && e.to_status_id === to.id) });
+      }
+      await expect(matrix.getByRole('alert')).toHaveCount(0);
+      await expect(matrix.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+      expect(saves).toEqual([version]);
+      expect((await sql`SELECT version FROM workflows WHERE id=${workflow.id}`)[0].version).toBe(version + 1);
+    } finally { await sql.end(); await context.close(); }
   });
 });

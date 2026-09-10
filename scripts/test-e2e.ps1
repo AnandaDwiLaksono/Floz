@@ -2,6 +2,9 @@ $ErrorActionPreference = 'Stop'
 $name = "floz-e2e-db-$PID-$(Get-Random)"
 $nextDistDir = ".next-e2e-$PID-$(Get-Random)"
 $previousNextDistDir = $env:FLOZ_NEXT_DIST_DIR
+$redisName = "$name-redis"
+$previousRedisUrl = $env:REDIS_URL
+$previousRedisTls = $env:REDIS_TLS
 $apiJob = $null
 $webJob = $null
 $workerJob = $null
@@ -37,6 +40,17 @@ try {
   }
   if ($LASTEXITCODE -ne 0) { throw 'Unable to bind a PostgreSQL test port' }
 
+  $redisPort = Get-FreePort
+  docker run --name $redisName -p "127.0.0.1:${redisPort}:6379" -d redis:7-alpine
+  if ($LASTEXITCODE -ne 0) { throw 'Unable to start disposable Redis' }
+  $env:REDIS_URL = "redis://127.0.0.1:$redisPort"
+  $env:REDIS_TLS = 'false'
+  for ($i = 0; $i -lt 30; $i++) {
+    $pong = docker exec $redisName redis-cli ping 2>$null
+    if ($LASTEXITCODE -eq 0 -and $pong -eq 'PONG') { break }
+    Start-Sleep -Milliseconds 500
+  }
+  if ($pong -ne 'PONG') { throw 'Redis did not become ready' }
   $env:DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:$dbPort/floz"
   $env:BETTER_AUTH_SECRET = 'test-secret-at-least-32-characters-long'
 
@@ -125,5 +139,7 @@ try {
   if ($apiJob) { Stop-Job $apiJob -ErrorAction SilentlyContinue; Remove-Job $apiJob -Force -ErrorAction SilentlyContinue }
   Remove-Item -LiteralPath (Join-Path $PSScriptRoot "../apps/web/$nextDistDir") -Recurse -Force -ErrorAction SilentlyContinue
   $env:FLOZ_NEXT_DIST_DIR = $previousNextDistDir
-  docker rm -f $name 2>$null | Out-Null
+  docker rm -f $name $redisName 2>$null | Out-Null
+  $env:REDIS_URL = $previousRedisUrl
+  $env:REDIS_TLS = $previousRedisTls
 }
