@@ -18,20 +18,22 @@ Completed
 - Phase 8 Dashboard, KPI Reporting & My Work, including final documentation and verification gates.
 - Phase 9 Operator Usability & Administration: ADMIN-only account provisioning with one-time temporary credentials and no auto-membership/session, profile and password management with session hygiene, no-workspace onboarding, workspace settings, member identity projection and lifecycle with last-active-admin and active-team-manager invariants under row locking, team administration with archive/restore and manager invariants, multi-assignee task creation, task filter controls with canonical `overdue=true` and cursor hygiene, calendar reschedule with context preservation, and field worker server-authoritative quick status. See `PHASE_9_REPORT.md`.
 - Phase 10 Approval & Collaboration Core: migration 0007 (`0007_bizarre_kabuki.sql`), one-step approval engine with terminal row-locking and canonical audit outbox/history, task comments with soft delete, structured mentions, in-app approval/mention notification worker handlers, manager/admin pending approvals dashboard metrics, web approval list/detail/create/decision/cancel UX with accessibility and keyboard navigation, and real-stack Playwright E2E coverage. See `PHASE_10_REPORT.md`.
+- Phase 11 Workflow Configuration: migration 0008 (`0008_lyrical_richard_fisk.sql`), optimistic aggregate versioning (`workflows.version`), workflow/status soft-delete lifecycle (`is_active`), partial unique indexes for workspace/team defaults, dynamic team/workspace default resolution, active-target runtime transition enforcement with archived status escape (`422 INVALID_TRANSITION`), My Work/Kanban/Recurrence read projection compatibility, non-droppable archived Kanban columns with escape dropdowns, ADMIN-only Workflow Settings UI with selector, creation modal, metadata editor, status editor with accessible keyboard reordering, desktop transition matrix, mobile accordion editor, version conflict reload UI, and real-stack Playwright E2E scenarios A-D. See `PHASE_11_REPORT.md`.
 
 In Progress
-- None. Checkpoint F reached.
+- None. Checkpoint F reached. Final human acceptance pending; publication pending.
 
 Next
-- Phase 11 is not started. Await explicit direction; do not proceed automatically.
+- Phase 12 is not started. Await explicit publication and Phase 12 authorization.
 
 Blocked
 - None.
 
-Phase 10 verification
-- Complete. Clean DB (`scripts/test-clean-db.ps1`) 64/64 passed, exit 0; E2E (`scripts/test-e2e.ps1`) 19/19 Playwright passed, exit 0; worker integration 16/16 passed against real PostgreSQL + Redis; lint, typecheck, and build PASS.
-- Root `pnpm test` passed twice consecutively with zero failures/skips: database 31, config 2, domain 19, api 85, web 103, worker 33 = 273 tests per run.
-- Task 12 resolved active team membership filtering, linked task authorization, and component unmount race conditions via forward commits `0413ae7` and `04de057`.
+Phase 11 verification
+- Complete through Checkpoint F. Clean DB (`scripts/test-clean-db.ps1`) 82/82 passed, exit 0; E2E (`scripts/test-e2e.ps1`) 23/23 Playwright passed, exit 0; worker integration 16/16 passed against real PostgreSQL + Redis; lint, typecheck, and build PASS.
+- Root `pnpm test` passed twice consecutively with zero failures/skips: database 60, config 2, domain 19, api 133, web 179, worker 33 = 426 tests per run.
+- Task 12 E2E suite committed via `bd412517d6cd806ee292eff54f589a90370121d3`.
+- Targeted compatibility corrections committed via `1bdd277` (Kanban archived-column drop block) and `ae1efd0` (Worker integration test fixtures).
 
 Known limitations
 - Approval workflow configuration, multi-step/quorum/reassignment, attachments, rich text/reactions, notification preferences UI, push, email delivery, and remaining product UI beyond Phase 10 are out of scope.
