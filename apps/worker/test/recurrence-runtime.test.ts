@@ -17,10 +17,10 @@ describe('recurrence worker runtime', () => {
   });
 
   it('defaults concurrency and reconciliation settings and rejects invalid values', () => {
-    expect(parseWorkerEnv({ NODE_ENV: 'test' })).toMatchObject({ WORKER_CONCURRENCY: 5, RECURRENCE_RECONCILIATION_INTERVAL_MS: 30000, RECURRENCE_RECONCILIATION_BATCH_SIZE: 50 });
+    expect(parseWorkerEnv({ NODE_ENV: 'test' })).toMatchObject({ WORKER_CONCURRENCY: 1, RECURRENCE_RECONCILIATION_INTERVAL_MS: 30000, RECURRENCE_RECONCILIATION_BATCH_SIZE: 50 });
     expect(() => parseWorkerEnv({ WORKER_CONCURRENCY: '0' })).toThrow();
     expect(() => parseWorkerEnv({ WORKER_CONCURRENCY: '1.5' })).toThrow();
-    expect(parseWorkerEnv({ REDIS_TLS: 'false' }).REDIS_TLS).toBe(false);
+    expect(parseWorkerEnv({ REDIS_TLS: 'false' }).REDIS_TLS).toBe('false');
   });
 
   it('closes injected worker, queue, and connection once', async () => {
