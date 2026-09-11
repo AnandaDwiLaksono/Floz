@@ -145,8 +145,8 @@ Every command naming a Phase 12-only file or script below is **proposed future**
 
 **Files:** Modify `database/src/index.ts`; add/update database tests and worker/API construction tests.
 
-- [ ] Configure 5-second connect, server-side 10-second statement timeout, 3-second lock timeout, and max 1 without Promise-race-only cancellation.
-- [ ] Test API sole AuthService pool, four persistent worker owners, two transient runtime owners, readiness +1, maintenance ceiling 10, and no borrowed-service closure.
+- [ ] Configure max1 owner configuration, connect_timeout=5, server-side statement_timeout=10000, and lock_timeout=3000; document postgres.js pipelining boundary.
+- [ ] Prove max1 owner configuration, connect_timeout=5, effective statement_timeout=10000 from PostgreSQL, effective lock_timeout=3000 from PostgreSQL, server-side long statement cancellation, server-side lock contention failure, no Phase 12 code using Promise.race or equivalent to claim an already-dispatched mutation was cancelled, no mutation auto-retry after uncertain outcome, API sole AuthService pool, four persistent worker owners, two transient runtime owners, readiness +1, maintenance ceiling 10, and no borrowed-service closure.
 - [ ] Run focused database and worker tests; record exact owner counts. Commit: `test(database): prove Phase 12 connection owner budgets and timeouts`.
 
 ### CHECKPOINT A — STOP
@@ -404,9 +404,9 @@ This annex supplies exact paths/commands wherever a checkpoint summary uses a ca
 
 **Task 2 RED assertions:** captured postgres options have max1/connect_timeout5/verified ssl and statement/lock connection settings; reject bad certificate chain and hostname on controlled TLS endpoints. Redis options retain maxRetriesPerRequest null only on BullMQ runtime connections. Command: `pnpm --filter @floz/database exec vitest run test/connection-policy.test.ts` (proposed test).
 
-**Task 3 files:** proposed `database/test/resource-bounds.integration.test.ts`, `apps/worker/test/owner-budget.test.ts`; modify `database/src/index.ts` only if bounds tests expose missing admission cleanup. Business pool wait is at most 5 seconds: reject/cancel queued acquisition before it can later execute a mutation; retain accepted in-flight work semantics. A promise timeout alone that leaves queued work alive fails. Reserved claim session must not share its max1 with generation work; loss of reserved session is fatal rather than continued lockless work.
+**Task 3 files:** proposed `database/test/resource-bounds.integration.test.ts`, `apps/worker/test/owner-budget.test.ts`; modify `database/src/index.ts` only if bounds tests expose missing admission cleanup. Prove max1 owner configuration, connect_timeout=5, effective statement_timeout=10000 and lock_timeout=3000 from PostgreSQL, server-side long statement cancellation, server-side lock contention failure, no Promise.race or artificial client timeout claiming mutation cancellation, no mutation auto-retry, and document postgres.js pipelining boundary. Reserved claim session must not share its max1 with generation work; loss of reserved session is fatal rather than continued lockless work.
 
-**Task 3 RED assertions:** server reports statement_timeout=10000 and lock_timeout=3000; sleep/lock-contention queries time out server-side; exhausted pool rejects queued work at5s and later releasing the pool does not execute it. Count exact 7/8/10 owners and reject concurrency>1. Command: `pnpm --filter @floz/database exec vitest run test/resource-bounds.integration.test.ts`; `pnpm --filter @floz/worker exec vitest run test/owner-budget.test.ts` (proposed tests). Review boundary A proves current runtime ownership; future temporary owners receive final integrated count proof in H.
+**Task 3 RED assertions:** server reports statement_timeout=10000 and lock_timeout=3000; sleep/lock-contention queries time out server-side; no Promise.race or fake acquisition cancellation; postgres.js pipelining boundary documented. Count exact 7/8/10 owners and reject concurrency>1. Command: `pnpm --filter @floz/database exec vitest run test/resource-bounds.integration.test.ts`; `pnpm --filter @floz/worker exec vitest run test/owner-budget.test.ts` (proposed tests). Review boundary A proves current runtime ownership; future temporary owners receive final integrated count proof in H.
 
 ### Tasks 4–6: exact DTO and test-harness adaptations
 
