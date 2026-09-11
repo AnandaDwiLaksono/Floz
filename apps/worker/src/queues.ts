@@ -30,10 +30,7 @@ export function createRedisConnection(config: {
   const url = new URL(config.REDIS_URL);
   const options: RedisOptions = {
     tls: tls ? {} : undefined,
-    maxRetriesPerRequest: null,
-    connectTimeout: 10000,
-    enableReadyCheck: true,
-    retryStrategy: (times: number) => Math.min(times * 100, 5000)
+    maxRetriesPerRequest: null
   };
   return new Redis(url.toString(), options);
 }

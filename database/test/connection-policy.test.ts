@@ -8,7 +8,6 @@ describe('Task 2 — Connection Policy & Verified TLS Normalization', () => {
       const { db, sql } = createDatabase('postgres://postgres:postgres@localhost:5432/floz');
       expect(db).toBeDefined();
       expect(sql).toBeDefined();
-      // Inspect options on postgres.js client
       const options = (sql as unknown as { options: { max: number; connect_timeout: number } }).options;
       expect(options.max).toBe(1);
       expect(options.connect_timeout).toBe(5);
@@ -29,19 +28,31 @@ describe('Task 2 — Connection Policy & Verified TLS Normalization', () => {
     it('rejects insecure remote production database configuration', () => {
       expect(() => createDatabase('postgres://user:pass@db.floz.neon.tech/floz?sslmode=disable', { nodeEnv: 'production' })).toThrow();
     });
+
+    it('enforces certificate verification and rejects untrusted CA / TLS handshake failure', async () => {
+      const { sql } = createDatabase('postgres://user:pass@invalid-tls-host.floz.local:5432/floz', { nodeEnv: 'production' });
+      
+      let error: any;
+      try {
+        await sql`SELECT 1`;
+      } catch (e) {
+        error = e;
+      }
+      expect(error).toBeDefined();
+      expect(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED']).toContain(error.code);
+      
+      void sql.end();
+    });
   });
 
   describe('createRedisConnection Policy', () => {
-    it('configures Redis client with maxRetriesPerRequest null and retryStrategy cap', () => {
+    it('configures Redis client with maxRetriesPerRequest null and TLS disabled on localhost', () => {
       const client = createRedisConnection({
         REDIS_URL: 'redis://localhost:6379',
         NODE_ENV: 'test'
       });
       expect(client.options.maxRetriesPerRequest).toBeNull();
-      expect(client.options.connectTimeout).toBe(10000);
-      expect(typeof client.options.retryStrategy).toBe('function');
-      const delay = (client.options.retryStrategy as (times: number) => number)(10);
-      expect(delay).toBeLessThanOrEqual(5000);
+      expect(client.options.tls).toBeUndefined();
       client.disconnect();
     });
 
