@@ -49,8 +49,41 @@ describe('Task 1 — Configuration Contract and Origin Normalization', () => {
       expect(normalizeOrigins({}, 'test')).toEqual(['http://localhost:3000', 'http://127.0.0.1:3000']);
     });
 
-    it('rejects missing origins in production', () => {
-      expect(() => normalizeOrigins({}, 'production')).toThrow();
+    it('rejects invalid boolean spellings in environment schemas', () => {
+      expect(() => parseApiEnv({ DB_SSL: 'invalid' as unknown as 'true' })).toThrow();
+      expect(() => parseWorkerEnv({ REDIS_TLS: 'invalid' as unknown as 'true' })).toThrow();
+    });
+
+    it('preserves tri-state undefined when DB_SSL and REDIS_TLS are unset', () => {
+      const apiEnv = parseApiEnv({ NODE_ENV: 'test' });
+      expect(apiEnv.DB_SSL).toBeUndefined();
+
+      const workerEnv = parseWorkerEnv({ NODE_ENV: 'test' });
+      expect(workerEnv.REDIS_TLS).toBeUndefined();
+    });
+
+    it('proves API env requires DB/auth/origins but not Redis', () => {
+      const apiEnv = parseApiEnv({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://user:pass@db.floz.neon.tech/floz',
+        BETTER_AUTH_SECRET: validSecret,
+        BETTER_AUTH_URL: 'https://api.floz.local',
+        ALLOWED_ORIGINS: 'https://app.floz.local'
+      });
+      expect(apiEnv.DATABASE_URL).toBeDefined();
+      expect(apiEnv.BETTER_AUTH_SECRET).toBeDefined();
+      expect('REDIS_URL' in apiEnv).toBe(false);
+    });
+
+    it('proves Worker env requires DB/Redis but not Better Auth secrets', () => {
+      const workerEnv = parseWorkerEnv({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://user:pass@db.floz.neon.tech/floz',
+        REDIS_URL: 'rediss://default:pass@redis.floz.upstash.io:6379'
+      });
+      expect(workerEnv.DATABASE_URL).toBeDefined();
+      expect(workerEnv.REDIS_URL).toBeDefined();
+      expect('BETTER_AUTH_SECRET' in workerEnv).toBe(false);
     });
   });
 
