@@ -28,6 +28,26 @@ describe('request diagnostics', () => {
     expect(JSON.stringify(logger.info.mock.calls)).not.toContain('secret');
   });
 
+  it.each([
+    ['a', 'a'],
+    ['a'.repeat(128), 'a'.repeat(128)]
+  ])('preserves valid request id length', (value, expected) => {
+    const { res } = run(['X-Request-Id', value]);
+    expect(res.setHeader).toHaveBeenCalledWith('X-Request-Id', expected);
+  });
+
+  it.each(['', 'a'.repeat(129), 'bad id', 'ümlaut'])('replaces invalid request id', (value) => {
+    const { res } = run(['X-Request-Id', value]);
+    expect(res.setHeader.mock.calls[0]?.[1]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('does not emit sensitive fields in serialized diagnostics', () => {
+    const { res, logger } = run(['X-Request-Id', 'safe-id'], '/api/v1/tasks?token=secret');
+    res.emit('finish');
+    const line = JSON.stringify(logger.info.mock.calls[0]?.[0]);
+    expect(line).not.toMatch(/secret|token|authorization|cookie|password|sql/i);
+  });
+
   it('excludes health probes', () => {
     const { res, logger } = run([], '/api/v1/health');
     res.emit('finish');
