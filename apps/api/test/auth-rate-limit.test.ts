@@ -2,8 +2,9 @@ import 'reflect-metadata';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { Test } from '@nestjs/testing';
-import { type INestApplication } from '@nestjs/common';
+import { type ExecutionContext, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
+import type { Request } from 'express';
 import { AppModule } from '../src/app.module.js';
 import { ErrorFilter } from '../src/error.filter.js';
 import { AuthRateLimitGuard } from '../src/auth-rate-limit.guard.js';
@@ -167,7 +168,11 @@ describe('Task 5 — AuthRateLimitGuard Verification', () => {
 
   it('enforces 10,000 key capacity limit and fails closed without active key eviction', () => {
     // Directly exercise rateLimitGuard map to fill 10,000 active keys
-    const internalGuard = rateLimitGuard as any;
+    const internalGuard = rateLimitGuard as unknown as {
+      reset(): void;
+      ipMap: Map<string, { count: number; windowStart: number }>;
+      canActivate(context: ExecutionContext): boolean;
+    };
     internalGuard.reset();
 
     for (let i = 0; i < 10000; i += 1) {
@@ -185,7 +190,7 @@ describe('Task 5 — AuthRateLimitGuard Verification', () => {
         getRequest: () => ({ method: 'POST', path: '/api/v1/auth/login', headers: {}, socket: { remoteAddress: ip } }),
         getResponse: () => ({ setHeader: vi.fn() })
       })
-    }) as any;
+    }) as unknown as ExecutionContext;
 
     // 10,001st key fails closed with 429
     expect(() => internalGuard.canActivate(mockContext('192.168.1.1'))).toThrow();
@@ -201,7 +206,7 @@ describe('Task 5 — AuthRateLimitGuard Verification', () => {
   });
 
   it('ignores X-Forwarded-For header from an untrusted peer socket IP', () => {
-    const internalGuard = rateLimitGuard as any;
+    const internalGuard = rateLimitGuard as unknown as { getClientIp(req: Request): string };
     const mockContext = (socketIp: string, forwardedFor?: string) => ({
       switchToHttp: () => ({
         getRequest: () => ({
@@ -212,7 +217,7 @@ describe('Task 5 — AuthRateLimitGuard Verification', () => {
         }),
         getResponse: () => ({ setHeader: vi.fn() })
       })
-    }) as any;
+    }) as unknown as ExecutionContext;
 
     // Untrusted peer socket IP (203.0.113.1) sends spoofed X-Forwarded-For: 1.1.1.1
     const ip = internalGuard.getClientIp(mockContext('203.0.113.1', '1.1.1.1').switchToHttp().getRequest());
@@ -224,7 +229,7 @@ describe('Task 5 — AuthRateLimitGuard Verification', () => {
   });
 
   it('normalizes IPv4-mapped IPv6 addresses consistently', () => {
-    const internalGuard = rateLimitGuard as any;
+    const internalGuard = rateLimitGuard as unknown as { normalizeIp(ip: string): string };
     expect(internalGuard.normalizeIp('::ffff:203.0.113.4')).toBe('203.0.113.4');
     expect(internalGuard.normalizeIp('127.0.0.1')).toBe('127.0.0.1');
     expect(internalGuard.normalizeIp('::1')).toBe('::1');

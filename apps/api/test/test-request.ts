@@ -14,20 +14,20 @@ export function request(server: unknown): supertest.Agent {
     return `198.51.100.${(id % 250) + 1}`;
   };
 
-  agent.post = ((url: string, callback?: never) =>
-    origPost(url, callback)
+  agent.post = ((url: string) =>
+    origPost(url)
       .set('Origin', 'http://localhost:3000')
       .set('X-Forwarded-For', nextIp())) as never;
-  agent.patch = ((url: string, callback?: never) =>
-    origPatch(url, callback)
+  agent.patch = ((url: string) =>
+    origPatch(url)
       .set('Origin', 'http://localhost:3000')
       .set('X-Forwarded-For', nextIp())) as never;
-  agent.put = ((url: string, callback?: never) =>
-    origPut(url, callback)
+  agent.put = ((url: string) =>
+    origPut(url)
       .set('Origin', 'http://localhost:3000')
       .set('X-Forwarded-For', nextIp())) as never;
-  agent.delete = ((url: string, callback?: never) =>
-    origDelete(url, callback)
+  agent.delete = ((url: string) =>
+    origDelete(url)
       .set('Origin', 'http://localhost:3000')
       .set('X-Forwarded-For', nextIp())) as never;
 

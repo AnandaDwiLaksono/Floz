@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from './test-request.js';
+import type { Test as SuperTest } from 'supertest';
 import { Test } from '@nestjs/testing';
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { ErrorFilter } from '../src/error.filter';
@@ -394,7 +395,7 @@ describe('Task 3 — Workflow CRUD & Atomic Creation Integration', () => {
       for (const m of mutations) {
         // Non-ADMIN member -> 403 FORBIDDEN
         const reqMember = request(app.getHttpServer());
-        const callerMember = (reqMember as unknown as Record<string, (url: string) => request.Test>)[m.method];
+        const callerMember = (reqMember as unknown as Record<string, (url: string) => SuperTest>)[m.method];
         const resMember = await callerMember.call(reqMember, m.path)
           .set('Cookie', fix.memberCookie)
           .send(m.body);
@@ -403,7 +404,7 @@ describe('Task 3 — Workflow CRUD & Atomic Creation Integration', () => {
 
         // Outsider -> 404 NOT_FOUND
         const reqOutsider = request(app.getHttpServer());
-        const callerOutsider = (reqOutsider as unknown as Record<string, (url: string) => request.Test>)[m.method];
+        const callerOutsider = (reqOutsider as unknown as Record<string, (url: string) => SuperTest>)[m.method];
         const resOutsider = await callerOutsider.call(reqOutsider, m.path)
           .set('Cookie', fix.outsiderCookie)
           .send(m.body);
