@@ -8,11 +8,12 @@ export type ShutdownServer = {
 };
 
 type Dependencies = {
-  sleep?: (milliseconds: number) => Promise<void>;
   exit?: (code: number) => void;
+  hardTerminate?: () => void;
 };
 
-const sleep = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+export const SHUTDOWN_FORCE_TIMEOUT_MS = 30000;
+export const SHUTDOWN_HARD_DEADLINE_MS = 35000;
 
 export class ApiShutdownCoordinator {
   private operation?: Promise<void>;
@@ -43,25 +44,30 @@ export class ApiShutdownCoordinator {
 
   private async stop() {
     this.readiness.stop();
-    const wait = this.dependencies.sleep ?? sleep;
     const exit = this.dependencies.exit ?? process.exit;
-    const closed = new Promise<void>((resolve) => {
-      this.server.close(() => resolve());
+    const hardTerminate = this.dependencies.hardTerminate ?? (() => process.exit(1));
+    let forced = false;
+    const forceTimer = setTimeout(() => {
+      forced = true;
+      this.server.closeAllConnections();
+    }, SHUTDOWN_FORCE_TIMEOUT_MS);
+    const hardTimer = setTimeout(hardTerminate, SHUTDOWN_HARD_DEADLINE_MS);
+    try {
+      const closed = new Promise<void>((resolve) => this.server.close(() => resolve()));
       this.server.closeIdleConnections();
-    });
-    const outer = wait(35000).then(() => 'outer' as const);
-    const result = await Promise.race([
-      closed.then(() => 'drained' as const),
-      wait(30000).then(() => 'drain-timeout' as const),
-      outer
-    ]);
-    const forced = result !== 'drained';
-    if (forced) this.server.closeAllConnections();
-    const cleanup = this.app.close();
-    const cleaned = await Promise.race([
-      cleanup.then(() => true, () => false),
-      outer.then(() => false)
-    ]);
-    exit(forced || !cleaned ? 1 : 0);
+      await closed;
+      clearTimeout(forceTimer);
+      let cleanupFailed = false;
+      try {
+        await this.app.close();
+      } catch {
+        cleanupFailed = true;
+      }
+      clearTimeout(hardTimer);
+      exit(forced || cleanupFailed ? 1 : 0);
+    } finally {
+      clearTimeout(forceTimer);
+      clearTimeout(hardTimer);
+    }
   }
 }

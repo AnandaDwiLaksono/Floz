@@ -10,7 +10,6 @@ const deferred = () => {
 const setup = () => {
   const events: string[] = [];
   const drain = deferred();
-  const timers = new Map<number, ReturnType<typeof deferred>>();
   const server: ShutdownServer = {
     close: vi.fn((callback) => { events.push('server.close'); void drain.promise.then(() => callback()); return server; }),
     closeIdleConnections: vi.fn(() => { events.push('idle.close'); }),
@@ -19,16 +18,9 @@ const setup = () => {
   const app = { close: vi.fn(async () => { events.push('app.close'); }) };
   const readiness = { stop: vi.fn(() => { events.push('readiness.stop'); }) };
   const exit = vi.fn((code: number) => { events.push(`exit.${code}`); });
-  const sleep = vi.fn((ms: number) => {
-    const timer = deferred();
-    timers.set(ms, timer);
-    return timer.promise;
-  });
-  const coordinator = new ApiShutdownCoordinator(app, server, readiness, { sleep, exit });
-  return { coordinator, server, app, readiness, exit, events, drain, timers };
+  const coordinator = new ApiShutdownCoordinator(app, server, readiness, { exit });
+  return { coordinator, server, app, readiness, exit, events, drain };
 };
-
-const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('ApiShutdownCoordinator', () => {
   it('marks not-ready, stops admission, drains, then closes the app exactly once', async () => {
@@ -64,15 +56,18 @@ describe('ApiShutdownCoordinator', () => {
     expect(fixture.app.close).toHaveBeenCalledOnce();
   });
 
-  it('forces sockets at exactly 30 seconds and exits 1 after cleanup', async () => {
+  it('forces sockets at exactly 30 seconds, then waits for server close before app cleanup', async () => {
+    vi.useFakeTimers();
     const fixture = setup();
     const shutdown = fixture.coordinator.shutdown();
-    fixture.timers.get(30000)?.resolve();
-    await tick();
-    expect(fixture.events).toContain('sockets.destroy');
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(fixture.server.closeAllConnections).toHaveBeenCalledOnce();
+    expect(fixture.app.close).not.toHaveBeenCalled();
     fixture.drain.resolve();
     await shutdown;
+    expect(fixture.app.close).toHaveBeenCalledOnce();
     expect(fixture.exit).toHaveBeenCalledWith(1);
+    vi.useRealTimers();
   });
 
   it('exits 1 when application cleanup fails', async () => {
@@ -85,12 +80,29 @@ describe('ApiShutdownCoordinator', () => {
     expect(fixture.app.close).toHaveBeenCalledOnce();
   });
 
-  it('uses the 35-second outer boundary as forced failure', async () => {
+  it('hard terminates at exactly 35 seconds without starting app cleanup when server close never resolves', async () => {
+    vi.useFakeTimers();
     const fixture = setup();
-    const shutdown = fixture.coordinator.shutdown();
-    fixture.timers.get(35000)?.resolve();
-    await shutdown;
-    expect(fixture.server.closeAllConnections).toHaveBeenCalledOnce();
-    expect(fixture.exit).toHaveBeenCalledWith(1);
+    const hardTerminate = vi.fn();
+    const shutdown = new ApiShutdownCoordinator(fixture.app, fixture.server, fixture.readiness, { exit: fixture.exit, hardTerminate });
+    void shutdown.shutdown();
+    await vi.advanceTimersByTimeAsync(35000);
+    expect(hardTerminate).toHaveBeenCalledOnce();
+    expect(fixture.app.close).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('hard terminates at exactly 35 seconds when app cleanup never resolves', async () => {
+    vi.useFakeTimers();
+    const fixture = setup();
+    const hardTerminate = vi.fn();
+    fixture.app.close.mockImplementationOnce(() => new Promise<void>(() => {}));
+    const shutdown = new ApiShutdownCoordinator(fixture.app, fixture.server, fixture.readiness, { exit: fixture.exit, hardTerminate });
+    void shutdown.shutdown();
+    fixture.drain.resolve();
+    await vi.advanceTimersByTimeAsync(35000);
+    expect(fixture.app.close).toHaveBeenCalledOnce();
+    expect(hardTerminate).toHaveBeenCalledOnce();
+    vi.useRealTimers();
   });
 });
