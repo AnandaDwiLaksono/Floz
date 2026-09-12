@@ -14,6 +14,7 @@ import { ReportingClock } from './reporting-clock';
 import { WorkflowService } from './workflow.service';
 import { CookieOriginGuard } from './cookie-origin.guard';
 import { AuthRateLimitGuard } from './auth-rate-limit.guard';
+import { ReadinessService } from './readiness.service.js';
 
 @Module({
   controllers: [HealthController, FlozController, NotificationController],
@@ -28,6 +29,7 @@ import { AuthRateLimitGuard } from './auth-rate-limit.guard';
     ReportingClock,
     WorkflowService,
     AuthRateLimitGuard,
+    ReadinessService,
     {
       provide: APP_GUARD,
       useClass: CookieOriginGuard

@@ -10,6 +10,7 @@ const messages: Record<string, string> = {
   VALIDATION_ERROR: 'One or more fields are invalid.',
   RATE_LIMITED: 'Too many requests.',
   PAYLOAD_TOO_LARGE: 'Request body is too large.',
+  SERVICE_UNAVAILABLE: 'Service unavailable.',
   CROSS_WORKSPACE_REFERENCE: 'Referenced resource does not belong to the current workspace.',
   INVALID_TRANSITION: 'The requested status change is not allowed.',
   VERSION_CONFLICT: 'Resource modified by another user.',
@@ -91,9 +92,11 @@ export class ErrorFilter implements ExceptionFilter {
               ? 'NOT_FOUND'
               : status === 413
                 ? 'PAYLOAD_TOO_LARGE'
-                : status === 429
-                  ? 'RATE_LIMITED'
-                  : 'INTERNAL_ERROR';
+                  : status === 429
+                    ? 'RATE_LIMITED'
+                    : status === 503
+                      ? 'SERVICE_UNAVAILABLE'
+                      : 'INTERNAL_ERROR';
 
     res.status(unprocessableCodes.has(code) ? 422 : status).json({
       error: { code, message: messages[code] ?? 'Internal server error.', details: [] }
