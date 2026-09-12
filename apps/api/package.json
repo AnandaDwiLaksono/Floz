@@ -8,6 +8,7 @@
     "lint": "eslint src test --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --pool=forks --poolOptions.forks.singleFork",
+    "test:task9-sigterm": "pnpm build && docker build -f test/fixtures/sigterm-proof.Dockerfile -t floz-task9-sigterm-proof . && docker run --rm --init floz-task9-sigterm-proof",
     "build": "nest build",
     "start": "node dist/src/main.js"
   },

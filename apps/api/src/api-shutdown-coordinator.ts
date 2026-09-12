@@ -10,6 +10,8 @@ export type ShutdownServer = {
 type Dependencies = {
   exit?: (code: number) => void;
   hardTerminate?: () => void;
+  forceTimeoutMs?: number;
+  hardDeadlineMs?: number;
 };
 
 export const SHUTDOWN_FORCE_TIMEOUT_MS = 30000;
@@ -46,12 +48,14 @@ export class ApiShutdownCoordinator {
     this.readiness.stop();
     const exit = this.dependencies.exit ?? process.exit;
     const hardTerminate = this.dependencies.hardTerminate ?? (() => process.exit(1));
+    const forceTimeoutMs = this.dependencies.forceTimeoutMs ?? SHUTDOWN_FORCE_TIMEOUT_MS;
+    const hardDeadlineMs = this.dependencies.hardDeadlineMs ?? SHUTDOWN_HARD_DEADLINE_MS;
     let forced = false;
     const forceTimer = setTimeout(() => {
       forced = true;
       this.server.closeAllConnections();
-    }, SHUTDOWN_FORCE_TIMEOUT_MS);
-    const hardTimer = setTimeout(hardTerminate, SHUTDOWN_HARD_DEADLINE_MS);
+    }, forceTimeoutMs);
+    const hardTimer = setTimeout(hardTerminate, hardDeadlineMs);
     try {
       const closed = new Promise<void>((resolve) => this.server.close(() => resolve()));
       this.server.closeIdleConnections();

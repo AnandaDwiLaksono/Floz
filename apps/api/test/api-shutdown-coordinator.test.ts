@@ -92,6 +92,24 @@ describe('ApiShutdownCoordinator', () => {
     vi.useRealTimers();
   });
 
+  it('accepts explicit test-only timeout bounds without changing production defaults', async () => {
+    vi.useFakeTimers();
+    const fixture = setup();
+    const hardTerminate = vi.fn();
+    const shutdown = new ApiShutdownCoordinator(fixture.app, fixture.server, fixture.readiness, {
+      exit: fixture.exit,
+      hardTerminate,
+      forceTimeoutMs: 10,
+      hardDeadlineMs: 20
+    });
+    void shutdown.shutdown();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(fixture.server.closeAllConnections).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(hardTerminate).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
   it('hard terminates at exactly 35 seconds when app cleanup never resolves', async () => {
     vi.useFakeTimers();
     const fixture = setup();
