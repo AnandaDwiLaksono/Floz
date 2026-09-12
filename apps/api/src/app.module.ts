@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { FlozController } from './floz.controller';
 import { HealthController } from './health.controller';
 import { NotificationController } from './notification.controller';
@@ -11,6 +12,24 @@ import { ApprovalService } from './approval.service';
 import { CommentService } from './comment.service';
 import { ReportingClock } from './reporting-clock';
 import { WorkflowService } from './workflow.service';
+import { CookieOriginGuard } from './cookie-origin.guard';
 
-@Module({ controllers: [HealthController, FlozController, NotificationController], providers: [AuthService, FlozService, TaskService, RecurrenceService, NotificationService, ApprovalService, CommentService, ReportingClock, WorkflowService] })
+@Module({
+  controllers: [HealthController, FlozController, NotificationController],
+  providers: [
+    AuthService,
+    FlozService,
+    TaskService,
+    RecurrenceService,
+    NotificationService,
+    ApprovalService,
+    CommentService,
+    ReportingClock,
+    WorkflowService,
+    {
+      provide: APP_GUARD,
+      useClass: CookieOriginGuard
+    }
+  ]
+})
 export class AppModule {}
