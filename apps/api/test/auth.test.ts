@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import request from 'supertest';
+import request from './test-request.js';
 import { Test } from '@nestjs/testing';
 import { type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';

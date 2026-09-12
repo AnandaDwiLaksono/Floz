@@ -20,7 +20,8 @@ export class AuthRateLimitGuard implements CanActivate, OnModuleDestroy {
   private readonly maxKeys = 10000;
   private readonly maxRequests = 10;
   private readonly windowDurationMs = 60000;
-  private readonly ipMap = new Map<string, RateLimitEntry>();
+  private static readonly sharedMap = new Map<string, RateLimitEntry>();
+  private readonly ipMap = AuthRateLimitGuard.sharedMap;
   private readonly sweepInterval: NodeJS.Timeout;
   private nowProvider: TimeProvider = () => Date.now();
 

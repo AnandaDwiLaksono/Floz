@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import request from 'supertest';
+import request from './test-request.js';
 import { Test } from '@nestjs/testing';
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { ErrorFilter } from '../src/error.filter';
