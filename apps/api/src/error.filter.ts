@@ -8,6 +8,8 @@ const messages: Record<string, string> = {
   FORBIDDEN: 'You do not have permission to perform this action.',
   NOT_FOUND: 'Resource not found.',
   VALIDATION_ERROR: 'One or more fields are invalid.',
+  RATE_LIMITED: 'Too many requests.',
+  PAYLOAD_TOO_LARGE: 'Request body is too large.',
   CROSS_WORKSPACE_REFERENCE: 'Referenced resource does not belong to the current workspace.',
   INVALID_TRANSITION: 'The requested status change is not allowed.',
   VERSION_CONFLICT: 'Resource modified by another user.',
@@ -54,8 +56,39 @@ export class ErrorFilter implements ExceptionFilter {
   catch(error: unknown, host: ArgumentsHost) {
     const res = host.switchToHttp().getResponse<Response>();
     const status = error instanceof HttpException ? error.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+
+    if (error instanceof HttpException) {
+      const response = error.getResponse();
+      if (
+        typeof response === 'object' &&
+        response !== null &&
+        'error' in response &&
+        typeof (response as { error?: unknown }).error === 'object'
+      ) {
+        res.status(status).json(response);
+        return;
+      }
+    }
+
     const raw = error instanceof HttpException ? error.message : 'INTERNAL_ERROR';
-    const code = messages[raw] ? raw : status === 400 ? 'VALIDATION_ERROR' : status === 401 ? 'UNAUTHENTICATED' : status === 403 ? 'FORBIDDEN' : status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR';
-    res.status(unprocessableCodes.has(code) ? 422 : status).json({ error: { code, message: messages[code] ?? 'Internal server error.', details: [] } });
+    const code = messages[raw]
+      ? raw
+      : status === 400
+        ? 'VALIDATION_ERROR'
+        : status === 401
+          ? 'UNAUTHENTICATED'
+          : status === 403
+            ? 'FORBIDDEN'
+            : status === 404
+              ? 'NOT_FOUND'
+              : status === 413
+                ? 'PAYLOAD_TOO_LARGE'
+                : status === 429
+                  ? 'RATE_LIMITED'
+                  : 'INTERNAL_ERROR';
+
+    res.status(unprocessableCodes.has(code) ? 422 : status).json({
+      error: { code, message: messages[code] ?? 'Internal server error.', details: [] }
+    });
   }
 }

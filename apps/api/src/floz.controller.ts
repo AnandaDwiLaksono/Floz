@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth';
+import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 import { FlozService } from './floz.service';
 import { TaskService, type AssignTaskDto, type CalendarQueryDto, type CreateTaskDto, type KanbanQueryDto, type TaskQueryDto, type TransitionTaskDto, type UpdateTaskDto } from './task.service';
 import type { TaskRole } from './task.policy';
@@ -50,13 +51,14 @@ export class FlozController {
   private get auth() { return this.authService.auth; }
 
   @Post('auth/login')
+  @UseGuards(AuthRateLimitGuard)
   @HttpCode(200)
   async login(@Body() body: { email?: string; password?: string }, @Res({ passthrough: true }) res: Response) {
     if (!body.email || !body.password) throw new BadRequestException('VALIDATION_ERROR');
     const result = await this.auth.api.signInEmail({ body: { email: body.email, password: body.password }, asResponse: true });
     if (!result.ok) throw new UnauthorizedException('INVALID_CREDENTIALS');
-    const setCookie = result.headers.get('set-cookie');
-    if (setCookie) res.setHeader('set-cookie', setCookie);
+    const setCookies = result.headers?.getSetCookie ? result.headers.getSetCookie() : [result.headers.get('set-cookie')].filter(Boolean);
+    if (setCookies && setCookies.length > 0) res.setHeader('set-cookie', setCookies as string[]);
     const session = await result.json() as { user: { id: string } };
     const user = await this.floz.user(session.user.id);
     if (!user) throw new UnauthorizedException('INVALID_CREDENTIALS');
@@ -64,6 +66,7 @@ export class FlozController {
   }
 
   @Post('workspaces/:workspaceId/accounts')
+  @UseGuards(AuthRateLimitGuard)
   async provisionAccount(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: { email?: string; full_name?: string }, @Res({ passthrough: true }) res: Response) {
     res.setHeader('Cache-Control', 'no-store');
     await this.admin(req, wid);
@@ -79,11 +82,22 @@ export class FlozController {
   }
 
   @Post('auth/logout')
+  @UseGuards(AuthRateLimitGuard)
   @HttpCode(204)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const result = await this.auth.api.signOut({ headers: req.headers as HeadersInit, asResponse: true });
-    const setCookie = result.headers.get('set-cookie');
-    if (setCookie) res.setHeader('set-cookie', setCookie);
+    let result: Response | any;
+    try {
+      result = await this.auth.api.signOut({ headers: req.headers as HeadersInit, asResponse: true });
+    } catch {
+      throw new UnauthorizedException('UNAUTHENTICATED');
+    }
+    if (!result || !result.ok) {
+      throw new UnauthorizedException('UNAUTHENTICATED');
+    }
+    const setCookies = result.headers?.getSetCookie ? result.headers.getSetCookie() : [result.headers.get('set-cookie')].filter(Boolean);
+    if (setCookies && setCookies.length > 0) {
+      res.setHeader('set-cookie', setCookies as string[]);
+    }
   }
 
   @Get('me')
@@ -99,6 +113,7 @@ export class FlozController {
     return ok({ ...this.publicUser(updated ?? user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, role: w.role, membership_status: w.membershipStatus })) });
   }
   @Patch('me/password')
+  @UseGuards(AuthRateLimitGuard)
   @HttpCode(204)
   async changePassword(@Req() req: Request, @Body() body: { current_password?: string; new_password?: string }) {
     await this.current(req);
