@@ -71,6 +71,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(kysely@0.29.5)(postgres@3.4.9)
+      express:
+        specifier: ^5.0.0
+        version: 5.2.1
       postgres:
         specifier: ^3.4.9
         version: 3.4.9

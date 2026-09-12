@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Body,
   Controller,
   ForbiddenException,
   Get,
@@ -15,15 +14,16 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { AuthService } from './auth';
-import { FlozService } from './floz.service';
-import { NotificationService } from './notification.service';
+import { AuthService } from './auth.js';
+import { FlozService } from './floz.service.js';
+import { NotificationService } from './notification.service.js';
 import {
   ListNotificationsQueryDto,
   PatchNotificationDto,
   validateListNotificationsQuery,
   validatePatchNotification,
-} from './notification.dto';
+} from './notification.dto.js';
+import { ValidatedBody } from './ingress.dto.js';
 
 @Controller('workspaces/:workspaceId/notifications')
 export class NotificationController {
@@ -67,7 +67,7 @@ export class NotificationController {
     @Req() req: Request,
     @Param('workspaceId') workspaceId: string,
     @Param('notificationId') notificationId: string,
-    @Body() body: PatchNotificationDto
+    @ValidatedBody(PatchNotificationDto) body: PatchNotificationDto
   ) {
     const ctx = await this.member(req, workspaceId);
     try {

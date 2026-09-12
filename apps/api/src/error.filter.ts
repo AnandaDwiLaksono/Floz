@@ -55,7 +55,15 @@ const unprocessableCodes = new Set([
 export class ErrorFilter implements ExceptionFilter {
   catch(error: unknown, host: ArgumentsHost) {
     const res = host.switchToHttp().getResponse<Response>();
-    const status = error instanceof HttpException ? error.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+
+    const rawStatus =
+      error instanceof HttpException
+        ? error.getStatus()
+        : typeof error === 'object' && error !== null && ('status' in error || 'statusCode' in error)
+          ? Number((error as { status?: number; statusCode?: number }).status ?? (error as { statusCode?: number }).statusCode)
+          : HttpStatus.INTERNAL_SERVER_ERROR;
+
+    const status = Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus < 600 ? rawStatus : HttpStatus.INTERNAL_SERVER_ERROR;
 
     if (error instanceof HttpException) {
       const response = error.getResponse();

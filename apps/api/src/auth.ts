@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { createDatabase, accounts, sessions, users, verifications } from '@floz/database';
+import { normalizeOrigins, type NodeEnv } from '@floz/config';
 
 @Injectable()
 export class AuthService implements OnModuleDestroy {
@@ -19,7 +20,7 @@ export class AuthService implements OnModuleDestroy {
       }),
       secret: process.env.BETTER_AUTH_SECRET,
       baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3001',
-      trustedOrigins: [process.env.ALLOWED_ORIGIN ?? 'http://localhost:3000'],
+      trustedOrigins: normalizeOrigins(process.env, (process.env.NODE_ENV ?? 'development') as NodeEnv),
       emailAndPassword: { enabled: true, autoSignIn: false },
       user: { modelName: 'user' },
       session: { modelName: 'session' },

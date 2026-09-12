@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Inject, UnprocessableEntityException } from '@nestjs/common';
 import type { Sql, TransactionSql } from 'postgres';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { AuthService } from './auth';
 import { createTaskAssigneesTx, createTaskRecordTx, patchTaskAssigneesTx, patchTaskRecordTx, validateTaskTemplateReferences, writeTaskHistoryTx } from './task-core';
 import { TaskPolicy, type TaskRole } from './task.policy';
@@ -8,11 +10,104 @@ import { ReportingClock } from './reporting-clock';
 type RootSql = Sql;
 type SqlClient = Sql | TransactionSql;
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-type AssigneeInput = { user_id: string; is_primary?: boolean };
-export interface CreateTaskDto { title?: string; description?: string | null; priority?: Priority; workflow_id?: string; status_id?: string; team_id?: string | null; start_at?: string | null; due_at?: string | null; assignees?: AssigneeInput[]; }
-export interface UpdateTaskDto { version?: number; title?: string; description?: string | null; priority?: Priority; start_at?: string | null; due_at?: string | null; }
-export interface AssignTaskDto { version?: number; assignees?: AssigneeInput[]; }
-export interface TransitionTaskDto { version?: number; to_status_id?: string; }
+
+export class AssigneeInput {
+  @IsString()
+  user_id!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_primary?: boolean;
+}
+
+export class CreateTaskDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsIn(['LOW', 'MEDIUM', 'HIGH', 'URGENT'])
+  priority?: Priority;
+
+  @IsOptional()
+  @IsString()
+  workflow_id?: string;
+
+  @IsOptional()
+  @IsString()
+  status_id?: string;
+
+  @IsOptional()
+  @IsString()
+  team_id?: string | null;
+
+  @IsOptional()
+  @IsString()
+  start_at?: string | null;
+
+  @IsOptional()
+  @IsString()
+  due_at?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AssigneeInput)
+  assignees?: AssigneeInput[];
+}
+
+export class UpdateTaskDto {
+  @IsOptional()
+  @IsInt()
+  version?: number;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsIn(['LOW', 'MEDIUM', 'HIGH', 'URGENT'])
+  priority?: Priority;
+
+  @IsOptional()
+  @IsString()
+  start_at?: string | null;
+
+  @IsOptional()
+  @IsString()
+  due_at?: string | null;
+}
+
+export class AssignTaskDto {
+  @IsOptional()
+  @IsInt()
+  version?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AssigneeInput)
+  assignees?: AssigneeInput[];
+}
+
+export class TransitionTaskDto {
+  @IsOptional()
+  @IsInt()
+  version?: number;
+
+  @IsOptional()
+  @IsString()
+  to_status_id?: string;
+}
+
 export interface TaskQueryDto { limit?: string; sort?: string; q?: string; status_id?: string; priority?: string; team_id?: string; assignee_id?: string; bucket?: 'active' | 'completed'; due_from?: string; due_to?: string; overdue?: string; cursor?: string; }
 export interface KanbanQueryDto { workflow_id?: string; team_id?: string; assignee_id?: string; priority?: string; due_from?: string; due_to?: string; }
 export interface CalendarQueryDto { from?: string; to?: string; team_id?: string; assignee_id?: string; }

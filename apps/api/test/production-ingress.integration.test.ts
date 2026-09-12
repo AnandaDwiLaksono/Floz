@@ -3,16 +3,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { Test } from '@nestjs/testing';
 import { type INestApplication } from '@nestjs/common';
-import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
-import { ErrorFilter } from '../src/error.filter.js';
+import { configureApp } from '../src/configure-app.js';
 import { FlozService } from '../src/floz.service.js';
-import { TaskService } from '../src/task.service.js';
-import { WorkflowService } from '../src/workflow.service.js';
-import { RecurrenceService } from '../src/recurrence.service.js';
-import { ApprovalService } from '../src/approval.service.js';
-import { CommentService } from '../src/comment.service.js';
-import { NotificationService } from '../src/notification.service.js';
 
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/floz';
 process.env.BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET ?? 'test-secret-at-least-32-characters-long';
@@ -66,10 +59,8 @@ describe('Task 4 — CookieOriginGuard Exhaustive Ingress Verification', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api/v1');
-    app.use(cookieParser());
-    app.useGlobalFilters(new ErrorFilter());
+    app = moduleRef.createNestApplication({ bodyParser: false });
+    configureApp(app);
     await app.init();
   });
 

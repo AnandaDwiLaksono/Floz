@@ -1,19 +1,19 @@
 import { randomBytes } from 'node:crypto';
-import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, Req, Res, UnauthorizedException, UseGuards, ValidationPipe } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { AuthService } from './auth';
-import { AuthRateLimitGuard } from './auth-rate-limit.guard';
-import { FlozService } from './floz.service';
-import { TaskService, type AssignTaskDto, type CalendarQueryDto, type CreateTaskDto, type KanbanQueryDto, type TaskQueryDto, type TransitionTaskDto, type UpdateTaskDto } from './task.service';
-import type { TaskRole } from './task.policy';
-import { RecurrenceService } from './recurrence.service';
-import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto, validateCreateRecurringTask, validateRecurrenceRuleQuery, validateUpdateRecurrenceRule } from './recurrence.dto';
-import { ApprovalService } from './approval.service';
-import type { CreateApprovalRequestDto, ApprovalQueryDto, ApproveStepDto, RejectStepDto, CancelApprovalDto } from './approval.dto';
-import { CommentService } from './comment.service';
-import type { CreateCommentDto, CommentQueryDto } from './comment.dto';
-import { WorkflowService } from './workflow.service';
-import type {
+import { AuthService } from './auth.js';
+import { AuthRateLimitGuard } from './auth-rate-limit.guard.js';
+import { FlozService } from './floz.service.js';
+import { TaskService, AssignTaskDto, type CalendarQueryDto, CreateTaskDto, type KanbanQueryDto, type TaskQueryDto, TransitionTaskDto, UpdateTaskDto } from './task.service.js';
+import type { TaskRole } from './task.policy.js';
+import { RecurrenceService } from './recurrence.service.js';
+import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto, validateCreateRecurringTask, validateRecurrenceRuleQuery, validateUpdateRecurrenceRule } from './recurrence.dto.js';
+import { ApprovalService } from './approval.service.js';
+import { CreateApprovalRequestDto, type ApprovalQueryDto, ApproveStepDto, RejectStepDto, CancelApprovalDto } from './approval.dto.js';
+import { CommentService } from './comment.service.js';
+import { CreateCommentDto, type CommentQueryDto } from './comment.dto.js';
+import { WorkflowService } from './workflow.service.js';
+import {
   ArchiveStatusDto,
   ArchiveWorkflowDto,
   CreateStatusDto,
@@ -26,7 +26,20 @@ import type {
   SetWorkflowDefaultDto,
   UpdateStatusDto,
   UpdateWorkflowDto
-} from './workflow.dto';
+} from './workflow.dto.js';
+import {
+  AddMemberDto,
+  AddTeamMemberDto,
+  ChangePasswordDto,
+  CreateTeamDto,
+  LoginDto,
+  PatchMemberDto,
+  PatchWorkspaceDto,
+  ProvisionAccountDto,
+  UpdateMeDto,
+  UpdateTeamDto,
+  ValidatedBody
+} from './ingress.dto.js';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
 
@@ -53,7 +66,19 @@ export class FlozController {
   @Post('auth/login')
   @UseGuards(AuthRateLimitGuard)
   @HttpCode(200)
-  async login(@Body() body: { email?: string; password?: string }, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body(
+      new ValidationPipe({
+        expectedType: LoginDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: false }
+      })
+    )
+    body: LoginDto,
+    @Res({ passthrough: true }) res: Response
+  ) {
     if (!body.email || !body.password) throw new BadRequestException('VALIDATION_ERROR');
     const result = await this.auth.api.signInEmail({ body: { email: body.email, password: body.password }, asResponse: true });
     if (!result.ok) throw new UnauthorizedException('INVALID_CREDENTIALS');
@@ -67,7 +92,7 @@ export class FlozController {
 
   @Post('workspaces/:workspaceId/accounts')
   @UseGuards(AuthRateLimitGuard)
-  async provisionAccount(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: { email?: string; full_name?: string }, @Res({ passthrough: true }) res: Response) {
+  async provisionAccount(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: ProvisionAccountDto, @Res({ passthrough: true }) res: Response) {
     res.setHeader('Cache-Control', 'no-store');
     await this.admin(req, wid);
     if (!body.email || !body.full_name?.trim()) throw new BadRequestException('VALIDATION_ERROR');
@@ -85,25 +110,21 @@ export class FlozController {
   @UseGuards(AuthRateLimitGuard)
   @HttpCode(204)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    let result: Response | any;
+    let result: globalThis.Response;
     try {
       result = await this.auth.api.signOut({ headers: req.headers as HeadersInit, asResponse: true });
     } catch {
       throw new UnauthorizedException('UNAUTHENTICATED');
     }
-    if (!result || !result.ok) {
-      throw new UnauthorizedException('UNAUTHENTICATED');
-    }
-    const setCookies = result.headers?.getSetCookie ? result.headers.getSetCookie() : [result.headers.get('set-cookie')].filter(Boolean);
-    if (setCookies && setCookies.length > 0) {
-      res.setHeader('set-cookie', setCookies as string[]);
-    }
+    if (!result.ok) throw new UnauthorizedException('UNAUTHENTICATED');
+    const setCookies = result.headers.getSetCookie();
+    if (setCookies.length > 0) res.setHeader('set-cookie', setCookies);
   }
 
   @Get('me')
   async me(@Req() req: Request) { const user = await this.current(req); return ok({ ...this.publicUser(user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, role: w.role, membership_status: w.membershipStatus })) }); }
   @Patch('me')
-  async updateMe(@Req() req: Request, @Body() body: { full_name?: string; timezone?: string; locale?: string; avatar_url?: string | null }) {
+  async updateMe(@Req() req: Request, @Body() body: UpdateMeDto) {
     const user = await this.current(req);
     if (body.full_name !== undefined && !body.full_name.trim()) throw new BadRequestException('VALIDATION_ERROR');
     if (body.timezone !== undefined) try { new Intl.DateTimeFormat('en-US', { timeZone: body.timezone }); } catch { throw new BadRequestException('VALIDATION_ERROR'); }
@@ -115,7 +136,7 @@ export class FlozController {
   @Patch('me/password')
   @UseGuards(AuthRateLimitGuard)
   @HttpCode(204)
-  async changePassword(@Req() req: Request, @Body() body: { current_password?: string; new_password?: string }) {
+  async changePassword(@Req() req: Request, @Body() body: ChangePasswordDto) {
     await this.current(req);
     if (!body.current_password || !body.new_password) throw new BadRequestException('VALIDATION_ERROR');
     const result = await this.auth.api.changePassword({ headers: req.headers as HeadersInit, body: { currentPassword: body.current_password, newPassword: body.new_password, revokeOtherSessions: false }, asResponse: true });
@@ -128,27 +149,27 @@ export class FlozController {
   @Get('workspaces/:workspaceId')
   async getWorkspace(@Req() req: Request, @Param('workspaceId') id: string) { await this.member(req, id); const w = await this.floz.workspace(id); if (!w) throw new NotFoundException('NOT_FOUND'); return ok({ id: w.id, name: w.name, slug: w.slug, timezone: w.timezone }); }
   @Patch('workspaces/:workspaceId')
-  async patchWorkspace(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: { name?: string; timezone?: string }) { await this.admin(req, id); if (body.name !== undefined && !body.name.trim()) throw new BadRequestException('VALIDATION_ERROR'); if (body.timezone !== undefined) try { new Intl.DateTimeFormat('en-US', { timeZone: body.timezone }); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(await this.floz.patchWorkspace(id, { name: body.name?.trim(), timezone: body.timezone })); }
+  async patchWorkspace(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: PatchWorkspaceDto) { await this.admin(req, id); if (body.name !== undefined && !body.name.trim()) throw new BadRequestException('VALIDATION_ERROR'); if (body.timezone !== undefined) try { new Intl.DateTimeFormat('en-US', { timeZone: body.timezone }); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(await this.floz.patchWorkspace(id, { name: body.name?.trim(), timezone: body.timezone })); }
   @Get('workspaces/:workspaceId/members')
   async members(@Req() req: Request, @Param('workspaceId') id: string) { await this.member(req, id); return ok((await this.floz.members(id)).map(this.publicMember)); }
   @Get('workspaces/:workspaceId/users')
   async lookupUser(@Req() req: Request, @Param('workspaceId') id: string, @Query('email') email: string) { await this.admin(req, id); if (!email?.trim()) throw new BadRequestException('VALIDATION_ERROR'); const user = await this.floz.userByEmail(email.trim()); if (!user) throw new NotFoundException('NOT_FOUND'); return ok(this.publicUser(user)); }
   @Post('workspaces/:workspaceId/members')
-  async addMember(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: { user_id?: string; role?: string; status?: string }) { await this.admin(req, id); if (!body.user_id || !body.role) throw new BadRequestException('VALIDATION_ERROR'); const member = await this.floz.addMember(id, { userId: body.user_id, role: body.role, status: body.status ?? 'INVITED' }); return ok(this.publicMember(member)); }
+  async addMember(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: AddMemberDto) { await this.admin(req, id); if (!body.user_id || !body.role) throw new BadRequestException('VALIDATION_ERROR'); const member = await this.floz.addMember(id, { userId: body.user_id, role: body.role, status: body.status ?? 'INVITED' }); return ok(this.publicMember(member)); }
   @Patch('workspaces/:workspaceId/members/:userId')
-  async patchMember(@Req() req: Request, @Param('workspaceId') id: string, @Param('userId') userId: string, @Body() body: { role?: string; status?: string }) { await this.admin(req, id); if (body.role === undefined && body.status === undefined) throw new BadRequestException('VALIDATION_ERROR'); const member = await this.floz.updateMember(id, userId, body); return ok(this.publicMember(member)); }
+  async patchMember(@Req() req: Request, @Param('workspaceId') id: string, @Param('userId') userId: string, @Body() body: PatchMemberDto) { await this.admin(req, id); if (body.role === undefined && body.status === undefined) throw new BadRequestException('VALIDATION_ERROR'); const member = await this.floz.updateMember(id, userId, body); return ok(this.publicMember(member)); }
   @Get('workspaces/:workspaceId/teams')
   async teams(@Req() req: Request, @Param('workspaceId') id: string) { await this.member(req, id); return ok(await this.floz.listTeams(id)); }
   @Post('workspaces/:workspaceId/teams')
-  async createTeam(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: { name?: string; description?: string; manager_user_id?: string }) { await this.admin(req, id); if (!body.name?.trim()) throw new BadRequestException('VALIDATION_ERROR'); if (body.manager_user_id && !(await this.floz.managerMembership(body.manager_user_id, id)).length) throw new BadRequestException('INVALID_MANAGER'); return ok(await this.floz.createTeam(id, { name: body.name, description: body.description ?? null, managerUserId: body.manager_user_id ?? null })); }
+  async createTeam(@Req() req: Request, @Param('workspaceId') id: string, @Body() body: CreateTeamDto) { await this.admin(req, id); if (!body.name?.trim()) throw new BadRequestException('VALIDATION_ERROR'); if (body.manager_user_id && !(await this.floz.managerMembership(body.manager_user_id, id)).length) throw new BadRequestException('INVALID_MANAGER'); return ok(await this.floz.createTeam(id, { name: body.name, description: body.description ?? null, managerUserId: body.manager_user_id ?? null })); }
   @Get('workspaces/:workspaceId/teams/:teamId')
   async getTeam(@Req() req: Request, @Param('workspaceId') wid: string, @Param('teamId') tid: string) { await this.member(req, wid); const team = await this.floz.team(wid, tid); if (!team) throw new NotFoundException('NOT_FOUND'); return ok(team); }
   @Patch('workspaces/:workspaceId/teams/:teamId')
-  async updateTeam(@Req() req: Request, @Param('workspaceId') wid: string, @Param('teamId') tid: string, @Body() body: { name?: string; description?: string | null; manager_user_id?: string | null; is_active?: boolean }) { await this.admin(req, wid); const team = await this.floz.team(wid, tid); if (!team) throw new NotFoundException('NOT_FOUND'); if (body.name !== undefined && !body.name.trim()) throw new BadRequestException('VALIDATION_ERROR'); if (body.manager_user_id && !(await this.floz.managerMembership(body.manager_user_id, wid)).length) throw new BadRequestException('INVALID_MANAGER'); return ok(await this.floz.updateTeam(wid, tid, { name: body.name, description: body.description, managerUserId: body.manager_user_id, isActive: body.is_active })); }
+  async updateTeam(@Req() req: Request, @Param('workspaceId') wid: string, @Param('teamId') tid: string, @Body() body: UpdateTeamDto) { await this.admin(req, wid); const team = await this.floz.team(wid, tid); if (!team) throw new NotFoundException('NOT_FOUND'); if (body.name !== undefined && !body.name.trim()) throw new BadRequestException('VALIDATION_ERROR'); if (body.manager_user_id && !(await this.floz.managerMembership(body.manager_user_id, wid)).length) throw new BadRequestException('INVALID_MANAGER'); return ok(await this.floz.updateTeam(wid, tid, { name: body.name, description: body.description, managerUserId: body.manager_user_id, isActive: body.is_active })); }
   @Get('workspaces/:workspaceId/teams/:teamId/members')
   async teamMembers(@Req() req: Request, @Param('workspaceId') wid: string, @Param('teamId') tid: string) { await this.member(req, wid); if (!(await this.floz.team(wid, tid))) throw new NotFoundException('NOT_FOUND'); return ok((await this.floz.teamMembers(tid)).map((member) => ({ user_id: member.userId, membership_role: member.membershipRole }))); }
   @Post('workspaces/:workspaceId/teams/:teamId/members')
-  async addTeamMember(@Req() req: Request, @Param('workspaceId') wid: string, @Param('teamId') tid: string, @Body() body: { user_id?: string }) { await this.admin(req, wid); const team = await this.floz.team(wid, tid); if (!team) throw new NotFoundException('NOT_FOUND'); if (!team.isActive) throw new ConflictException('TEAM_ARCHIVED'); if (!body.user_id || !(await this.floz.membership(body.user_id, wid))) throw new BadRequestException('CROSS_WORKSPACE_REFERENCE'); const member = await this.floz.addTeamMember(wid, tid, body.user_id); return ok({ user_id: member.userId, membership_role: member.membershipRole }); }
+  async addTeamMember(@Req() req: Request, @Param('workspaceId') wid: string, @Param('teamId') tid: string, @Body() body: AddTeamMemberDto) { await this.admin(req, wid); const team = await this.floz.team(wid, tid); if (!team) throw new NotFoundException('NOT_FOUND'); if (!team.isActive) throw new ConflictException('TEAM_ARCHIVED'); if (!body.user_id || !(await this.floz.membership(body.user_id, wid))) throw new BadRequestException('CROSS_WORKSPACE_REFERENCE'); const member = await this.floz.addTeamMember(wid, tid, body.user_id); return ok({ user_id: member.userId, membership_role: member.membershipRole }); }
   @Delete('workspaces/:workspaceId/teams/:teamId/members/:userId')
   @HttpCode(204)
   async removeTeamMember(@Req() req: Request, @Param('workspaceId') wid: string, @Param('teamId') tid: string, @Param('userId') uid: string) { await this.admin(req, wid); if (!(await this.floz.team(wid, tid))) throw new NotFoundException('NOT_FOUND'); await this.floz.removeTeamMember(wid, tid, uid); }
@@ -192,81 +213,81 @@ export class FlozController {
   }
 
   @Post('workspaces/:workspaceId/workflows')
-  async createWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateWorkflowDto) {
+  async createWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @ValidatedBody(CreateWorkflowDto) body: CreateWorkflowDto) {
     const ctx = await this.admin(req, wid);
     return ok(await this.workflowService.create(wid, ctx.user.id, body));
   }
 
   @Patch('workspaces/:workspaceId/workflows/:workflowId')
-  async updateWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: UpdateWorkflowDto) {
+  async updateWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @ValidatedBody(UpdateWorkflowDto) body: UpdateWorkflowDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.update(wid, workflowId, body));
   }
 
   @Post('workspaces/:workspaceId/workflows/:workflowId/set-default')
   @HttpCode(200)
-  async setDefaultWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: SetWorkflowDefaultDto) {
+  async setDefaultWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @ValidatedBody(SetWorkflowDefaultDto) body: SetWorkflowDefaultDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.setDefault(wid, workflowId, body));
   }
 
   @Post('workspaces/:workspaceId/workflows/:workflowId/archive')
   @HttpCode(200)
-  async archiveWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: ArchiveWorkflowDto) {
+  async archiveWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @ValidatedBody(ArchiveWorkflowDto) body: ArchiveWorkflowDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.archive(wid, workflowId, body));
   }
 
   @Post('workspaces/:workspaceId/workflows/:workflowId/restore')
   @HttpCode(200)
-  async restoreWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: RestoreWorkflowDto) {
+  async restoreWorkflow(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @ValidatedBody(RestoreWorkflowDto) body: RestoreWorkflowDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.restore(wid, workflowId, body));
   }
 
   @Post('workspaces/:workspaceId/workflows/:workflowId/statuses')
-  async addWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: CreateStatusDto) {
+  async addWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @ValidatedBody(CreateStatusDto) body: CreateStatusDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.addStatus(wid, workflowId, body));
   }
 
   @Patch('workspaces/:workspaceId/workflows/:workflowId/statuses/:statusId')
-  async updateWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @Body() body: UpdateStatusDto) {
+  async updateWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @ValidatedBody(UpdateStatusDto) body: UpdateStatusDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.updateStatus(wid, workflowId, statusId, body));
   }
 
   @Post('workspaces/:workspaceId/workflows/:workflowId/statuses/:statusId/set-initial')
   @HttpCode(200)
-  async setInitialWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @Body() body: SetStatusInitialDto) {
+  async setInitialWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @ValidatedBody(SetStatusInitialDto) body: SetStatusInitialDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.setInitialStatus(wid, workflowId, statusId, body));
   }
 
   @Post('workspaces/:workspaceId/workflows/:workflowId/statuses/:statusId/archive')
   @HttpCode(200)
-  async archiveWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @Body() body: ArchiveStatusDto) {
+  async archiveWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @ValidatedBody(ArchiveStatusDto) body: ArchiveStatusDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.archiveStatus(wid, workflowId, statusId, body));
   }
 
   @Post('workspaces/:workspaceId/workflows/:workflowId/statuses/:statusId/restore')
   @HttpCode(200)
-  async restoreWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @Body() body: RestoreStatusDto) {
+  async restoreWorkflowStatus(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Param('statusId') statusId: string, @ValidatedBody(RestoreStatusDto) body: RestoreStatusDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.restoreStatus(wid, workflowId, statusId, body));
   }
 
   @Put('workspaces/:workspaceId/workflows/:workflowId/statuses/reorder')
   @HttpCode(200)
-  async reorderWorkflowStatuses(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: ReorderStatusesDto) {
+  async reorderWorkflowStatuses(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @ValidatedBody(ReorderStatusesDto) body: ReorderStatusesDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.reorderStatuses(wid, workflowId, body));
   }
 
   @Put('workspaces/:workspaceId/workflows/:workflowId/transitions')
   @HttpCode(200)
-  async replaceWorkflowTransitions(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @Body() body: ReplaceTransitionsDto) {
+  async replaceWorkflowTransitions(@Req() req: Request, @Param('workspaceId') wid: string, @Param('workflowId') workflowId: string, @ValidatedBody(ReplaceTransitionsDto) body: ReplaceTransitionsDto) {
     await this.admin(req, wid);
     return ok(await this.workflowService.replaceTransitions(wid, workflowId, body));
   }
@@ -277,37 +298,37 @@ export class FlozController {
   @Get('workspaces/:workspaceId/tasks')
   async listTasks(@Req() req: Request, @Param('workspaceId') wid: string) { await this.member(req, wid); const result = await this.tasks.list(wid, req.query as TaskQueryDto); return { data: result.rows, meta: { pagination: { limit: result.limit, next_cursor: result.nextCursor, has_more: result.hasMore } } }; }
   @Post('workspaces/:workspaceId/tasks')
-  async createTask(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateTaskDto) { const ctx = await this.member(req, wid); return ok(await this.tasks.create(wid, ctx.user.id, ctx.membership.role as TaskRole, body)); }
+  async createTask(@Req() req: Request, @Param('workspaceId') wid: string, @ValidatedBody(CreateTaskDto) body: CreateTaskDto) { const ctx = await this.member(req, wid); return ok(await this.tasks.create(wid, ctx.user.id, ctx.membership.role as TaskRole, body)); }
   @Get('workspaces/:workspaceId/tasks/:taskId')
   async task(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { await this.member(req, wid); return ok(await this.tasks.detail(wid, tid)); }
   @Patch('workspaces/:workspaceId/tasks/:taskId')
-  async updateTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Body() body: UpdateTaskDto) { const ctx = await this.member(req, wid); return ok(await this.tasks.update(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body)); }
+  async updateTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @ValidatedBody(UpdateTaskDto) body: UpdateTaskDto) { const ctx = await this.member(req, wid); return ok(await this.tasks.update(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body)); }
   @Post('workspaces/:workspaceId/tasks/:taskId/assignments')
-  async assignTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Body() body: AssignTaskDto) { const ctx = await this.member(req, wid); return ok(await this.tasks.assign(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body)); }
+  async assignTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @ValidatedBody(AssignTaskDto) body: AssignTaskDto) { const ctx = await this.member(req, wid); return ok(await this.tasks.assign(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body)); }
   @Delete('workspaces/:workspaceId/tasks/:taskId')
   @HttpCode(204)
   async deleteTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { const ctx = await this.member(req, wid); await this.tasks.remove(wid, ctx.membership.role as TaskRole, tid, Number(req.query.version)); }
   @Get('workspaces/:workspaceId/tasks/:taskId/available-transitions')
   async availableTransitions(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { await this.member(req, wid); return ok(await this.tasks.transitions(wid, tid)); }
   @Post('workspaces/:workspaceId/tasks/:taskId/transitions')
-  async transitionTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Body() body: TransitionTaskDto) { const ctx = await this.member(req, wid); const task = await this.tasks.transition(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body); return { task, transition: { to_status_id: body.to_status_id } }; }
+  async transitionTask(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @ValidatedBody(TransitionTaskDto) body: TransitionTaskDto) { const ctx = await this.member(req, wid); const task = await this.tasks.transition(wid, ctx.user.id, ctx.membership.role as TaskRole, tid, body); return { task, transition: { to_status_id: body.to_status_id } }; }
   @Get('workspaces/:workspaceId/tasks/:taskId/history')
   async taskHistory(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string) { await this.member(req, wid); return { data: await this.tasks.history(wid, tid), meta: { pagination: { limit: 50, next_cursor: null, has_more: false } } }; }
 
   @Post('workspaces/:workspaceId/recurring-tasks')
-  async createRecurringTask(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateRecurringTaskDto) { const ctx = await this.member(req, wid); try { validateCreateRecurringTask(body); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(await this.recurrence.create(wid, ctx.user.id, req.header('Idempotency-Key'), body)); }
+  async createRecurringTask(@Req() req: Request, @Param('workspaceId') wid: string, @ValidatedBody(CreateRecurringTaskDto) body: CreateRecurringTaskDto) { const ctx = await this.member(req, wid); try { validateCreateRecurringTask(body); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(await this.recurrence.create(wid, ctx.user.id, req.header('Idempotency-Key'), body)); }
   @Get('workspaces/:workspaceId/recurrence-rules')
   async listRecurrenceRules(@Req() req: Request, @Param('workspaceId') wid: string, @Query() query: RecurrenceRuleQueryDto) { await this.member(req, wid); try { validateRecurrenceRuleQuery(query); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return this.recurrence.list(wid, query); }
   @Get('workspaces/:workspaceId/recurrence-rules/:id')
   async recurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); return ok(await this.recurrence.get(wid, id)); }
   @Patch('workspaces/:workspaceId/recurrence-rules/:id')
-  async updateRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string, @Body() body: UpdateRecurrenceRuleDto) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); try { validateUpdateRecurrenceRule(body); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(await this.recurrence.update(wid, id, body)); }
+  async updateRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string, @ValidatedBody(UpdateRecurrenceRuleDto) body: UpdateRecurrenceRuleDto) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); try { validateUpdateRecurrenceRule(body); } catch { throw new BadRequestException('VALIDATION_ERROR'); } return ok(await this.recurrence.update(wid, id, body)); }
   @Post('workspaces/:workspaceId/recurrence-rules/:id/stop')
   @HttpCode(200)
   async stopRecurrenceRule(@Req() req: Request, @Param('workspaceId') wid: string, @Param('id') id: string) { await this.member(req, wid); if (!uuidPattern.test(id)) throw new BadRequestException('VALIDATION_ERROR'); return ok(await this.recurrence.stop(wid, id)); }
 
   @Post('workspaces/:workspaceId/approval-requests')
-  async createApprovalRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateApprovalRequestDto) {
+  async createApprovalRequest(@Req() req: Request, @Param('workspaceId') wid: string, @ValidatedBody(CreateApprovalRequestDto) body: CreateApprovalRequestDto) {
     const ctx = await this.member(req, wid);
     return ok(await this.approvals.create(wid, ctx.user.id, body));
   }
@@ -326,21 +347,21 @@ export class FlozController {
 
   @Post('workspaces/:workspaceId/approval-requests/:approvalRequestId/steps/:stepId/approve')
   @HttpCode(200)
-  async approveApprovalStep(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @Param('stepId') stepId: string, @Body() body: ApproveStepDto) {
+  async approveApprovalStep(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @Param('stepId') stepId: string, @ValidatedBody(ApproveStepDto) body: ApproveStepDto) {
     const ctx = await this.member(req, wid);
     return ok(await this.approvals.approve(wid, ctx.user.id, ctx.membership.role, reqId, stepId, body));
   }
 
   @Post('workspaces/:workspaceId/approval-requests/:approvalRequestId/steps/:stepId/reject')
   @HttpCode(200)
-  async rejectApprovalStep(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @Param('stepId') stepId: string, @Body() body: RejectStepDto) {
+  async rejectApprovalStep(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @Param('stepId') stepId: string, @ValidatedBody(RejectStepDto) body: RejectStepDto) {
     const ctx = await this.member(req, wid);
     return ok(await this.approvals.reject(wid, ctx.user.id, ctx.membership.role, reqId, stepId, body));
   }
 
   @Post('workspaces/:workspaceId/approval-requests/:approvalRequestId/cancel')
   @HttpCode(200)
-  async cancelApprovalRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @Body() body: CancelApprovalDto) {
+  async cancelApprovalRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Param('approvalRequestId') reqId: string, @ValidatedBody(CancelApprovalDto) body: CancelApprovalDto) {
     const ctx = await this.member(req, wid);
     return ok(await this.approvals.cancel(wid, ctx.user.id, ctx.membership.role, reqId, body));
   }
@@ -353,7 +374,7 @@ export class FlozController {
 
   @Post('workspaces/:workspaceId/tasks/:taskId/comments')
   @HttpCode(201)
-  async createComment(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @Body() body: CreateCommentDto) {
+  async createComment(@Req() req: Request, @Param('workspaceId') wid: string, @Param('taskId') tid: string, @ValidatedBody(CreateCommentDto) body: CreateCommentDto) {
     const ctx = await this.member(req, wid);
     return ok(await this.comments.create(wid, ctx.user.id, tid, body));
   }

@@ -1,79 +1,151 @@
-export interface StatusInput {
-  name: string;
-  code: string;
-  category: 'TODO' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
-  is_initial: boolean;
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
+
+export class StatusInput {
+  @IsString()
+  name!: string;
+
+  @IsString()
+  code!: string;
+
+  @IsIn(['TODO', 'IN_PROGRESS', 'DONE', 'CANCELLED'])
+  category!: 'TODO' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+
+  @IsBoolean()
+  is_initial!: boolean;
 }
 
-export interface TransitionInput {
-  from_status_code: string;
-  to_status_code: string;
+export class TransitionInput {
+  @IsString()
+  from_status_code!: string;
+
+  @IsString()
+  to_status_code!: string;
 }
 
-export interface CreateWorkflowDto {
-  name: string;
-  code: string;
+export class CreateWorkflowDto {
+  @IsString()
+  name!: string;
+
+  @IsString()
+  code!: string;
+
+  @IsOptional()
+  @IsString()
   description?: string | null;
+
+  @IsOptional()
+  @IsString()
   team_id?: string | null;
-  statuses: StatusInput[];
-  transitions: TransitionInput[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StatusInput)
+  statuses!: StatusInput[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TransitionInput)
+  transitions!: TransitionInput[];
 }
 
-export interface UpdateWorkflowDto {
+export class UpdateWorkflowDto {
+  @IsOptional()
+  @IsString()
   name?: string;
+
+  @IsOptional()
+  @IsString()
   description?: string | null;
-  version: number;
+
+  @IsInt()
+  version!: number;
 }
 
-export interface SetWorkflowDefaultDto {
-  version: number;
+export class SetWorkflowDefaultDto {
+  @IsInt()
+  version!: number;
 }
 
-export interface ArchiveWorkflowDto {
-  version: number;
+export class ArchiveWorkflowDto {
+  @IsInt()
+  version!: number;
 }
 
-export interface RestoreWorkflowDto {
-  version: number;
+export class RestoreWorkflowDto {
+  @IsInt()
+  version!: number;
 }
 
-export interface CreateStatusDto {
-  name: string;
-  code: string;
-  category: 'TODO' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
-  version: number;
+export class CreateStatusDto {
+  @IsString()
+  name!: string;
+
+  @IsString()
+  code!: string;
+
+  @IsIn(['TODO', 'IN_PROGRESS', 'DONE', 'CANCELLED'])
+  category!: 'TODO' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+
+  @IsInt()
+  version!: number;
 }
 
-export interface UpdateStatusDto {
+export class UpdateStatusDto {
+  @IsOptional()
+  @IsString()
   name?: string;
+
+  @IsOptional()
+  @IsIn(['TODO', 'IN_PROGRESS', 'DONE', 'CANCELLED'])
   category?: 'TODO' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
-  version: number;
+
+  @IsInt()
+  version!: number;
 }
 
-export interface SetStatusInitialDto {
-  version: number;
+export class SetStatusInitialDto {
+  @IsInt()
+  version!: number;
 }
 
-export interface ArchiveStatusDto {
-  version: number;
+export class ArchiveStatusDto {
+  @IsInt()
+  version!: number;
 }
 
-export interface RestoreStatusDto {
-  version: number;
+export class RestoreStatusDto {
+  @IsInt()
+  version!: number;
 }
 
-export interface ReorderStatusesDto {
-  status_ids: string[];
-  version: number;
+export class ReorderStatusesDto {
+  @IsArray()
+  @IsString({ each: true })
+  status_ids!: string[];
+
+  @IsInt()
+  version!: number;
 }
 
-export interface BulkTransitionInput {
-  from_status_id: string;
-  to_status_id: string;
+export class BulkTransitionInput {
+  @IsString()
+  from_status_id!: string;
+
+  @IsString()
+  to_status_id!: string;
+
+  @IsOptional()
+  @IsBoolean()
   requires_permission?: boolean;
 }
 
-export interface ReplaceTransitionsDto {
-  transitions: BulkTransitionInput[];
-  version: number;
+export class ReplaceTransitionsDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BulkTransitionInput)
+  transitions!: BulkTransitionInput[];
+
+  @IsInt()
+  version!: number;
 }
