@@ -14,7 +14,7 @@
 
 - Use `ALLOWED_ORIGINS`; accept `ALLOWED_ORIGIN` only as an agreeing one-origin compatibility alias.
 - Production TLS is verified and fail-closed; `DB_SSL` and `REDIS_TLS` are tri-state; no plaintext or `rejectUnauthorized: false` fallback.
-- API persistent PostgreSQL max is 1; every worker owner max is 1; each BullMQ worker concurrency is 1; totals are normal 7, readiness 8, maintenance 10.
+- One API AuthService owner uses approved physical pool max2; every Worker/runtime/temporary/maintenance owner uses max1; each BullMQ worker concurrency is 1; totals are normal 8, readiness 9, maintenance 11.
 - No schema migration, runtime auto-migration, seed/down migration, standalone Next output, script CSP/nonce, DLQ/re-drive, global limiter, public signup route, Oracle/R2 production deployment, or new API pool owner.
 - Cookie-origin protection covers every unsafe cookie mutation and login; read-only probes are exempt. Missing, `null`, malformed, or unapproved Origin is `403 FORBIDDEN` before work.
 - No mutation retry on uncertain transport outcomes. No false rollback/cancellation claims.
@@ -102,7 +102,7 @@ Public `/api/v1/auth/sign-up/email` remains unmounted and must stay 404. All act
 
 | Owner | Lifetime/cap | Task assertion |
 |---|---|---|
-| API AuthService and borrowers/readiness | persistent max1; AuthService sole closer | Tasks 2,3,8,9 |
+| API AuthService and borrowers/readiness | one persistent owner, physical max2; AuthService sole closer | Tasks 2,3,8,9 |
 | worker shared recurrence jobs SQL | persistent max1 | Tasks 2,3,11 |
 | worker notification due-soon job DB | transient max1, one at concurrency1, job `finally` | Tasks 2,3,11 |
 | outbox dispatcher SQL | persistent max1 | Tasks 2,3,11 |
@@ -113,7 +113,7 @@ Public `/api/v1/auth/sign-up/email` remains unmounted and must stay 404. All act
 | production migration session | transient max1, serialized | Tasks 2,16 |
 | serial backup `pg_dump` | one source connection, serialized | Tasks 18,19 |
 
-Totals asserted from instrumented constructors: API persistent 1; worker persistent 4; transient runtime 2; normal 7; plus readiness 8; plus migration and backup 10. API readiness adds zero, Docker health adds zero. Restore's one connection targets a different isolated database.
+Totals asserted from instrumented constructors and configured capacities: API persistent capacity 2 from one owner; Worker persistent 4; Worker transient runtime 2; normal runtime 8; plus explicit Worker readiness 9; plus migration and backup 11. API readiness borrows AuthService and adds zero owners; Docker health adds zero. Restore's one connection targets a different isolated database.
 
 ## Command Legend
 
@@ -138,16 +138,16 @@ Every command naming a Phase 12-only file or script below is **proposed future**
 
 - [ ] Implement one shared normalization path consumed by API AuthService, worker persistent/transient clients, readiness clients, migration, and backup clients; preserve verified CA and hostname validation.
 - [ ] Reject contradictory URL flags, insecure modes, `DB_SSL=false`, `REDIS_TLS=false` with `rediss://`, plaintext remote production Redis, and all insecure fallback flags.
-- [ ] Assert every actual pool owner from the design inventory uses max 1; reject cap/concurrency overrides that exceed the approved budget.
+- [ ] Assert exactly one API AuthService owner uses max2; every Worker/runtime/temporary/maintenance owner uses max1; API readiness borrows the AuthService pool and creates no owner. API `DB_POOL_MAX` may resolve only to 2; unauthorized API values above 2 fail; Worker values above 1 fail. Do not introduce a generic globally configurable high pool cap.
 - [ ] Run focused config/database/worker tests. Commit: `feat(database): apply verified TLS and bounded connection ownership`.
 
 ### Task 3: Database timeout and owner-budget tests
 
 **Files:** Modify `database/src/index.ts`; add/update database tests and worker/API construction tests.
 
-- [ ] Configure max1 owner configuration, connect_timeout=5, server-side statement_timeout=10000, and lock_timeout=3000; document postgres.js pipelining boundary.
-- [ ] Prove max1 owner configuration, connect_timeout=5, effective statement_timeout=10000 from PostgreSQL, effective lock_timeout=3000 from PostgreSQL, server-side long statement cancellation, server-side lock contention failure, no Phase 12 code using Promise.race or equivalent to claim an already-dispatched mutation was cancelled, no mutation auto-retry after uncertain outcome, API sole AuthService pool, four persistent worker owners, two transient runtime owners, readiness +1, maintenance ceiling 10, and no borrowed-service closure.
-- [ ] Run focused database and worker tests; record exact owner counts. Commit: `test(database): prove Phase 12 connection owner budgets and timeouts`.
+- [ ] Configure one API AuthService owner max2; configure every Worker/runtime/temporary/maintenance owner max1; preserve connect_timeout=5, server-side statement_timeout=10000, and lock_timeout=3000; document postgres.js pipelining boundary.
+- [ ] Prove one API AuthService owner max2, four persistent Worker owners max1, two transient Worker owners max1, API readiness borrowed with no new owner, normal runtime 8, Worker readiness 9, maintenance ceiling 11, connect_timeout=5, effective statement_timeout=10000 from PostgreSQL, effective lock_timeout=3000 from PostgreSQL, server-side long statement cancellation, server-side lock contention failure, no Phase 12 code using Promise.race or equivalent to claim an already-dispatched mutation was cancelled, no mutation auto-retry after uncertain outcome, and no borrowed-service closure.
+- [ ] Require membership concurrency exact [200,409], never 500; team concurrency exact [200,200]; full `pnpm --filter @floz/api test` green; focused config/database/worker tests, `pnpm lint`, and `pnpm typecheck` green. Preserve all TLS/timeout tests. Commit: `test(database): prove Phase 12 connection owner budgets and timeouts`.
 
 ### CHECKPOINT A — STOP
 
@@ -363,7 +363,7 @@ Every command naming a Phase 12-only file or script below is **proposed future**
 
 **Files:** Modify only authorized internal Gate A evidence and Phase 12 plan status after all Task 22 evidence is complete; never alter accepted design.
 
-- [ ] Independently cross-check every coverage-matrix row against recorded scenario evidence, every owner total (7/8/10), every unsafe route inventory row, digest/provenance, fixture-only backup scope, and exclusions.
+- [ ] Independently cross-check every coverage-matrix row against recorded scenario evidence, every owner total (8/9/11), every unsafe route inventory row, digest/provenance, fixture-only backup scope, and exclusions.
 - [ ] Record failures/blockers verbatim-safe without secret values. Gate A may be presented for human acceptance only if every required deterministic engineering scenario has evidence; it must not claim Gate B, provider quota, production archive, real domain, actual-environment restore, RPO, or RTO.
 - [ ] Proposed commit after explicit future authorization: `docs: close Phase 12 Gate A evidence review`.
 
@@ -372,7 +372,7 @@ Every command naming a Phase 12-only file or script below is **proposed future**
 **Files:** Future-only, after Tasks 22 and 23: internal `docs/implementation/PHASE_12_REPORT.md`, `IMPLEMENTATION_STATUS.md`, `CURRENT_HANDOFF.md`, `docs/decisions/OPEN_DECISIONS.md`, and `docs/superpowers/evidence/2026-09-11-phase-12-gate-a.md` only. External future inspection and applicable-update targets under `D:\Portofolio\Floz\Documentation`: `Technical/Floz_API_Specification.md`, `Technical/Floz_ERD_Database_Design.md`, `Technical/Floz_Technical_Design_Architecture.md`, `Technical/Floz_Technical_Design_Architecture_Free_Bootstrap.md`, `Design/Floz_Wireframe_UI_Specification.md`. Never Git-track, copy, or commit external documents.
 
 - [ ] Execute only after the Gate A evidence ledger is complete and Task 23 cross-check is complete; no runtime rerun for documentation-only work. Record each external target as `UPDATED` or `INSPECTED — NO UPDATE REQUIRED`; ERD must be `INSPECTED — NO SCHEMA UPDATE REQUIRED` unless a separately authorized schema decision exists, which this plan does not provide.
-- [ ] Create/update internal `PHASE_12_REPORT`, `IMPLEMENTATION_STATUS`, `CURRENT_HANDOFF`, and `OPEN_DECISIONS` with exact `CURRENT`, `HANDOFF`, `OPEN_DECISIONS`, evidence path, accepted contracts, commit/task/config/TLS/route-inventory/security/shutdown/health 7/8/10/migration/multiarch/backup fields, Gate A limitations, and explicit `Gate B not run`; do not claim runtime verification not evidenced.
+- [ ] Create/update internal `PHASE_12_REPORT`, `IMPLEMENTATION_STATUS`, `CURRENT_HANDOFF`, and `OPEN_DECISIONS` with exact `CURRENT`, `HANDOFF`, `OPEN_DECISIONS`, evidence path, accepted contracts, commit/task/config/TLS/route-inventory/security/shutdown/health 8/9/11/migration/multiarch/backup fields, Gate A limitations, and explicit `Gate B not run`; do not claim runtime verification not evidenced.
 - [ ] Inspect and update when applicable the five external documents only for consistency with accepted Gate A facts; each must be `UPDATED`, `INSPECTED — NO UPDATE REQUIRED`, or for ERD `INSPECTED — NO SCHEMA UPDATE REQUIRED`. Never copy them into the repository, never edit the ERD schema, and never alter external docs before this task. Proposed commits are separate: `docs: record Phase 12 Gate A evidence`, `docs: close Phase 12 Gate A evidence review`, then a future docs-only internal publication commit after human authorization; implementation publication is distinct and not authorized here.
 - [ ] Commit: `docs: synchronize Phase 12 post-gate documentation` only after explicit future authorization and clean separation from implementation publication.
 
@@ -400,13 +400,13 @@ This annex supplies exact paths/commands wherever a checkpoint summary uses a ca
 
 **Task 1 RED assertions:** agreeing singleton legacy/new origin sets parse equally; disagreement throws with key names only; invalid boolean spelling throws; unset remains undefined until transport policy; `NODE_TLS_REJECT_UNAUTHORIZED=0` fails production; each TLS matrix row is table-tested, including unknown mode, duplicate conflicting mode, remote and localhost hosts. Exact command (proposed test): `pnpm --filter @floz/config exec vitest run test/production-env.test.ts`.
 
-**Task 2 files:** `database/src/index.ts`, `database/package.json`, `apps/api/src/auth.ts`, `apps/worker/src/main.ts`, `apps/worker/src/recurrence-worker.ts`, `apps/worker/src/reconciliation.ts`, `apps/worker/src/queues.ts`; proposed `database/test/connection-policy.test.ts`. Add existing-workspace `@floz/config` dependency to database if importing its normalization there; no dependency cycle. Preserve `createDatabase(url)` callers while ensuring production consumes validated policy before constructing any owner. Keep fixed max1, not an adjustable high-cap setting. `AuthService` obtains identical allowed origins for Better Auth and CORS. All four persistent and two transient worker constructors receive normalized policy; due-soon handler still owns its separate job client. Readiness/migration/backup consumers are wired in their later tasks, not prematurely created in A.
+**Task 2 files:** `database/src/index.ts`, `database/package.json`, `apps/api/src/auth.ts`, `apps/worker/src/main.ts`, `apps/worker/src/recurrence-worker.ts`, `apps/worker/src/reconciliation.ts`, `apps/worker/src/queues.ts`; proposed `database/test/connection-policy.test.ts`. Add existing-workspace `@floz/config` dependency to database if importing its normalization there; no dependency cycle. Preserve `createDatabase(url)` callers while ensuring production consumes validated policy before constructing any owner. Keep service-specific fixed capacities: API AuthService max2; Worker/runtime/temporary/maintenance owners max1; do not expose a generic globally configurable high-cap setting. `AuthService` obtains identical allowed origins for Better Auth and CORS. All four persistent and two transient worker constructors receive normalized policy; due-soon handler still owns its separate job client. Readiness/migration/backup consumers are wired in their later tasks, not prematurely created in A.
 
-**Task 2 RED assertions:** captured postgres options have max1/connect_timeout5/verified ssl and statement/lock connection settings; reject bad certificate chain and hostname on controlled TLS endpoints. Redis options retain maxRetriesPerRequest null only on BullMQ runtime connections. Command: `pnpm --filter @floz/database exec vitest run test/connection-policy.test.ts` (proposed test).
+**Task 2 RED assertions:** captured API postgres options have max2; captured Worker/runtime/temporary/maintenance options have max1; all preserve connect_timeout5/verified ssl and statement/lock connection settings; reject unauthorized API values above 2 and Worker values above 1, plus bad certificate chain and hostname on controlled TLS endpoints. Redis options retain maxRetriesPerRequest null only on BullMQ runtime connections. Command: `pnpm --filter @floz/database exec vitest run test/connection-policy.test.ts` (proposed test).
 
-**Task 3 files:** proposed `database/test/resource-bounds.integration.test.ts`, `apps/worker/test/owner-budget.test.ts`; modify `database/src/index.ts` only if bounds tests expose missing admission cleanup. Prove max1 owner configuration, connect_timeout=5, effective statement_timeout=10000 and lock_timeout=3000 from PostgreSQL, server-side long statement cancellation, server-side lock contention failure, no Promise.race or artificial client timeout claiming mutation cancellation, no mutation auto-retry, and document postgres.js pipelining boundary. Reserved claim session must not share its max1 with generation work; loss of reserved session is fatal rather than continued lockless work.
+**Task 3 files:** proposed `database/test/resource-bounds.integration.test.ts`, `apps/worker/test/owner-budget.test.ts`; modify `database/src/index.ts` only if bounds tests expose missing admission cleanup. Prove one API owner max2, four persistent Worker owners max1, two transient Worker owners max1, connect_timeout=5, effective statement_timeout=10000 and lock_timeout=3000 from PostgreSQL, server-side long statement cancellation, server-side lock contention failure, no Promise.race or artificial client timeout claiming mutation cancellation, no mutation auto-retry, and document postgres.js pipelining boundary. Reserved claim session must not share its max1 with generation work; loss of reserved session is fatal rather than continued lockless work.
 
-**Task 3 RED assertions:** server reports statement_timeout=10000 and lock_timeout=3000; sleep/lock-contention queries time out server-side; no Promise.race or fake acquisition cancellation; postgres.js pipelining boundary documented. Count exact 7/8/10 owners and reject concurrency>1. Command: `pnpm --filter @floz/database exec vitest run test/resource-bounds.integration.test.ts`; `pnpm --filter @floz/worker exec vitest run test/owner-budget.test.ts` (proposed tests). Review boundary A proves current runtime ownership; future temporary owners receive final integrated count proof in H.
+**Task 3 RED assertions:** server reports statement_timeout=10000 and lock_timeout=3000; sleep/lock-contention queries time out server-side; no Promise.race or fake acquisition cancellation; postgres.js pipelining boundary documented. Count exact normal8/readiness9/maintenance11 ceilings and reject unauthorized capacity/concurrency values. Command: `pnpm --filter @floz/database exec vitest run test/resource-bounds.integration.test.ts`; `pnpm --filter @floz/worker exec vitest run test/owner-budget.test.ts` (proposed tests). Review boundary A proves current runtime ownership; future temporary owners receive final integrated count proof in H.
 
 ### Tasks 4–6: exact DTO and test-harness adaptations
 
@@ -579,5 +579,6 @@ Each script named phase12 is proposed; existing clean DB/E2E and root quality sc
 
 - Every P0 design section maps to Tasks 1–24: origins/CSRF/limiter/validation (1,4–6), resource bounds/TLS (2–3), API shutdown (9), worker/queue/heartbeat/readiness/replay (10–13,20), observability (7), health (8), Web (14–15), migration/images (16–17), backup/restore (18–19), Gate A execution/closure/docs (22–24).
 - Reverse trace: each task maps back to Sections 4–17 and Gate A evidence; no task authorizes a schema migration, global limiter, standalone Next, script CSP, DLQ/re-drive, production deployment, Gate B, external document schema changes, or Phase 9 edits.
-- Exact accepted contracts retained: API/worker 30/35-second shutdown; verified TLS; max 1 owners; concurrency 1; totals 7/8/10; heartbeat 15/45; Docker local-only health 30/30/5/3; readiness 2/3; migration 60 seconds/session PID continuity; backup custom dump→age→SHA-256→fixture restore; 7 daily/4 weekly.
-- Gate A exclusions: no Oracle/Neon/Upstash/R2 production credentials, real domain, provider quota, public deployment, actual-environment restore/RPO/RTO, or Gate B launch evidence.
+- Exact accepted contracts retained: API/worker 30/35-second shutdown; verified TLS; one API AuthService owner max2; every Worker/runtime/temporary/maintenance owner max1; Worker concurrency 1; totals 8/9/11; heartbeat 15/45; Docker local-only health 30/30/5/3; readiness 2/3 with API readiness borrowing AuthService and creating no owner; migration 60 seconds/session PID continuity; backup custom dump→age→SHA-256→fixture restore; 7 daily/4 weekly.
+- Implementation-discovered amendment: Checkpoint A remains accepted for configuration, TLS, timeout and owner architecture; only API physical capacity was reopened after regression evidence. Checkpoint B implementation is preserved; acceptance remains blocked until API max2 is implemented and membership `[200,409]` without 500, team `[200,200]`, full `@floz/api`, focused config/database/worker tests, lint and typecheck are green.
+- Gate A exclusions: no Oracle/Neon/Upstash/R2 production credentials, real domain, provider quota, public deployment, actual-environment restore/RPO/RTO, or Gate B launch evidence. Phase 13 Gate B must verify provider quota and operational headroom for source ceiling 11 plus provider/admin/other-session usage.
