@@ -227,9 +227,13 @@ export const parseApiEnv = (rawEnv: NodeJS.ProcessEnv) => {
 
   const origins = normalizeOrigins(rawEnv, parsed.NODE_ENV);
 
+  if (parsed.DB_POOL_MAX > 2) {
+    throw new Error('API database connection pool max cannot exceed 2');
+  }
+
   return {
     ...parsed,
-    DB_POOL_MAX: 1,
+    DB_POOL_MAX: 2,
     ALLOWED_ORIGINS: origins
   };
 };
@@ -243,6 +247,10 @@ export const parseWorkerEnv = (rawEnv: NodeJS.ProcessEnv) => {
     if (!parsed.REDIS_URL) {
       throw new Error('REDIS_URL is required in production');
     }
+  }
+
+  if (parsed.DB_POOL_MAX > 1) {
+    throw new Error('Worker database connection pool max cannot exceed 1');
   }
 
   return {

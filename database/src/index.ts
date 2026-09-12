@@ -6,6 +6,7 @@ import * as schema from './schema.js';
 export type DatabaseClient = ReturnType<typeof drizzle<typeof schema>>;
 
 export type CreateDatabaseOptions = {
+  owner?: 'api';
   max?: number;
   connect_timeout?: number;
   idle_timeout?: number;
@@ -19,8 +20,9 @@ export function createDatabase(url: string, options?: CreateDatabaseOptions) {
   const { ssl } = normalizePostgresTls(url, options?.dbSsl, nodeEnv);
 
   if (nodeEnv === 'production') {
-    if (options?.max && options.max > 1) {
-      throw new Error('Database connection pool max cannot exceed approved budget of 1 in production');
+    const max = options?.max ?? 1;
+    if (max > (options?.owner === 'api' ? 2 : 1)) {
+      throw new Error(`Database connection pool max cannot exceed approved budget of ${options?.owner === 'api' ? 2 : 1} in production`);
     }
     if (typeof options?.ssl === 'object' && options.ssl !== null && (options.ssl as Record<string, unknown>).rejectUnauthorized === false) {
       throw new Error('rejectUnauthorized: false is prohibited in production');

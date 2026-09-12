@@ -12,7 +12,7 @@ export class AuthService implements OnModuleDestroy {
   constructor() {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error('DATABASE_URL is required');
-    this.database = createDatabase(url);
+    this.database = createDatabase(url, { owner: 'api', max: 2 });
     this.auth = betterAuth({
       database: drizzleAdapter(this.database.db, {
         provider: 'pg',

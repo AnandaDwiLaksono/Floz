@@ -157,7 +157,11 @@ describe('Task 1 — Configuration Contract and Origin Normalization', () => {
         expect(env.NODE_ENV).toBe('production');
         expect(env.API_PORT).toBe(3001);
         expect(env.ALLOWED_ORIGINS).toEqual(['https://app.floz.local']);
-        expect(env.DB_POOL_MAX).toBe(1);
+        expect(env.DB_POOL_MAX).toBe(2);
+      });
+
+      it('rejects API pool capacity above 2', () => {
+        expect(() => parseApiEnv({ NODE_ENV: 'test', DB_POOL_MAX: '3' })).toThrow();
       });
 
       it('rejects NODE_TLS_REJECT_UNAUTHORIZED=0 in production', () => {
@@ -206,6 +210,10 @@ describe('Task 1 — Configuration Contract and Origin Normalization', () => {
         expect(env.NODE_ENV).toBe('production');
         expect(env.WORKER_CONCURRENCY).toBe(1);
         expect(env.DB_POOL_MAX).toBe(1);
+      });
+
+      it('rejects worker pool capacity above 1', () => {
+        expect(() => parseWorkerEnv({ NODE_ENV: 'test', DB_POOL_MAX: '2' })).toThrow();
       });
 
       it('rejects production worker without DATABASE_URL or REDIS_URL', () => {

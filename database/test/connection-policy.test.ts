@@ -27,8 +27,12 @@ describe('Task 2 — Connection Policy & Verified TLS Normalization', () => {
       void sql.end();
     });
 
-    it('rejects cap overrides exceeding approved budget in production', () => {
-      expect(() => createDatabase('postgres://user:pass@db.floz.neon.tech/floz', { max: 10, nodeEnv: 'production' })).toThrow();
+    it('allows only the API owner to use max 2 in production', () => {
+      const { sql } = createDatabase('postgres://user:pass@db.floz.neon.tech/floz', { owner: 'api', max: 2, nodeEnv: 'production' });
+      expect((sql as unknown as { options: { max: number } }).options.max).toBe(2);
+      void sql.end();
+      expect(() => createDatabase('postgres://user:pass@db.floz.neon.tech/floz', { owner: 'api', max: 3, nodeEnv: 'production' })).toThrow();
+      expect(() => createDatabase('postgres://user:pass@db.floz.neon.tech/floz', { max: 2, nodeEnv: 'production' })).toThrow();
     });
 
     it('rejects rejectUnauthorized: false in production', () => {
