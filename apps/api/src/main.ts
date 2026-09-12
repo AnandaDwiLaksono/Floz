@@ -5,6 +5,7 @@ import { createLogger } from '@floz/observability';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { configureApp } from './configure-app.js';
+import { requestDiagnostics } from './request-diagnostics.js';
 
 async function bootstrap() {
   const env = parseApiEnv(process.env);
@@ -12,6 +13,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: false, bodyParser: false });
 
   configureApp(app);
+  app.use(requestDiagnostics(logger));
 
   const server = app.getHttpServer() as Server;
   if (server) {

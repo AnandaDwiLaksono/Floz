@@ -4,7 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { Worker } from 'bullmq';
 import { parseWorkerEnv } from '@floz/config';
 import { claimOutboxBatch, createDatabase, markOutboxDispatched, markOutboxRetry } from '@floz/database';
-import { createLogger } from '@floz/observability';
+import { createLogger, sanitizeError } from '@floz/observability';
 import { dispatchOutboxBatch } from './outbox-dispatcher.js';
 import { createRecurrenceWorker, createNotificationDueSoonWorker } from './recurrence-worker.js';
 import { createRecurrenceQueue, createRedisConnection, QUEUES } from './queues.js';
@@ -54,7 +54,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
     const controller = new AbortController();
     const active = (async () => {
       while (!controller.signal.aborted) {
-        await dispatchOutboxBatch({ db: sql, queue: value as never, claimToken, claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry }).catch((error: unknown) => logger.error(error, 'outbox dispatch failed'));
+        await dispatchOutboxBatch({ db: sql, queue: value as never, claimToken, claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry }).catch((error: unknown) => logger.error({ err: sanitizeError(error), event: 'outbox.dispatch.failed' }, 'outbox dispatch failed'));
         await delay(1000, undefined, { signal: controller.signal }).catch(() => undefined);
       }
     })();
@@ -69,7 +69,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
     if (!databaseUrl) return async () => undefined;
     const { sql } = createDatabase(databaseUrl);
     const { sql: claimSql } = createDatabase(databaseUrl);
-    const stopLoop = startReconciliationLoop({ sql, claimSql, intervalMs: env.RECURRENCE_RECONCILIATION_INTERVAL_MS, batchSize: env.RECURRENCE_RECONCILIATION_BATCH_SIZE, onError: (error) => logger.error(error, 'recurrence reconciliation failed'), databaseUrl });
+    const stopLoop = startReconciliationLoop({ sql, claimSql, intervalMs: env.RECURRENCE_RECONCILIATION_INTERVAL_MS, batchSize: env.RECURRENCE_RECONCILIATION_BATCH_SIZE, onError: (error) => logger.error({ err: sanitizeError(error), event: 'reconciliation.failed' }, 'recurrence reconciliation failed'), databaseUrl });
     return async () => { await stopLoop(); await sql.end(); await claimSql.end(); };
   }))();
   let stopping: Promise<void> | undefined;
