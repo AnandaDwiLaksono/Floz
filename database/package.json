@@ -9,6 +9,7 @@
     "build": "tsc",
     "generate": "drizzle-kit generate --config=drizzle.config.ts",
     "migrate": "drizzle-kit migrate --config=drizzle.config.ts",
+    "migrate:production": "node dist/migrate.js",
     "seed": "tsx src/seed.ts"
   },
   "type": "module",
