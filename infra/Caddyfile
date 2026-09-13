@@ -21,14 +21,13 @@
 
 {$API_HOST:localhost} {
   {$CADDY_TLS_MODE}
+  header Strict-Transport-Security "max-age=15552000"
   @ready path /api/v1/health/ready
   handle @ready {
-    header Strict-Transport-Security "max-age=15552000"
     import api_proxy
   }
   @api path /api/*
   handle @api {
-    header Strict-Transport-Security "max-age=15552000"
     import api_proxy
   }
   reverse_proxy web:3000

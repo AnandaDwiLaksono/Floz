@@ -31,7 +31,10 @@ describe('production artifacts', () => {
     expect(compose).toContain('BETTER_AUTH_SECRET');
     expect(caddy).toContain('dial_timeout 5s');
     expect(caddy).not.toContain('response_header_timeout');
-    expect(caddy).toContain('Strict-Transport-Security "max-age=15552000"');
+    expect(caddy).toContain(`{$CADDY_TLS_MODE}
+  header Strict-Transport-Security "max-age=15552000"
+  @ready path /api/v1/health/ready`);
+    expect(caddy).not.toMatch(/handle @ready[\s\S]*?header Strict-Transport-Security/);
     expect(caddy).toContain('/api/v1/health/ready');
     expect(caddy).toContain('trusted_proxies static');
     expect(caddy).toContain('{$TRUSTED_PROXY_IPS}');
@@ -48,13 +51,9 @@ describe('production artifacts', () => {
     const workflow = read('.github/workflows/phase12-multiarch-smoke.yml');
     expect(workflow).toMatch(/postgres:17-bookworm@sha256:[a-f0-9]{64}/);
     expect(workflow).toMatch(/redis:7-bookworm@sha256:[a-f0-9]{64}/);
-    expect(workflow).toContain('docker network create');
-    expect(workflow).toContain('BETTER_AUTH_SECRET=');
-    expect(workflow).toContain('ALLOWED_ORIGINS=');
-    expect(workflow).toContain('docker inspect');
-    expect(workflow).toContain('curl');
-    expect(workflow).toContain('docker run --rm');
-    expect(workflow.indexOf("trap 'docker rm -f floz-api floz-worker floz-web' EXIT")).toBeLessThan(workflow.indexOf('docker run -d --name floz-api'));
+    expect(workflow).toContain('phase12-image-smoke.ps1 -Platform linux/arm64');
+    expect(workflow).not.toContain('http://127.0.0.1:3001');
+    expect(workflow).not.toContain('docker run -d --name floz-api --network host');
   });
 
   test('smoke executes every service and verifies uid, CA and digest', () => {
@@ -62,6 +61,10 @@ describe('production artifacts', () => {
     expect(script).toContain('docker image inspect');
     expect(script).toContain('id -u');
     expect(script).toContain('node');
+    expect(script).toContain('caddy validate');
+    expect(script).toContain('phase12-caddy');
+    expect(script).toContain('https://localhost:8443/api/v1/health/ready');
+    expect(script).toContain('X-Forwarded-For');
     expect(script).toContain('Invoke-WebRequest');
     expect(script).toContain('migrator');
     expect(script).toContain('next');
