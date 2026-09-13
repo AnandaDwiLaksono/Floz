@@ -27,6 +27,7 @@ describe('recurrence worker runtime', () => {
     const closed: string[] = [];
     const runtime = await startWorkerRuntime({
       env: parseWorkerEnv({ NODE_ENV: 'test' }),
+      heartbeat: { initialize: async () => undefined, stopping: async () => undefined },
       createConnection: () => ({ close: async () => void closed.push('connection') }),
       createQueue: () => ({ close: async () => void closed.push('queue') }),
       createWorker: () => ({ close: async () => void closed.push('worker') }),
@@ -44,6 +45,7 @@ describe('recurrence worker runtime', () => {
     const closed: string[] = [];
     const runtime = await startWorkerRuntime({
       env: parseWorkerEnv({ NODE_ENV: 'test' }),
+      heartbeat: { initialize: async () => undefined, stopping: async () => undefined },
       registerSignalHandlers: true,
       createConnection: () => ({ close: async () => void closed.push('connection') }),
       createQueue: () => ({ close: async () => void closed.push('queue') }),

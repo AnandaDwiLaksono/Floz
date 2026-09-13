@@ -38,6 +38,7 @@ describe('Task 3 — PostgreSQL Owner Budget & Concurrency Verification', () => 
 
     const runtime = await startWorkerRuntime({
       env: parseWorkerEnv({ NODE_ENV: 'test' }),
+      heartbeat: { initialize: async () => undefined, stopping: async () => undefined },
       createConnection: () => ({ close: vi.fn().mockResolvedValue(undefined) }),
       createQueue: () => ({ close: vi.fn().mockResolvedValue(undefined) })
     });

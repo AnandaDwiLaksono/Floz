@@ -10,6 +10,7 @@ import { createRecurrenceWorker, createNotificationDueSoonWorker } from './recur
 import { createRecurrenceQueue, createRedisConnection, QUEUES } from './queues.js';
 import { startReconciliationLoop } from './reconciliation.js';
 import { createWorkerShutdownCoordinator, memoizeBullWorkerClose } from './worker-shutdown.js';
+import { createWorkerHeartbeat } from './worker-health.js';
 
 type Closeable = { close(force?: boolean): Promise<unknown> };
 type DatabaseOwner = { end(): Promise<unknown> };
@@ -27,6 +28,7 @@ export type WorkerRuntimeDeps = {
   requestHeartbeat?: () => Promise<void> | void;
   exit?: (code: 0 | 1) => void;
   hardTerminate?: (code: 1) => void;
+  heartbeat?: { stopping(): Promise<void>; initialize(): Promise<void>; progress?(active?: boolean): Promise<void> };
   createConnection?: (env: WorkerEnv) => Connection;
   createQueue?: (connection: Connection) => Closeable;
   createWorker?: (connection: Connection, concurrency: number) => Closeable;
@@ -44,6 +46,7 @@ const controlledLoop = (run: (signal: AbortSignal) => Promise<void>): Loop => {
 export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
   const env = deps.env ?? parseWorkerEnv(process.env);
   const logger = deps.logger ?? createLogger('worker', env.LOG_LEVEL);
+  const heartbeat = deps.heartbeat ?? await createWorkerHeartbeat({});
   const databaseUrl = process.env.DATABASE_URL;
   const connection: Connection = (deps.createConnection ?? createRedisConnection)(env);
   const queue = (deps.createQueue ?? ((value: Connection) => createRecurrenceQueue(value as never)))(connection);
@@ -62,7 +65,9 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
     const claimToken = randomUUID();
     const loop = controlledLoop(async (signal) => {
       while (!signal.aborted) {
+        await heartbeat.progress?.(true);
         await dispatchOutboxBatch({ db: sql, queue: value as never, claimToken, claim: claimOutboxBatch, markDispatched: markOutboxDispatched, markRetry: markOutboxRetry }).catch((error: unknown) => logger.error({ err: sanitizeError(error), event: 'outbox.dispatch.failed' }, 'outbox dispatch failed'));
+        await heartbeat.progress?.(false);
         await delay(1000, undefined, { signal }).catch(() => undefined);
       }
     });
@@ -85,7 +90,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
   const databases = [workerOwner.database, dispatcherOwner.database, ...reconciliationOwner.databases];
   const shutdown = createWorkerShutdownCoordinator({
     markNotReady: deps.markNotReady,
-    requestHeartbeat: deps.requestHeartbeat,
+    requestHeartbeat: async () => { await heartbeat.stopping(); await deps.requestHeartbeat?.(); },
     requestLoopStops: () => { for (const loop of loops) loop.requestStop(); },
     waitForLoops: () => Promise.allSettled(loops.map((loop) => loop.completed())).then(() => undefined),
     closeWorkers: () => Promise.allSettled(closeWorkers.map((close) => close())).then((results) => { const failed = results.find((result) => result.status === 'rejected'); if (failed?.status === 'rejected') throw failed.reason; }),
@@ -102,6 +107,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
     process.once('SIGINT', onSignal);
     process.once('SIGTERM', onSignal);
   }
+  await heartbeat.initialize();
   logger.info({ concurrency: env.WORKER_CONCURRENCY, queue: QUEUES.recurrenceWakeup }, 'worker started');
   return { stop: shutdown.stop };
 }
