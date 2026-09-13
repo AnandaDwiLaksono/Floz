@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
+import { chmod, mkdir, open, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export type WorkerIdentity = { pid: number; instanceId: string; startTime: number };
@@ -32,7 +32,7 @@ export async function createWorkerHeartbeat(input: { directory?: string; instanc
   const identity: WorkerIdentity = { pid: input.pid ?? process.pid, instanceId: input.instanceId ?? randomUUID(), startTime: now() };
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await chmod(directory, 0o700);
-  for (const name of ['health.json', 'current.json']) await rm(pathFor(directory, name), { force: true });
+  for (const name of await readdir(directory)) if (name === 'health.json' || name === 'current.json' || /^(health|current)\.json\.\d+\.[0-9a-f-]+\.tmp$/i.test(name)) await rm(pathFor(directory, name), { force: true });
   await atomicWrite(directory, 'current.json', identity);
   let state: WorkerHealthState = { ...identity, timestamp: identity.startTime, initialized: false, stopping: false, progressAt: identity.startTime, active: false };
   let lastWrite = state.timestamp;

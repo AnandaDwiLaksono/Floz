@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -14,9 +14,13 @@ describe('worker local health', () => {
   it('writes restrictive initialized state every 15 seconds and removes stale state before startup', async () => {
     const dir = await directory();
     await writeFile(join(dir, 'health.json'), 'stale');
+    await writeFile(join(dir, 'health.json.123.123e4567-e89b-12d3-a456-426614174000.tmp'), 'stale');
+    await writeFile(join(dir, 'unrelated.tmp'), 'keep');
     let now = 1_000;
     const heartbeat = await createWorkerHeartbeat({ directory: dir, instanceId: 'instance-a', pid: process.pid, now: () => now, intervalMs: 15_000 });
     await expect(readFile(join(dir, 'health.json'), 'utf8')).rejects.toThrow();
+    expect(await readdir(dir)).toContain('unrelated.tmp');
+    expect(await readdir(dir)).not.toContain('health.json.123.123e4567-e89b-12d3-a456-426614174000.tmp');
     await heartbeat.initialize();
     expect(JSON.parse(await readFile(join(dir, 'health.json'), 'utf8'))).toMatchObject({ pid: process.pid, instanceId: 'instance-a', initialized: true, stopping: false, progressAt: 1_000 });
     now = 15_999;
