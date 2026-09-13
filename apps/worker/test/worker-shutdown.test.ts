@@ -52,7 +52,7 @@ describe('worker shutdown coordinator', () => {
     await vi.advanceTimersByTimeAsync(29_999);
     expect(calls).not.toContain('queues');
     await vi.advanceTimersByTimeAsync(1);
-    expect(calls).not.toContain('queues');
+    expect(calls).toContain('queues');
     hung.resolve();
     await stopping;
     expect(calls.slice(-4)).toEqual(['queues', 'redis', 'advisory', 'database']);
@@ -86,10 +86,10 @@ describe('worker shutdown coordinator', () => {
     coordinator.resources.waitForLoops = () => graceful.promise;
     const stopping = coordinator.stop();
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(calls).not.toContain('queues');
+    expect(calls.filter((call) => call === 'queues')).toHaveLength(1);
     graceful.resolve();
     await stopping;
-    expect(calls).toContain('queues');
+    expect(calls.filter((call) => call === 'queues')).toHaveLength(1);
     expect(coordinator.resources.exit).toHaveBeenCalledWith(1);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -119,9 +119,16 @@ describe('BullMQ close memoization', () => {
     const close = vi.spyOn(Worker.prototype, 'close').mockResolvedValue();
     const worker = Object.create(Worker.prototype) as Worker;
     const memoized = memoizeBullWorkerClose(worker);
-    expect(memoized()).toBe(memoized());
-    await memoized();
+    expect(memoized()).toBe(memoized(true));
+    await memoized(false);
     expect(close).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledWith(false);
+  });
+
+  it('uses the installed BullMQ 5 Worker without Redis for memoized non-forced close', async () => {
+    const worker = new Worker('shutdown-test', async () => undefined, { autorun: false, connection: { host: '127.0.0.1', port: 1, lazyConnect: true } });
+    const memoized = memoizeBullWorkerClose(worker);
+    expect(memoized()).toBe(memoized(true));
+    await memoized();
   });
 });

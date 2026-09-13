@@ -19,15 +19,13 @@ export type WorkerShutdownResources = {
 
 export function memoizeBullWorkerClose(worker: { close(force?: boolean): Promise<unknown> }) {
   let closing: Promise<void> | undefined;
-  return () => closing ??= Promise.resolve(worker.close(false)).then(() => undefined);
+  return (force?: boolean) => { void force; return closing ??= Promise.resolve(worker.close(false)).then(() => undefined); };
 }
 
 export function createWorkerShutdownCoordinator(resources: WorkerShutdownResources) {
   let stopping: Promise<void> | undefined;
   const run = async () => {
     let failed = false;
-    const forced = setTimeout(() => { failed = true; }, 30_000);
-    const hard = setTimeout(() => (resources.hardTerminate ?? ((code) => process.exit(code)))(1), 35_000);
     const invoke = (action: Action) => {
       try { return Promise.resolve(action()); } catch (error) { return Promise.reject(error); }
     };
@@ -40,13 +38,19 @@ export function createWorkerShutdownCoordinator(resources: WorkerShutdownResourc
         }
       }
     };
-    try {
-      const stoppingRequests = [resources.markNotReady ?? (() => undefined), resources.requestHeartbeat ?? (() => undefined), resources.requestLoopStops, resources.closeWorkers].map(invoke);
-      await settle([() => Promise.all(stoppingRequests).then(() => undefined), resources.waitForLoops]);
+    let cleanup: Promise<void> | undefined;
+    const startCleanup = () => cleanup ??= (async () => {
       await settle([resources.closeQueues]);
       await settle([resources.closeRedis]);
       await settle([resources.releaseAdvisoryLocks]);
       await settle([resources.closeDatabaseOwners]);
+    })();
+    const forced = setTimeout(() => { failed = true; void startCleanup(); }, 30_000);
+    const hard = setTimeout(() => (resources.hardTerminate ?? ((code) => process.exit(code)))(1), 35_000);
+    try {
+      const stoppingRequests = [resources.markNotReady ?? (() => undefined), resources.requestHeartbeat ?? (() => undefined), resources.requestLoopStops, resources.closeWorkers].map(invoke);
+      await settle([() => Promise.all(stoppingRequests).then(() => undefined), resources.waitForLoops]);
+      await startCleanup();
       resources.exit(failed ? 1 : 0);
     } finally {
       clearTimeout(forced);
