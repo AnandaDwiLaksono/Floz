@@ -36,17 +36,19 @@ export async function createWorkerHeartbeat(input: { directory?: string; instanc
   await atomicWrite(directory, 'current.json', identity);
   let state: WorkerHealthState = { ...identity, timestamp: identity.startTime, initialized: false, stopping: false, progressAt: identity.startTime, active: false };
   let lastWrite = state.timestamp;
+  let activeOperations = 0;
+  let writes = Promise.resolve();
   const intervalMs = input.intervalMs ?? 15_000;
-  const write = async () => atomicWrite(directory, 'health.json', state);
-  const tick = async () => { const time = now(); if (time - lastWrite >= intervalMs) { state = { ...state, timestamp: time }; lastWrite = time; await write(); } };
+  const update = (change: () => void) => writes = writes.then(async () => { change(); await atomicWrite(directory, 'health.json', state); });
+  const tick = async () => { const time = now(); if (time - lastWrite >= intervalMs) await update(() => { state = { ...state, timestamp: time }; lastWrite = time; }); };
   const timer = setInterval(() => { void tick(); }, intervalMs);
   timer.unref();
   return {
     identity,
     tick,
-    initialize: async () => { const time = now(); state = { ...state, timestamp: time, initialized: true }; lastWrite = time; await write(); },
-    progress: async (active: boolean) => { const time = now(); state = { ...state, timestamp: time, progressAt: active && state.active ? state.progressAt : time, active }; lastWrite = time; await write(); },
-    stopping: async () => { clearInterval(timer); state = { ...state, timestamp: now(), stopping: true }; await write(); },
+    initialize: async () => { const time = now(); await update(() => { state = { ...state, timestamp: time, initialized: true }; lastWrite = time; }); },
+    progress: async (active: boolean) => { const time = now(); await update(() => { const wasActive = activeOperations > 0; activeOperations = Math.max(0, activeOperations + (active ? 1 : -1)); state = { ...state, timestamp: time, progressAt: active ? (wasActive ? state.progressAt : time) : state.progressAt, active: activeOperations > 0 }; lastWrite = time; }); },
+    stopping: async () => { clearInterval(timer); const time = now(); await update(() => { state = { ...state, timestamp: time, stopping: true }; }); },
     remove: async () => { clearInterval(timer); await Promise.all(['health.json', 'current.json'].map((name) => rm(pathFor(directory, name), { force: true }))); }
   };
 }
@@ -64,8 +66,8 @@ export async function readLocalWorkerHealth(input: { directory?: string; now?: (
   if (health.timestamp! > now || health.progressAt! > now || health.startTime > now) return { healthy: false, reason: 'future' };
   if (health.stopping) return { healthy: false, reason: 'stopping' };
   if (!health.initialized) return { healthy: false, reason: 'uninitialized' };
+  if (health.active && now - health.progressAt! > 45_000) return { healthy: false, reason: 'stuck-progress' };
   if (now - health.timestamp! > 45_000) return { healthy: false, reason: 'stale' };
   if (input.isProcessAlive && !input.isProcessAlive(health.pid)) return { healthy: false, reason: 'terminated' };
-  if (health.active && now - health.progressAt! > 45_000) return { healthy: false, reason: 'stuck-progress' };
   return { healthy: true };
 }

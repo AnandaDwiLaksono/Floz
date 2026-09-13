@@ -50,6 +50,20 @@ describe('worker local health', () => {
     expect(await readLocalWorkerHealth({ directory: dir, now: () => 1_000, isProcessAlive: () => true })).toMatchObject({ healthy: false, reason: 'malformed' });
   });
 
+  it('keeps active state until concurrent operations all settle', async () => {
+    const dir = await directory();
+    let now = 1_000;
+    const heartbeat = await createWorkerHeartbeat({ directory: dir, instanceId: 'instance-a', pid: process.pid, now: () => now });
+    await heartbeat.initialize();
+    await Promise.all([heartbeat.progress(true), heartbeat.progress(true)]);
+    now = 47_000;
+    expect(await readLocalWorkerHealth({ directory: dir, now: () => now, isProcessAlive: () => true })).toMatchObject({ healthy: false, reason: 'stuck-progress' });
+    await heartbeat.progress(false);
+    expect(await readLocalWorkerHealth({ directory: dir, now: () => now, isProcessAlive: () => true })).toMatchObject({ healthy: false, reason: 'stuck-progress' });
+    await heartbeat.progress(false);
+    expect(await readLocalWorkerHealth({ directory: dir, now: () => now, isProcessAlive: () => true })).toEqual({ healthy: true });
+  });
+
   it('accepts initialized idle local state, rejects stale state only after 45 seconds', async () => {
     const dir = await directory();
     await writeFile(join(dir, 'current.json'), JSON.stringify({ pid: process.pid, instanceId: 'instance-a', startTime: 1_000 }));
