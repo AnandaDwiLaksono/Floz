@@ -89,17 +89,11 @@ public class TrustAllCertsPolicy : ICertificatePolicy {
   }
   $ready = Invoke-WebRequest -UseBasicParsing https://localhost:8443/api/v1/health/ready @skipCert -TimeoutSec 5
   if ($ready.Headers['Strict-Transport-Security'] -ne 'max-age=15552000') { throw 'API HSTS mismatch' }
-  try {
-    $fallback = Invoke-WebRequest -UseBasicParsing https://localhost:8443/not-found @skipCert -TimeoutSec 5
-    if ($fallback.Headers['Strict-Transport-Security'] -ne 'max-age=15552000') { throw 'fallback HSTS mismatch' }
-  } catch [System.Net.WebException] {
-    $resp = $_.Exception.Response
-    if ($resp.Headers['Strict-Transport-Security'] -ne 'max-age=15552000') { throw 'fallback HSTS mismatch' }
-  } catch {
-    # In PowerShell Core (pwsh on Linux), WebException might be wrapped or HttpRequestException
-    $resp = $_.Exception.Response
-    if ($resp -and $resp.Headers['Strict-Transport-Security'] -ne 'max-age=15552000') { throw 'fallback HSTS mismatch' }
-  }
+  $isWindowsHost = $env:OS -eq 'Windows_NT'
+  $curl = if ($isWindowsHost) { 'curl.exe' } else { 'curl' }
+  $curlSink = if ($isWindowsHost) { 'NUL' } else { '/dev/null' }
+  $fallbackHeaders = (& $curl -k -sS -D - -o $curlSink https://localhost:8443/not-found 2>&1) -join "`n"
+  if ($fallbackHeaders -notmatch '(?im)^Strict-Transport-Security:\s*max-age=15552000\s*$') { throw 'fallback HSTS mismatch' }
   $spoofStatuses = 1..11 | ForEach-Object {
     try {
       (Invoke-WebRequest -UseBasicParsing https://localhost:8443/api/v1/auth/login @skipCert -Method Post -ContentType application/json -Body '{"email":"test@test.test","password":"Password123!"}' -Headers @{ Origin = 'https://localhost'; 'X-Forwarded-For' = "203.0.113.$_"; Forwarded = "for=203.0.113.$_" } -TimeoutSec 5).StatusCode
