@@ -28,7 +28,7 @@ export type WorkerRuntimeDeps = {
   requestHeartbeat?: () => Promise<void> | void;
   exit?: (code: 0 | 1) => void;
   hardTerminate?: (code: 1) => void;
-  heartbeat?: { stopping(): Promise<void>; initialize(): Promise<void>; progress?(active?: boolean): Promise<void> };
+  heartbeat?: { stopping(): Promise<void>; initialize(): Promise<void>; remove(): Promise<void>; progress?(active?: boolean): Promise<void> };
   createConnection?: (env: WorkerEnv) => Connection;
   createQueue?: (connection: Connection) => Closeable;
   createWorker?: (connection: Connection, concurrency: number) => Closeable;
@@ -47,6 +47,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
   const env = deps.env ?? parseWorkerEnv(process.env);
   const logger = deps.logger ?? createLogger('worker', env.LOG_LEVEL);
   const heartbeat = deps.heartbeat ?? await createWorkerHeartbeat({});
+  try {
   const databaseUrl = process.env.DATABASE_URL;
   const connection: Connection = (deps.createConnection ?? createRedisConnection)(env);
   const queue = (deps.createQueue ?? ((value: Connection) => createRecurrenceQueue(value as never)))(connection);
@@ -96,7 +97,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
     closeWorkers: () => Promise.allSettled(closeWorkers.map((close) => close())).then((results) => { const failed = results.find((result) => result.status === 'rejected'); if (failed?.status === 'rejected') throw failed.reason; }),
     closeQueues: () => queue.close(false).then(() => undefined),
     releaseAdvisoryLocks: () => ('advisory' in reconciliationOwner ? reconciliationOwner.advisory?.release() : undefined) ?? reconciliationOwner.loop.completed(),
-    closeDatabaseOwners: () => Promise.allSettled(databases.map((database) => database.end())).then((results) => { const failed = results.find((result) => result.status === 'rejected'); if (failed?.status === 'rejected') throw failed.reason; }),
+    closeDatabaseOwners: async () => { const results = await Promise.allSettled(databases.map((database) => database.end())); await heartbeat.remove(); const failed = results.find((result) => result.status === 'rejected'); if (failed?.status === 'rejected') throw failed.reason; },
     closeRedis: () => Promise.resolve(connection.quit?.() ?? connection.close?.()).then(() => undefined),
     exit: deps.exit ?? ((code) => { process.exitCode = code; }),
     hardTerminate: deps.hardTerminate,
@@ -110,6 +111,10 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
   await heartbeat.initialize();
   logger.info({ concurrency: env.WORKER_CONCURRENCY, queue: QUEUES.recurrenceWakeup }, 'worker started');
   return { stop: shutdown.stop };
+  } catch (error) {
+    await heartbeat.remove();
+    throw error;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await startWorkerRuntime({ registerSignalHandlers: true });

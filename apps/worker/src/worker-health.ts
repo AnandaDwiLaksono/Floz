@@ -1,54 +1,71 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, open, readFile, rename, rm, unlink } from 'node:fs/promises';
+import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export type WorkerHealthState = { pid: number; instanceId: string; timestamp: number; initialized: boolean; stopping: boolean; progressAt: number; active?: boolean };
+export type WorkerIdentity = { pid: number; instanceId: string; startTime: number };
+export type WorkerHealthState = WorkerIdentity & { timestamp: number; initialized: boolean; stopping: boolean; progressAt: number; active: boolean };
 export type HealthResult = { healthy: true } | { healthy: false; reason: string };
-const fileName = (directory: string) => join(directory, 'health.json');
+const pathFor = (directory: string, name: string) => join(directory, name);
+const validNumber = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const validIdentity = (value: unknown): value is WorkerIdentity => !!value && typeof value === 'object' && validNumber((value as WorkerIdentity).pid) && (value as WorkerIdentity).pid > 0 && typeof (value as WorkerIdentity).instanceId === 'string' && (value as WorkerIdentity).instanceId.length > 0 && validNumber((value as WorkerIdentity).startTime);
 
-async function writeState(directory: string, state: WorkerHealthState) {
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const temporary = `${fileName(directory)}.${process.pid}.${randomUUID()}.tmp`;
-  const handle = await open(temporary, 'w', 0o600);
-  try { await handle.writeFile(JSON.stringify(state)); await handle.sync(); } finally { await handle.close(); }
-  await rename(temporary, fileName(directory));
-  await chmod(fileName(directory), 0o600);
+async function atomicWrite(directory: string, name: string, value: unknown) {
+  const target = pathFor(directory, name);
+  const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  const handle = await open(temporary, 'wx', 0o600);
+  try {
+    await handle.writeFile(JSON.stringify(value));
+    await handle.sync();
+    await handle.close();
+    await rename(temporary, target);
+    await chmod(target, 0o600);
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    await rm(temporary, { force: true });
+    throw error;
+  }
 }
 
 export async function createWorkerHeartbeat(input: { directory?: string; instanceId?: string; pid?: number; now?: () => number; intervalMs?: number }) {
   const directory = input.directory ?? process.env.FLOZ_WORKER_RUNTIME_DIR ?? '/run/floz-worker';
-  const instanceId = input.instanceId ?? process.env.FLOZ_WORKER_INSTANCE_ID ?? randomUUID();
-  const pid = input.pid ?? process.pid;
   const now = input.now ?? Date.now;
-  let state: WorkerHealthState = { pid, instanceId, timestamp: now(), initialized: false, stopping: false, progressAt: now() };
-  await rm(fileName(directory), { force: true });
-  await writeState(directory, state);
+  const identity: WorkerIdentity = { pid: input.pid ?? process.pid, instanceId: input.instanceId ?? randomUUID(), startTime: now() };
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmod(directory, 0o700);
+  for (const name of ['health.json', 'current.json']) await rm(pathFor(directory, name), { force: true });
+  await atomicWrite(directory, 'current.json', identity);
+  let state: WorkerHealthState = { ...identity, timestamp: identity.startTime, initialized: false, stopping: false, progressAt: identity.startTime, active: false };
   let lastWrite = state.timestamp;
-  const tick = async () => { if (now() - lastWrite >= (input.intervalMs ?? 15_000)) { state = { ...state, timestamp: now() }; lastWrite = state.timestamp; await writeState(directory, state); } };
-  const timer = setInterval(() => { void tick(); }, input.intervalMs ?? 15_000);
+  const intervalMs = input.intervalMs ?? 15_000;
+  const write = async () => atomicWrite(directory, 'health.json', state);
+  const tick = async () => { const time = now(); if (time - lastWrite >= intervalMs) { state = { ...state, timestamp: time }; lastWrite = time; await write(); } };
+  const timer = setInterval(() => { void tick(); }, intervalMs);
   timer.unref();
   return {
-    instanceId,
+    identity,
     tick,
-    initialize: async () => { state = { ...state, timestamp: now(), initialized: true }; lastWrite = state.timestamp; await writeState(directory, state); },
-    progress: async (active = true) => { state = { ...state, timestamp: now(), progressAt: now(), active }; lastWrite = state.timestamp; await writeState(directory, state); },
-    stopping: async () => { clearInterval(timer); state = { ...state, timestamp: now(), stopping: true }; await writeState(directory, state); },
-    remove: async () => { clearInterval(timer); await unlink(fileName(directory)).catch(() => undefined); }
+    initialize: async () => { const time = now(); state = { ...state, timestamp: time, initialized: true }; lastWrite = time; await write(); },
+    progress: async (active: boolean) => { const time = now(); state = { ...state, timestamp: time, progressAt: active && state.active ? state.progressAt : time, active }; lastWrite = time; await write(); },
+    stopping: async () => { clearInterval(timer); state = { ...state, timestamp: now(), stopping: true }; await write(); },
+    remove: async () => { clearInterval(timer); await Promise.all(['health.json', 'current.json'].map((name) => rm(pathFor(directory, name), { force: true }))); }
   };
 }
 
-export async function readLocalWorkerHealth(input: { directory?: string; instanceId?: string; now?: () => number; isProcessAlive?: (pid: number) => boolean }): Promise<HealthResult> {
+export async function readLocalWorkerHealth(input: { directory?: string; now?: () => number; isProcessAlive?: (pid: number) => boolean }): Promise<HealthResult> {
   const directory = input.directory ?? process.env.FLOZ_WORKER_RUNTIME_DIR ?? '/run/floz-worker';
-  let state: WorkerHealthState;
-  try { state = JSON.parse(await readFile(fileName(directory), 'utf8')) as WorkerHealthState; } catch { return { healthy: false, reason: 'malformed' }; }
-  if (!state || typeof state !== 'object' || typeof state.instanceId !== 'string' || typeof state.pid !== 'number' || typeof state.timestamp !== 'number' || typeof state.progressAt !== 'number' || typeof state.initialized !== 'boolean' || typeof state.stopping !== 'boolean') return { healthy: false, reason: 'malformed' };
+  let identity: unknown;
+  let state: unknown;
+  try { identity = JSON.parse(await readFile(pathFor(directory, 'current.json'), 'utf8')); state = JSON.parse(await readFile(pathFor(directory, 'health.json'), 'utf8')); } catch (error) { return { healthy: false, reason: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'malformed' }; }
+  if (!validIdentity(identity) || !validIdentity(state)) return { healthy: false, reason: 'malformed' };
+  const health = state as Partial<WorkerHealthState>;
+  if (![health.timestamp, health.progressAt].every(validNumber) || typeof health.initialized !== 'boolean' || typeof health.stopping !== 'boolean' || typeof health.active !== 'boolean') return { healthy: false, reason: 'malformed' };
+  if (identity.pid !== health.pid || identity.instanceId !== health.instanceId || identity.startTime !== health.startTime) return { healthy: false, reason: 'wrong-instance' };
   const now = input.now?.() ?? Date.now();
-  if (input.instanceId && state.instanceId !== input.instanceId) return { healthy: false, reason: 'wrong-instance' };
-  if (state.timestamp > now) return { healthy: false, reason: 'future' };
-  if (state.stopping) return { healthy: false, reason: 'stopping' };
-  if (!state.initialized) return { healthy: false, reason: 'uninitialized' };
-  if (now - state.timestamp > 45_000) return { healthy: false, reason: 'stale' };
-  if (input.isProcessAlive && !input.isProcessAlive(state.pid)) return { healthy: false, reason: 'terminated' };
-  if (state.active && now - state.progressAt > 45_000) return { healthy: false, reason: 'stuck-progress' };
+  if (health.timestamp! > now || health.progressAt! > now || health.startTime > now) return { healthy: false, reason: 'future' };
+  if (health.stopping) return { healthy: false, reason: 'stopping' };
+  if (!health.initialized) return { healthy: false, reason: 'uninitialized' };
+  if (now - health.timestamp! > 45_000) return { healthy: false, reason: 'stale' };
+  if (input.isProcessAlive && !input.isProcessAlive(health.pid)) return { healthy: false, reason: 'terminated' };
+  if (health.active && now - health.progressAt! > 45_000) return { healthy: false, reason: 'stuck-progress' };
   return { healthy: true };
 }
