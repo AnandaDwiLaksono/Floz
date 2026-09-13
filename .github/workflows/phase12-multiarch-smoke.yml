@@ -34,5 +34,14 @@ jobs:
       - name: Build and smoke native images
         shell: pwsh
         run: |
-          & ./scripts/phase12-build-multiarch.ps1 -Platform linux/arm64
-          & ./scripts/phase12-image-smoke.ps1 -Platform linux/arm64
+          $ErrorActionPreference = 'Continue'
+          try {
+            & ./scripts/phase12-build-multiarch.ps1 -Platform linux/arm64
+            if ($LASTEXITCODE) { throw "build failed with exit code $LASTEXITCODE" }
+            & ./scripts/phase12-image-smoke.ps1 -Platform linux/arm64
+            if ($LASTEXITCODE) { throw "smoke failed with exit code $LASTEXITCODE" }
+          } catch {
+            Write-Host "Error details: $_"
+            Write-Host "Exception: $($_.Exception.ToString())"
+            exit 1
+          }
