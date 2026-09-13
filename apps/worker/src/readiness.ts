@@ -8,7 +8,7 @@ import { readLocalWorkerHealth, type HealthResult, type WorkerIdentity } from '.
 
 export type ReadinessResult = { healthy: true } | { healthy: false; reason: string };
 type Pg = { unsafe(query: string): Promise<unknown>; end(options?: { timeout?: number }): Promise<unknown> };
-type RedisProbe = { ping(): Promise<unknown>; disconnect(reconnect?: boolean): void };
+type RedisProbe = { ping(): Promise<unknown>; disconnect(reconnect?: boolean): void | Promise<unknown> };
 type PgOptions = { max: 1; connect_timeout: number; idle_timeout: number; connection: { statement_timeout: number } };
 export type ReadinessInput = { directory?: string; databaseUrl?: string; redisUrl?: string; redisTls?: string; nodeEnv?: string; timeoutMs?: number; totalTimeoutMs?: number; localHealth?: () => Promise<HealthResult>; postgresFactory?: (url: string, options: PgOptions) => Pg | Promise<Pg>; redisFactory?: (url: string, options: RedisOptions) => RedisProbe | Promise<RedisProbe> };
 type LockOwner = { pid: number; nonce: string; startedAt: number; worker: WorkerIdentity };
@@ -75,15 +75,19 @@ export async function checkReadiness(input: ReadinessInput = {}): Promise<Readin
     const pgOptions: PgOptions = { max: 1, connect_timeout: 2, idle_timeout: 1, connection: { statement_timeout: 2000 } };
     const { tls } = normalizeRedisTls(redisUrl, input.redisTls ?? process.env.REDIS_TLS, (input.nodeEnv ?? process.env.NODE_ENV ?? 'development') as 'development' | 'test' | 'production');
     const redisOptions: RedisOptions = { lazyConnect: true, maxRetriesPerRequest: 1, connectTimeout: 2000, commandTimeout: 2000, retryStrategy: () => null, tls: tls ? {} : undefined };
-    [pg, redis] = await bounded(Promise.all([input.postgresFactory?.(databaseUrl, pgOptions) ?? postgres(databaseUrl, pgOptions), input.redisFactory?.(redisUrl, redisOptions) ?? new Redis(redisUrl, redisOptions)]), remaining());
+    const pgFactory = Promise.resolve(input.postgresFactory?.(databaseUrl, pgOptions) ?? postgres(databaseUrl, pgOptions));
+    const redisFactory = Promise.resolve(input.redisFactory?.(redisUrl, redisOptions) ?? new Redis(redisUrl, redisOptions));
+    pgFactory.then(async (owner) => { pg = owner; if (remaining() <= 0) { try { await owner.end({ timeout: 1 }); } finally { await release?.(); } } }, () => undefined);
+    redisFactory.then(async (owner) => { redis = owner; if (remaining() <= 0) { try { await bounded(Promise.resolve(owner.disconnect(false)), 0); } catch {} } }, () => undefined);
+    [pg, redis] = await bounded(Promise.all([pgFactory, redisFactory]), remaining());
     await bounded(Promise.all([pg.unsafe('SELECT 1'), redis.ping()]), Math.min(dependencyMs, remaining()));
     if (!(await bounded(local(), remaining())).healthy) return { healthy: false, reason: 'local' };
     result = { healthy: true };
   } catch (error) { result = { healthy: false, reason: error instanceof Error && error.message === 'readiness-timeout' ? 'timeout' : 'dependency' }; settled = false; }
   finally {
-    redis?.disconnect(false);
+    if (redis) try { await bounded(Promise.resolve(redis.disconnect(false)), remaining()); } catch { result = { healthy: false, reason: 'timeout' }; settled = false; }
     if (pg) {
-      try { await bounded(pg.end({ timeout: 1 }), remaining()); settled = true; } catch { result = { healthy: false, reason: remaining() <= 0 ? 'timeout' : 'cleanup' }; settled = false; }
+      try { await bounded(pg.end({ timeout: 1 }), remaining()); } catch { result = { healthy: false, reason: remaining() <= 0 ? 'timeout' : 'cleanup' }; settled = false; }
     }
     if (release && settled) try { await bounded(release(), remaining()); } catch { result = { healthy: false, reason: 'cleanup' }; }
   }

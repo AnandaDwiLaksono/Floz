@@ -67,6 +67,27 @@ describe('worker dependency readiness', () => {
     await expect(checkReadiness({ ...options(await dir()), totalTimeoutMs: 30, postgresFactory: () => new Promise(() => undefined) })).resolves.toMatchObject({ healthy: false, reason: 'timeout' });
   });
 
+  it('cleans delayed factory owners before allowing a replacement', async () => {
+    const directory = await dir();
+    let resolve!: (value: { unsafe(query: string): Promise<number>; end(): Promise<void> }) => void;
+    const delayed = new Promise<{ unsafe(query: string): Promise<number>; end(): Promise<void> }>((value) => { resolve = value; });
+    const first = checkReadiness({ ...options(directory), totalTimeoutMs: 20, postgresFactory: () => delayed });
+    await expect(first).resolves.toMatchObject({ healthy: false, reason: 'timeout' });
+    await expect(checkReadiness(options(directory))).resolves.toMatchObject({ healthy: false, reason: 'overlap' });
+    resolve({ unsafe: async () => 1, end: async () => undefined });
+    for (;;) { try { await readFile(join(directory, 'readiness.lock')); } catch { break; } await new Promise((resolve) => setImmediate(resolve)); }
+    await expect(checkReadiness(options(directory))).resolves.toEqual({ healthy: true });
+  });
+
+  it('bounds hung Redis cleanup without releasing the lock', async () => {
+    const directory = await dir();
+    const started = Date.now();
+    const first = checkReadiness({ ...options(directory), totalTimeoutMs: 30, redisFactory: () => ({ ping: async () => 'PONG', disconnect: () => new Promise<void>(() => undefined) }) });
+    await expect(first).resolves.toMatchObject({ healthy: false, reason: 'timeout' });
+    expect(Date.now() - started).toBeLessThan(200);
+    await expect(checkReadiness(options(directory))).resolves.toMatchObject({ healthy: false, reason: 'overlap' });
+  });
+
   it('recovers only a stale lock bound to the current worker identity', async () => {
     const directory = await dir();
     const worker = { pid: process.pid, instanceId: 'worker-a', startTime: 1 };
