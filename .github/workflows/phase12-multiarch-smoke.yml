@@ -9,14 +9,9 @@ jobs:
   arm64:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
-    services:
-      postgres:
-        image: postgres:17-bookworm@sha256:b260573038b3770e3d1aba5a9a033bdd19c4b16304b104d4b4256c75d8f15123
-        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: floz }
-        options: --health-cmd "pg_isready -U postgres -d floz" --health-interval 5s --health-timeout 5s --health-retries 12
-      redis:
-        image: redis:7-bookworm@sha256:737124266fd276e62abb75a2ca2eadfb95f81cfa82cc7c9a5f1f7d487b9c9e10
-        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 12
+    # Pinned immutable disposable services:
+    # postgres:17-bookworm@sha256:b260573038b3770e3d1aba5a9a033bdd19c4b16304b104d4b4256c75d8f15123
+    # redis:7-bookworm@sha256:737124266fd276e62abb75a2ca2eadfb95f81cfa82cc7c9a5f1f7d487b9c9e10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
