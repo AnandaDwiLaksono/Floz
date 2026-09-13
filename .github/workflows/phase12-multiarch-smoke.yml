@@ -23,6 +23,12 @@ jobs:
         with: { version: 9.15.4 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
+      - name: Verify native ARM64 host
+        run: |
+          echo "uname=$(uname -m)"
+          test "$(uname -m)" = "aarch64"
+          echo "node=$(node -p 'process.arch')"
+          test "$(node -p 'process.arch')" = "arm64"
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @floz/infra test
       - name: Build and smoke native images

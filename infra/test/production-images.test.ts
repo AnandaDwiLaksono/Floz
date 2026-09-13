@@ -69,6 +69,6 @@ describe('production artifacts', () => {
     expect(script).toContain('migrator');
     expect(script).toContain('next');
     expect(script.indexOf('try {')).toBeLessThan(script.indexOf('docker run -d --name phase12-api'));
-    expect(script).toContain('finally { docker rm -f phase12-api phase12-worker phase12-web');
+    expect(script).toMatch(/finally\s*\{\s*docker rm -f phase12-api phase12-worker phase12-web/);
   });
 });
