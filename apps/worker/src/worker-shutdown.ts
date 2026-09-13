@@ -13,19 +13,8 @@ export type WorkerShutdownResources = {
   closeDatabaseOwners: Action;
   closeRedis: Action;
   exit: (code: 0 | 1) => void;
+  hardTerminate?: (code: 1) => void;
   logger: Logger;
-};
-
-const bounded = async <T>(action: () => Promise<T> | T, milliseconds: number) => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Promise.resolve().then(action),
-      new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), milliseconds); })
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 };
 
 export function memoizeBullWorkerClose(worker: { close(force?: boolean): Promise<unknown> }) {
@@ -37,31 +26,32 @@ export function createWorkerShutdownCoordinator(resources: WorkerShutdownResourc
   let stopping: Promise<void> | undefined;
   const run = async () => {
     let failed = false;
-    const started = Date.now();
-    const remaining = () => Math.max(0, 35_000 - (Date.now() - started));
-    const runBestEffort = async (action: Action) => {
-      try {
-        if (await bounded(action, remaining()) === 'timeout') { failed = true; return false; }
-      } catch (error) { failed = true; resources.logger.error({ err: error }, 'worker shutdown cleanup failed'); }
-      return true;
+    const forced = setTimeout(() => { failed = true; }, 30_000);
+    const hard = setTimeout(() => (resources.hardTerminate ?? ((code) => process.exit(code)))(1), 35_000);
+    const invoke = (action: Action) => {
+      try { return Promise.resolve(action()); } catch (error) { return Promise.reject(error); }
+    };
+    const settle = async (actions: Action[]) => {
+      const results = await Promise.allSettled(actions.map(invoke));
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          failed = true;
+          resources.logger.error({ err: result.reason }, 'worker shutdown cleanup failed');
+        }
+      }
     };
     try {
-      const notReady = Promise.resolve((resources.markNotReady ?? (() => undefined))());
-      const loopStop = Promise.resolve(resources.requestLoopStops());
-      const workerClose = Promise.resolve(resources.closeWorkers());
-      await runBestEffort(() => notReady);
-      await runBestEffort(resources.requestHeartbeat ?? (() => undefined));
-      const graceful = await bounded(() => Promise.all([loopStop, workerClose, resources.waitForLoops()]), Math.min(30_000, remaining()));
-      if (graceful === 'timeout') failed = true;
-    } catch (error) {
-      failed = true;
-      resources.logger.error({ err: error }, 'worker shutdown failed');
+      const stoppingRequests = [resources.markNotReady ?? (() => undefined), resources.requestHeartbeat ?? (() => undefined), resources.requestLoopStops, resources.closeWorkers].map(invoke);
+      await settle([() => Promise.all(stoppingRequests).then(() => undefined), resources.waitForLoops]);
+      await settle([resources.closeQueues]);
+      await settle([resources.closeRedis]);
+      await settle([resources.releaseAdvisoryLocks]);
+      await settle([resources.closeDatabaseOwners]);
+      resources.exit(failed ? 1 : 0);
     } finally {
-      for (const action of [resources.closeQueues, resources.closeRedis, resources.releaseAdvisoryLocks, resources.closeDatabaseOwners]) {
-        if (!(await runBestEffort(action))) break;
-      }
+      clearTimeout(forced);
+      clearTimeout(hard);
     }
-    resources.exit(failed ? 1 : 0);
   };
   return { resources, stop: () => stopping ??= run() };
 }

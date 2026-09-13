@@ -26,6 +26,7 @@ export type WorkerRuntimeDeps = {
   markNotReady?: () => Promise<void> | void;
   requestHeartbeat?: () => Promise<void> | void;
   exit?: (code: 0 | 1) => void;
+  hardTerminate?: (code: 1) => void;
   createConnection?: (env: WorkerEnv) => Connection;
   createQueue?: (connection: Connection) => Closeable;
   createWorker?: (connection: Connection, concurrency: number) => Closeable;
@@ -93,6 +94,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
     closeDatabaseOwners: () => Promise.allSettled(databases.map((database) => database.end())).then((results) => { const failed = results.find((result) => result.status === 'rejected'); if (failed?.status === 'rejected') throw failed.reason; }),
     closeRedis: () => Promise.resolve(connection.quit?.() ?? connection.close?.()).then(() => undefined),
     exit: deps.exit ?? ((code) => { process.exitCode = code; }),
+    hardTerminate: deps.hardTerminate,
     logger
   });
   const onSignal = () => void shutdown.stop();

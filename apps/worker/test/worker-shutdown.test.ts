@@ -22,6 +22,7 @@ const setup = () => {
     closeDatabaseOwners: action('database'),
     closeRedis: action('redis'),
     exit: vi.fn(),
+    hardTerminate: vi.fn(),
     logger: { info: vi.fn(), error: vi.fn() }
   });
   return { calls, coordinator };
@@ -33,7 +34,7 @@ describe('worker shutdown coordinator', () => {
   it('shuts down in dependency-safe order', async () => {
     const { calls, coordinator } = setup();
     await coordinator.stop();
-    expect(calls).toEqual(['not-ready', 'request-loops', 'workers', 'heartbeat', 'loops-finished', 'queues', 'redis', 'advisory', 'database']);
+    expect(calls).toEqual(['not-ready', 'heartbeat', 'request-loops', 'workers', 'loops-finished', 'queues', 'redis', 'advisory', 'database']);
   });
 
   it('memoizes repeated shutdown requests', async () => {
@@ -51,24 +52,23 @@ describe('worker shutdown coordinator', () => {
     await vi.advanceTimersByTimeAsync(29_999);
     expect(calls).not.toContain('queues');
     await vi.advanceTimersByTimeAsync(1);
+    expect(calls).not.toContain('queues');
+    hung.resolve();
     await stopping;
     expect(calls.slice(-4)).toEqual(['queues', 'redis', 'advisory', 'database']);
   });
 
-  it('hard-fails at exactly 35 seconds when cleanup hangs without detached continuation', async () => {
+  it('hard-terminates at exactly 35 seconds when tracked cleanup remains unresolved', async () => {
     vi.useFakeTimers();
     const hung = deferred();
     const { calls, coordinator } = setup();
     coordinator.resources.closeQueues = async () => { calls.push('queues'); await hung.promise; };
-    const stopping = coordinator.stop();
+    void coordinator.stop();
     await vi.advanceTimersByTimeAsync(34_999);
-    expect(coordinator.resources.exit).not.toHaveBeenCalled();
+    expect(coordinator.resources.hardTerminate).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    await stopping;
-    expect(coordinator.resources.exit).toHaveBeenCalledWith(1);
-    hung.resolve();
-    await Promise.resolve();
-    expect(coordinator.resources.exit).toHaveBeenCalledWith(1);
+    expect(coordinator.resources.hardTerminate).toHaveBeenCalledWith(1);
+    expect(calls).toContain('queues');
   });
 
   it('continues remaining cleanup after a transient error and releases advisory ownership before database pools', async () => {
@@ -86,8 +86,11 @@ describe('worker shutdown coordinator', () => {
     coordinator.resources.waitForLoops = () => graceful.promise;
     const stopping = coordinator.stop();
     await vi.advanceTimersByTimeAsync(30_000);
+    expect(calls).not.toContain('queues');
+    graceful.resolve();
     await stopping;
     expect(calls).toContain('queues');
+    expect(coordinator.resources.exit).toHaveBeenCalledWith(1);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -101,6 +104,9 @@ describe('worker shutdown coordinator', () => {
     expect(calls).toContain('request-loops');
     expect(calls).toContain('workers');
     await vi.advanceTimersByTimeAsync(35_000);
+    expect(coordinator.resources.hardTerminate).toHaveBeenCalledWith(1);
+    expect(coordinator.resources.exit).not.toHaveBeenCalled();
+    hung.resolve();
     await stopping;
     expect(calls.slice(-3)).toEqual(['redis', 'advisory', 'database']);
     expect(coordinator.resources.exit).toHaveBeenCalledWith(1);
