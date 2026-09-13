@@ -37,7 +37,7 @@ describe('recurrence worker runtime', () => {
     await runtime.stop();
     await runtime.stop();
 
-    expect(closed).toEqual(['reconciliation', 'dispatcher', 'worker', 'queue', 'connection']);
+    expect(closed).toEqual(['dispatcher', 'reconciliation', 'worker', 'queue', 'connection']);
   });
 
   it('stops through SIGTERM without Redis', async () => {
@@ -55,7 +55,7 @@ describe('recurrence worker runtime', () => {
     process.emit('SIGTERM');
     await new Promise((resolve) => setImmediate(resolve));
 
-    expect(closed).toEqual(['reconciliation', 'dispatcher', 'worker', 'queue', 'connection']);
+    expect(closed).toEqual(['dispatcher', 'reconciliation', 'worker', 'queue', 'connection']);
     await runtime.stop();
   });
 });
