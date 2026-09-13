@@ -88,6 +88,35 @@ describe('worker dependency readiness', () => {
     await expect(checkReadiness(options(directory))).resolves.toMatchObject({ healthy: false, reason: 'overlap' });
   });
 
+  it('keeps the lock after PG settles until late Redis settles', async () => {
+    const directory = await dir();
+    let resolvePg!: (value: { unsafe(query: string): Promise<number>; end(): Promise<void> }) => void;
+    let resolveRedis!: (value: { ping(): Promise<string>; disconnect(): void }) => void;
+    const pg = new Promise<{ unsafe(query: string): Promise<number>; end(): Promise<void> }>((resolve) => { resolvePg = resolve; });
+    const redis = new Promise<{ ping(): Promise<string>; disconnect(): void }>((resolve) => { resolveRedis = resolve; });
+    const first = checkReadiness({ ...options(directory), totalTimeoutMs: 20, postgresFactory: () => pg, redisFactory: () => redis });
+    await expect(first).resolves.toMatchObject({ healthy: false, reason: 'timeout' });
+    resolvePg({ unsafe: async () => 1, end: async () => undefined });
+    await new Promise((resolve) => setImmediate(resolve));
+    await expect(checkReadiness(options(directory))).resolves.toMatchObject({ healthy: false, reason: 'overlap' });
+    resolveRedis({ ping: async () => 'PONG', disconnect: () => undefined });
+    for (;;) { try { await readFile(join(directory, 'readiness.lock')); } catch { break; } await new Promise((resolve) => setImmediate(resolve)); }
+    await expect(checkReadiness(options(directory))).resolves.toEqual({ healthy: true });
+  });
+
+  it('releases only after late Redis settles after PG', async () => {
+    const directory = await dir();
+    let resolveRedis!: (value: { ping(): Promise<string>; disconnect(): void }) => void;
+    const redis = new Promise<{ ping(): Promise<string>; disconnect(): void }>((resolve) => { resolveRedis = resolve; });
+    const first = checkReadiness({ ...options(directory), totalTimeoutMs: 20, redisFactory: () => redis });
+    await expect(first).resolves.toMatchObject({ healthy: false, reason: 'timeout' });
+    await new Promise((resolve) => setImmediate(resolve));
+    await expect(checkReadiness(options(directory))).resolves.toMatchObject({ healthy: false, reason: 'overlap' });
+    resolveRedis({ ping: async () => 'PONG', disconnect: () => undefined });
+    for (;;) { try { await readFile(join(directory, 'readiness.lock')); } catch { break; } await new Promise((resolve) => setImmediate(resolve)); }
+    await expect(checkReadiness(options(directory))).resolves.toEqual({ healthy: true });
+  });
+
   it('recovers only a stale lock bound to the current worker identity', async () => {
     const directory = await dir();
     const worker = { pid: process.pid, instanceId: 'worker-a', startTime: 1 };
