@@ -64,7 +64,14 @@ export async function checkReadiness(input: ReadinessInput = {}): Promise<Readin
   let redis: RedisProbe | undefined;
   let result: ReadinessResult = { healthy: false, reason: 'dependency' };
   let settled = true;
-  let abandoned = false;
+  let lateFactories: [Promise<Pg>, Promise<RedisProbe>] | undefined;
+  const settleLateFactories = async () => {
+    if (!lateFactories) return;
+    const [pgResult, redisResult] = await Promise.allSettled(lateFactories);
+    if (redisResult.status === 'fulfilled') try { await bounded(Promise.resolve(redisResult.value.disconnect(false)), 0); } catch {}
+    if (pgResult.status === 'fulfilled') try { await pgResult.value.end({ timeout: 1 }); } catch {}
+    await releaseOnce().catch(() => undefined);
+  };
   try {
     if (!(await bounded(local(), remaining())).healthy) return { healthy: false, reason: 'local' };
     const worker = await bounded(readWorker(directory), remaining()).catch(() => undefined);
@@ -82,17 +89,12 @@ export async function checkReadiness(input: ReadinessInput = {}): Promise<Readin
     const redisFactory = Promise.resolve(input.redisFactory?.(redisUrl, redisOptions) ?? new Redis(redisUrl, redisOptions));
     pgFactory.then((owner) => { pg = owner; }, () => undefined);
     redisFactory.then((owner) => { redis = owner; }, () => undefined);
-    void Promise.allSettled([pgFactory, redisFactory]).then(async ([pgResult, redisResult]) => {
-      if (!abandoned) return;
-      if (redisResult.status === 'fulfilled') try { await bounded(Promise.resolve(redisResult.value.disconnect(false)), 0); } catch {}
-      if (pgResult.status === 'fulfilled') try { await pgResult.value.end({ timeout: 1 }); } catch {}
-      await releaseOnce().catch(() => undefined);
-    });
-    [pg, redis] = await bounded(Promise.all([pgFactory, redisFactory]), remaining());
+    lateFactories = [pgFactory, redisFactory];
+    [pg, redis] = await bounded(Promise.all(lateFactories), remaining());
     await bounded(Promise.all([pg.unsafe('SELECT 1'), redis.ping()]), Math.min(dependencyMs, remaining()));
     if (!(await bounded(local(), remaining())).healthy) return { healthy: false, reason: 'local' };
     result = { healthy: true };
-  } catch (error) { result = { healthy: false, reason: error instanceof Error && error.message === 'readiness-timeout' ? 'timeout' : 'dependency' }; settled = false; abandoned = true; }
+  } catch (error) { result = { healthy: false, reason: error instanceof Error && error.message === 'readiness-timeout' ? 'timeout' : 'dependency' }; settled = false; void settleLateFactories(); }
   finally {
     if (redis) try { await bounded(Promise.resolve(redis.disconnect(false)), remaining()); } catch { result = { healthy: false, reason: 'timeout' }; settled = false; }
     if (pg) {
