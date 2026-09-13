@@ -2,14 +2,14 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { normalizePostgresTls, type NodeEnv } from '@floz/config';
+import { normalizePostgresTls, parseMigrationEnv, type NodeEnv } from '@floz/config';
 import postgres from 'postgres';
 
 const migrationTimeoutMs = 60000;
 
 export type MigrateOptions = {
   outerTimeoutMs?: number;
-  onBackendPid?: (pid: number, stage: 'connected' | 'locked' | 'migrated' | 'unlocking') => void | Promise<void>;
+  onBackendPid?: (pid: number, stage: 'connected' | 'locked' | 'journal' | 'transaction' | 'migrated' | 'unlocking') => void | Promise<void>;
   nodeEnv?: NodeEnv;
   dbSsl?: string;
 };
@@ -19,17 +19,27 @@ export const migrationAdvisoryKey = (environment: string, database: string) => c
   .digest().readBigInt64BE();
 
 export async function migrateDatabase(url: string, options: MigrateOptions = {}) {
-  const nodeEnv = options.nodeEnv ?? (process.env.NODE_ENV ?? 'development') as NodeEnv;
-  const { ssl } = normalizePostgresTls(url, options.dbSsl, nodeEnv);
+  const environment = parseMigrationEnv({
+    ...process.env,
+    NODE_ENV: options.nodeEnv ?? process.env.NODE_ENV,
+    DATABASE_URL: url,
+    DB_SSL: options.dbSsl ?? process.env.DB_SSL
+  });
+  const nodeEnv = environment.NODE_ENV;
+  const { ssl } = normalizePostgresTls(url, environment.DB_SSL, nodeEnv);
   let closed = false;
-  const sql = postgres(url, {
+  let sql: ReturnType<typeof postgres>;
+  sql = postgres(url, {
     max: 1,
     connect_timeout: 5,
     idle_timeout: 0,
     max_lifetime: null,
     ssl: ssl === false ? undefined : nodeEnv === 'production' ? { rejectUnauthorized: true } : ssl,
     connection: { statement_timeout: 10000, lock_timeout: 3000 },
-    onclose: () => { closed = true; }
+    onclose: () => {
+      closed = true;
+      void sql.end({ timeout: 0 });
+    }
   });
   const ensureOpen = () => {
     if (closed) throw new Error('Database migration session was lost');
@@ -47,6 +57,10 @@ export async function migrateDatabase(url: string, options: MigrateOptions = {})
       try {
         await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'locked');
         ensureOpen();
+        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'journal');
+        ensureOpen();
+        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'transaction');
+        ensureOpen();
         await migrate(drizzle(sql), { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) });
         ensureOpen();
         await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'migrated');
@@ -59,19 +73,20 @@ export async function migrateDatabase(url: string, options: MigrateOptions = {})
       await sql.end({ timeout: 5000 });
     }
   };
-  let timer: NodeJS.Timeout | undefined;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    void sql.end({ timeout: 0 });
+  }, options.outerTimeoutMs ?? migrationTimeoutMs);
   try {
-    return await Promise.race([
-      run(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          void sql.end({ timeout: 0 });
-          reject(new Error('Database migration timed out'));
-        }, options.outerTimeoutMs ?? migrationTimeoutMs);
-      })
-    ]);
+    const result = await run();
+    if (timedOut) throw new Error('Database migration timed out');
+    return result;
+  } catch (error) {
+    if (timedOut) throw new Error('Database migration timed out');
+    throw error;
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
   }
 }
 

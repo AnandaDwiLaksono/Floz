@@ -1,4 +1,6 @@
+import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -19,6 +21,16 @@ const migrationBytes = async () => Promise.all((await readdir(migrationsDir))
   .map((file) => [file, createHash('sha256').update(readFileSync(new URL(file, migrationsDir))).digest('hex')]));
 const advisoryKey = (environment: string) => migrationAdvisoryKey(environment, database);
 
+const runCompiled = async (environment: string) => {
+  const child = spawn(process.execPath, ['dist/migrate.js'], {
+    cwd: new URL('..', import.meta.url),
+    env: { ...process.env, DATABASE_URL: databaseUrl, NODE_ENV: environment },
+    stdio: 'ignore'
+  });
+  const [code] = await once(child, 'exit') as [number | null];
+  return code;
+};
+
 describe('compiled session-locked migrator', () => {
   const admin = postgres(adminUrl.toString(), { max: 1 });
 
@@ -32,11 +44,16 @@ describe('compiled session-locked migrator', () => {
   });
 
   it('applies checked-in migrations to a clean database', async () => {
-    await migrateDatabase(databaseUrl, { nodeEnv: 'test' });
+    expect(await runCompiled('test')).toBe(0);
     const sql = postgres(databaseUrl, { max: 1 });
     const rows = await sql`select count(*)::int as count from drizzle.__drizzle_migrations`;
     expect(rows[0].count).toBe(9);
     await sql.end();
+  });
+
+  it('rejects invalid NODE_ENV before connecting', async () => {
+    expect(await runCompiled('invalid')).not.toBe(0);
+    await expect(migrateDatabase(databaseUrl, { nodeEnv: 'invalid' as never })).rejects.toThrow();
   });
 
   it('applies the latest migration to a valid populated pre-latest database', async () => {
@@ -74,30 +91,28 @@ describe('compiled session-locked migrator', () => {
     }
   });
 
-  it('keeps the backend PID through lock, journal, transaction, and unlock', async () => {
+  it('keeps one PID through lock, journal, transaction, and unlock', async () => {
     const pids: number[] = [];
-    await migrateDatabase(databaseUrl, { nodeEnv: 'test', onBackendPid: (pid) => { pids.push(pid); } });
-    expect(pids.length).toBeGreaterThanOrEqual(4);
+    const stages: string[] = [];
+    await migrateDatabase(databaseUrl, { nodeEnv: 'test', onBackendPid: (pid, stage) => { pids.push(pid); stages.push(stage); } });
+    expect(stages).toEqual(['connected', 'locked', 'journal', 'transaction', 'migrated', 'unlocking']);
     expect(new Set(pids).size).toBe(1);
   });
 
-  it('fails fatally after session loss following lock acquisition', async () => {
-    let kill: Promise<unknown> | undefined;
+  it('fails fatally after session loss before journal access', async () => {
     await expect(migrateDatabase(databaseUrl, {
       nodeEnv: 'test',
       outerTimeoutMs: 1000,
       onBackendPid: async (pid, stage) => {
-        if (stage === 'locked') {
-          kill = admin`select pg_terminate_backend(${pid})`;
-          await kill;
-        }
+        if (stage === 'locked') await admin`select pg_terminate_backend(${pid})`;
       }
     })).rejects.toThrow();
-    await kill;
   });
 
-  it('fails when its outer timeout expires', async () => {
+  it('fails when its outer timeout expires without continuing migration work', async () => {
+    const before = await migrationBytes();
     await expect(migrateDatabase(databaseUrl, { nodeEnv: 'test', outerTimeoutMs: 0 })).rejects.toThrow('timed out');
+    expect(await migrationBytes()).toEqual(before);
   });
 
   it('does not alter checked-in migration bytes', async () => {
