@@ -1,55 +1,53 @@
 services:
   caddy:
-    image: caddy:2.10.2-alpine
-    ports:
-      - "80:80"
-      - "443:443"
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    ports: ["80:80", "443:443"]
+    environment:
+      API_HOST: ${API_HOST:?API_HOST required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL required}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-172.30.0.0/16}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    depends_on:
-      - api
-      - web
-    networks: [default, private]
+    depends_on: [api, web]
+    networks: [ingress, private]
   api:
-    build:
-      context: ..
-      dockerfile: infra/docker/api.Dockerfile
-    expose:
-      - "3001"
+    build: { context: .., dockerfile: infra/docker/api.Dockerfile }
+    expose: ["3001"]
     environment:
-      API_PORT: 3001
       NODE_ENV: production
+      API_PORT: 3001
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET required}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL required}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS required}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-172.30.0.0/16}
     networks: [private]
   web:
-    build:
-      context: ..
-      dockerfile: infra/docker/web.Dockerfile
-    expose:
-      - "3000"
-    networks: [private]
-  worker:
-    build:
-      context: ..
-      dockerfile: infra/docker/worker.Dockerfile
+    build: { context: .., dockerfile: infra/docker/web.Dockerfile }
+    expose: ["3000"]
     environment:
       NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL required}
     networks: [private]
-    tmpfs:
-      - /run/floz-worker:mode=0700,uid=100,gid=100
+  worker:
+    build: { context: .., dockerfile: infra/docker/worker.Dockerfile }
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL required}
+    networks: [private]
+    tmpfs: ["/run/floz-worker:rw,noexec,nosuid,size=1m,mode=0700,uid=100,gid=100"]
+    read_only: true
   migrator:
-    build:
-      context: ..
-      dockerfile: infra/docker/migrate.Dockerfile
+    build: { context: .., dockerfile: infra/docker/migrate.Dockerfile }
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required}
     networks: [private]
 
 networks:
-  private:
-    internal: true
-volumes:
-  caddy_data:
-  caddy_config:
+  ingress: {}
+  private: { internal: true }
+volumes: { caddy_data: {}, caddy_config: {} }

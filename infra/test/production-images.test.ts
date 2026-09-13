@@ -26,10 +26,38 @@ describe('production artifacts', () => {
     const compose = read('infra/docker-compose.yml');
     const caddy = read('infra/Caddyfile');
     expect(compose).not.toMatch(/api:[\s\S]*?ports:/);
+    expect(compose).toContain('TRUSTED_PROXY_IPS');
+    expect(compose).toContain('ALLOWED_ORIGINS');
+    expect(compose).toContain('BETTER_AUTH_SECRET');
     expect(caddy).toContain('dial_timeout 5s');
     expect(caddy).not.toContain('response_header_timeout');
     expect(caddy).toContain('Strict-Transport-Security "max-age=15552000"');
     expect(caddy).toContain('/api/v1/health/ready');
-    for (const header of ['Forwarded', 'X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto']) expect(caddy).toContain(`header_up -${header}`);
+    expect(caddy).toContain('trusted_proxies static');
+    expect(caddy).toContain('{$TRUSTED_PROXY_IPS}');
+    expect(caddy.match(/header_up -Forwarded/g)?.length).toBe(1);
+    expect(caddy).toContain('header_up X-Forwarded-For {http.request.remote.host}');
+  });
+
+  test('workflow uses immutable disposable services and real runtime checks', () => {
+    const workflow = read('.github/workflows/phase12-multiarch-smoke.yml');
+    expect(workflow).toMatch(/postgres:17-bookworm@sha256:[a-f0-9]{64}/);
+    expect(workflow).toMatch(/redis:7-bookworm@sha256:[a-f0-9]{64}/);
+    expect(workflow).toContain('docker network create');
+    expect(workflow).toContain('BETTER_AUTH_SECRET=');
+    expect(workflow).toContain('ALLOWED_ORIGINS=');
+    expect(workflow).toContain('docker inspect');
+    expect(workflow).toContain('curl');
+    expect(workflow).toContain('docker run --rm');
+  });
+
+  test('smoke executes every service and verifies uid, CA and digest', () => {
+    const script = read('scripts/phase12-image-smoke.ps1');
+    expect(script).toContain('docker image inspect');
+    expect(script).toContain('id -u');
+    expect(script).toContain('node');
+    expect(script).toContain('Invoke-WebRequest');
+    expect(script).toContain('migrator');
+    expect(script).toContain('next');
   });
 });
