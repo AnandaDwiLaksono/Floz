@@ -35,8 +35,13 @@ describe('production artifacts', () => {
     expect(caddy).toContain('/api/v1/health/ready');
     expect(caddy).toContain('trusted_proxies static');
     expect(caddy).toContain('{$TRUSTED_PROXY_IPS}');
+    expect(caddy).toContain('{$CADDY_TLS_MODE}');
+    expect(compose).toContain('CADDY_TLS_MODE: ${CADDY_TLS_MODE:?CADDY_TLS_MODE required}');
+    expect(compose).toContain('ipv4_address: 172.30.0.2');
+    expect(compose).toContain('TRUSTED_PROXY_IPS: 172.30.0.2');
     expect(caddy.match(/header_up -Forwarded/g)?.length).toBe(1);
-    expect(caddy).toContain('header_up X-Forwarded-For {http.request.remote.host}');
+    expect(caddy).toContain('header_up X-Forwarded-For {client_ip}');
+    expect(caddy).not.toContain('header_up X-Forwarded-For {http.request.remote.host}');
   });
 
   test('workflow uses immutable disposable services and real runtime checks', () => {
@@ -59,5 +64,7 @@ describe('production artifacts', () => {
     expect(script).toContain('Invoke-WebRequest');
     expect(script).toContain('migrator');
     expect(script).toContain('next');
+    expect(script.indexOf('try {')).toBeLessThan(script.indexOf('docker run -d --name phase12-api'));
+    expect(script).toContain('finally { docker rm -f phase12-api phase12-worker phase12-web');
   });
 });

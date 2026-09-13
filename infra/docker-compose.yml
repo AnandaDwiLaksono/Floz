@@ -5,13 +5,17 @@ services:
     environment:
       API_HOST: ${API_HOST:?API_HOST required}
       ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL required}
-      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-172.30.0.0/16}
+      TRUSTED_PROXY_IPS: 172.30.0.2
+      CADDY_TLS_MODE: ${CADDY_TLS_MODE:?CADDY_TLS_MODE required}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on: [api, web]
-    networks: [ingress, private]
+    networks:
+      ingress: {}
+      private:
+        ipv4_address: 172.30.0.2
   api:
     build: { context: .., dockerfile: infra/docker/api.Dockerfile }
     expose: ["3001"]
@@ -22,7 +26,7 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET required}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL required}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS required}
-      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-172.30.0.0/16}
+      TRUSTED_PROXY_IPS: 172.30.0.2
     networks: [private]
   web:
     build: { context: .., dockerfile: infra/docker/web.Dockerfile }
@@ -49,5 +53,9 @@ services:
 
 networks:
   ingress: {}
-  private: { internal: true }
+  private:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
 volumes: { caddy_data: {}, caddy_config: {} }

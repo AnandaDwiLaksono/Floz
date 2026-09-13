@@ -14,13 +14,13 @@
     header_up -X-Forwarded-For
     header_up -X-Forwarded-Host
     header_up -X-Forwarded-Proto
-    header_up X-Forwarded-For {http.request.remote.host}
+    header_up X-Forwarded-For {client_ip}
     header_up X-Forwarded-Proto https
   }
 }
 
 {$API_HOST:localhost} {
-  tls internal
+  {$CADDY_TLS_MODE}
   @ready path /api/v1/health/ready
   handle @ready {
     header Strict-Transport-Security "max-age=15552000"
