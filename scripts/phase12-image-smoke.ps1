@@ -50,8 +50,10 @@ try {
   docker run --rm --platform $Platform --network phase12-smoke --add-host host.docker.internal:host-gateway -e NODE_ENV=test -e DB_SSL=false -e DATABASE_URL=$HostDatabaseUrl floz-migrator:phase12
   if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-  if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
-    Add-Type @"
+  $skipCert = if ($PSVersionTable.PSEdition -eq 'Core') { @{ SkipCertificateCheck = $true } } else { @{} }
+  if ($PSVersionTable.PSEdition -ne 'Core') {
+    if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
+      Add-Type @"
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 public class TrustAllCertsPolicy : ICertificatePolicy {
@@ -60,8 +62,9 @@ public class TrustAllCertsPolicy : ICertificatePolicy {
     }
 }
 "@
+    }
+    [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
   }
-  [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
   docker run -d --name phase12-api --platform $Platform --add-host host.docker.internal:host-gateway --network phase12-smoke --network-alias api --ip 172.30.0.3 -e NODE_ENV=test -e DB_SSL=false -e API_PORT=3001 -e DATABASE_URL=$HostDatabaseUrl -e BETTER_AUTH_SECRET=phase12-ci-secret-with-sufficient-entropy-123 -e BETTER_AUTH_URL=https://localhost -e ALLOWED_ORIGINS=https://localhost -e TRUSTED_PROXY_IPS=172.30.0.2 floz-api:phase12 | Out-Null
   docker run -d --name phase12-worker --platform $Platform --add-host host.docker.internal:host-gateway --network phase12-smoke --ip 172.30.0.4 --tmpfs /run/floz-worker:rw,noexec,nosuid,size=1m,mode=1777 -e NODE_ENV=test -e DB_SSL=false -e REDIS_TLS=false -e DATABASE_URL=$HostDatabaseUrl -e REDIS_URL=$HostRedisUrl floz-worker:phase12 | Out-Null
   docker run -d --name phase12-web --platform $Platform --network phase12-smoke --network-alias web --ip 172.30.0.5 -e NODE_ENV=production -e NEXT_PUBLIC_API_URL=https://localhost floz-web:phase12 | Out-Null
@@ -71,7 +74,7 @@ public class TrustAllCertsPolicy : ICertificatePolicy {
   if ($published) { throw 'API is publicly exposed' }
   for ($i=0; $i -lt 45; $i++) {
     try {
-      Invoke-WebRequest -UseBasicParsing https://localhost:8443/api/v1/health/ready -TimeoutSec 2 | Out-Null
+      Invoke-WebRequest -UseBasicParsing https://localhost:8443/api/v1/health/ready @skipCert -TimeoutSec 2 | Out-Null
       break
     } catch {
       if ($i -eq 44) {
@@ -84,20 +87,26 @@ public class TrustAllCertsPolicy : ICertificatePolicy {
       Start-Sleep 1
     }
   }
-  $ready = Invoke-WebRequest -UseBasicParsing https://localhost:8443/api/v1/health/ready -TimeoutSec 5
+  $ready = Invoke-WebRequest -UseBasicParsing https://localhost:8443/api/v1/health/ready @skipCert -TimeoutSec 5
   if ($ready.Headers['Strict-Transport-Security'] -ne 'max-age=15552000') { throw 'API HSTS mismatch' }
   try {
-    $fallback = Invoke-WebRequest -UseBasicParsing https://localhost:8443/not-found -TimeoutSec 5
+    $fallback = Invoke-WebRequest -UseBasicParsing https://localhost:8443/not-found @skipCert -TimeoutSec 5
     if ($fallback.Headers['Strict-Transport-Security'] -ne 'max-age=15552000') { throw 'fallback HSTS mismatch' }
   } catch [System.Net.WebException] {
     $resp = $_.Exception.Response
     if ($resp.Headers['Strict-Transport-Security'] -ne 'max-age=15552000') { throw 'fallback HSTS mismatch' }
+  } catch {
+    # In PowerShell Core (pwsh on Linux), WebException might be wrapped or HttpRequestException
+    $resp = $_.Exception.Response
+    if ($resp -and $resp.Headers['Strict-Transport-Security'] -ne 'max-age=15552000') { throw 'fallback HSTS mismatch' }
   }
   $spoofStatuses = 1..11 | ForEach-Object {
     try {
-      (Invoke-WebRequest -UseBasicParsing https://localhost:8443/api/v1/auth/login -Method Post -ContentType application/json -Body '{"email":"test@test.test","password":"Password123!"}' -Headers @{ Origin = 'https://localhost'; 'X-Forwarded-For' = "203.0.113.$_"; Forwarded = "for=203.0.113.$_" } -TimeoutSec 5).StatusCode
+      (Invoke-WebRequest -UseBasicParsing https://localhost:8443/api/v1/auth/login @skipCert -Method Post -ContentType application/json -Body '{"email":"test@test.test","password":"Password123!"}' -Headers @{ Origin = 'https://localhost'; 'X-Forwarded-For' = "203.0.113.$_"; Forwarded = "for=203.0.113.$_" } -TimeoutSec 5).StatusCode
     } catch [System.Net.WebException] {
       [int]$_.Exception.Response.StatusCode
+    } catch {
+      if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
     }
   }
   if ($spoofStatuses[-1] -ne 429) { throw "spoofed forwarding headers were trusted: $($spoofStatuses -join ',')" }

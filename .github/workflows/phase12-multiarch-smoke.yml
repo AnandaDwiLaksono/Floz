@@ -34,5 +34,5 @@ jobs:
       - name: Build and smoke native images
         shell: pwsh
         run: |
-          ./scripts/phase12-build-multiarch.ps1 -Platform linux/arm64
-          ./scripts/phase12-image-smoke.ps1 -Platform linux/arm64 -DatabaseUrl postgres://postgres:postgres@127.0.0.1:5432/floz -RedisUrl redis://127.0.0.1:6379
+          & ./scripts/phase12-build-multiarch.ps1 -Platform linux/arm64
+          & ./scripts/phase12-image-smoke.ps1 -Platform linux/arm64 -DatabaseUrl postgres://postgres:postgres@127.0.0.1:5432/floz -RedisUrl redis://127.0.0.1:6379
