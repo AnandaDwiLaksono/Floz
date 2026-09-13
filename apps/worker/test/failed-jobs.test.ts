@@ -23,6 +23,22 @@ describe('failed job diagnostics', () => {
     expect(add).not.toHaveBeenCalled();
   });
 
+  it('bounds Redis connection establishment and disconnects on timeout', async () => {
+    vi.useFakeTimers();
+    const disconnect = vi.fn();
+    const run = runFailedJobsDiagnostic({
+      timeoutMs: 10,
+      write: vi.fn(),
+      createConnection: () => ({ disconnect, ready: new Promise<never>(() => undefined) }),
+      createQueues: () => []
+    });
+    const rejected = expect(run).rejects.toThrow('Failed-job diagnostic timed out');
+    await vi.advanceTimersByTimeAsync(20);
+    await rejected;
+    expect(disconnect).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
   it('bounds stalled reads and cleanup', async () => {
     vi.useFakeTimers();
     const disconnect = vi.fn();

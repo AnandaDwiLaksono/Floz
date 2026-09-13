@@ -19,7 +19,7 @@ export const getReconnectDelay = (attempt: number, random = Math.random) =>
 export const createDependencyTransitionReporter = (report: (event: { dependency: 'redis'; status: 'reconnecting' | 'ready' | 'error' }) => void) => {
   let status: 'reconnecting' | 'ready' | 'error' | undefined;
   return (next: 'reconnecting' | 'ready' | 'error') => {
-    if (next === 'error') return;
+    if (next === 'error' && status === 'reconnecting') return;
     if (next !== status) report({ dependency: 'redis', status: next });
     status = next;
   };
@@ -37,6 +37,7 @@ export function createRedisConnection(config: {
   REDIS_URL: string;
   REDIS_TLS?: boolean | string;
   NODE_ENV?: string;
+  lazyConnect?: boolean;
 }): Redis {
   const nodeEnv = (config.NODE_ENV ?? process.env.NODE_ENV ?? 'development') as 'development' | 'test' | 'production';
   const redisTlsStr = typeof config.REDIS_TLS === 'string'
@@ -50,7 +51,8 @@ export function createRedisConnection(config: {
   const options: RedisOptions = {
     tls: tls ? {} : undefined,
     maxRetriesPerRequest: null,
-    retryStrategy: getReconnectDelay
+    retryStrategy: getReconnectDelay,
+    lazyConnect: config.lazyConnect
   };
   const client = new Redis(url.toString(), options);
   const report = createDependencyTransitionReporter((event) => {

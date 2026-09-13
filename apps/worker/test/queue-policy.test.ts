@@ -18,16 +18,17 @@ describe('worker queue policy', () => {
   it('reports only sanitized dependency state transitions', () => {
     const events: object[] = [];
     const report = createDependencyTransitionReporter((event) => events.push(event));
+    report('error');
     report('reconnecting');
     report('error');
     report('reconnecting');
     report('ready');
     report('error');
-    report('reconnecting');
     expect(events).toEqual([
+      { dependency: 'redis', status: 'error' },
       { dependency: 'redis', status: 'reconnecting' },
       { dependency: 'redis', status: 'ready' },
-      { dependency: 'redis', status: 'reconnecting' }
+      { dependency: 'redis', status: 'error' }
     ]);
   });
 

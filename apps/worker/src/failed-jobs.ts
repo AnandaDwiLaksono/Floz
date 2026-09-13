@@ -5,7 +5,8 @@ import { createRedisConnection, QUEUES } from './queues.js';
 
 type FailedJob = { id?: string; name?: string; timestamp?: number; processedOn?: number; finishedOn?: number };
 type FailedQueue = { getFailed(start: number, end: number): Promise<FailedJob[]>; close?(): Promise<unknown> };
-type DiagnosticDeps = { timeoutMs?: number; write?: (value: string) => void; createConnection?: () => { disconnect?: () => void; quit?: () => Promise<unknown> }; createQueues?: (connection: unknown) => FailedQueue[] };
+type DiagnosticConnection = { disconnect?: () => void; quit?: () => Promise<unknown>; ready?: Promise<unknown>; status?: string; connect?: () => Promise<unknown>; once?: (event: string, listener: (...args: unknown[]) => void) => unknown };
+type DiagnosticDeps = { timeoutMs?: number; write?: (value: string) => void; createConnection?: () => DiagnosticConnection; createQueues?: (connection: unknown) => FailedQueue[] };
 
 const readWithTimeout = async <T>(task: Promise<T>, timeoutMs: number) => {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -33,19 +34,27 @@ export async function failedJobDiagnosticRows(queues: FailedQueue[], limit = 100
 
 export async function runFailedJobsDiagnostic(deps: DiagnosticDeps = {}) {
   const env = parseWorkerEnv(process.env);
-  const connection = deps.createConnection?.() ?? createRedisConnection(env);
-  const queues = deps.createQueues?.(connection) ?? [
-    new Queue(QUEUES.recurrenceWakeup, { connection: connection as never }),
-    new Queue(QUEUES.notificationDueSoon, { connection: connection as never })
-  ];
+  const connection = (deps.createConnection?.() ?? createRedisConnection({ ...env, lazyConnect: true })) as DiagnosticConnection;
+  if (!deps.createConnection && connection.status === 'wait') void connection.connect?.();
   const timeoutMs = deps.timeoutMs ?? 5000;
+  const connectTimeoutMs = Math.min(timeoutMs, 2000);
+  let queues: FailedQueue[] = [];
   try {
+    const ready = connection.ready ?? (connection.status === 'ready' ? Promise.resolve() : new Promise<void>((resolve, reject) => {
+      connection.once?.('ready', () => resolve());
+      connection.once?.('error', reject);
+    }));
+    await readWithTimeout(ready, connectTimeoutMs);
+    queues = deps.createQueues?.(connection) ?? [
+      new Queue(QUEUES.recurrenceWakeup, { connection: connection as never }),
+      new Queue(QUEUES.notificationDueSoon, { connection: connection as never })
+    ];
     const rows = await failedJobDiagnosticRows(queues, 100, timeoutMs);
     (deps.write ?? ((value) => process.stdout.write(value)))(`${JSON.stringify(rows)}\n`);
   } finally {
-    await Promise.race([Promise.all(queues.map((queue) => queue.close?.())), new Promise((resolve) => setTimeout(resolve, timeoutMs))]);
     if (connection.disconnect) connection.disconnect();
-    else await Promise.race([connection.quit?.(), new Promise((resolve) => setTimeout(resolve, timeoutMs))]);
+    await Promise.race([Promise.all(queues.map((queue) => queue.close?.())), new Promise((resolve) => setTimeout(resolve, timeoutMs))]);
+    if (!connection.disconnect) await Promise.race([connection.quit?.(), new Promise((resolve) => setTimeout(resolve, timeoutMs))]);
   }
 }
 
