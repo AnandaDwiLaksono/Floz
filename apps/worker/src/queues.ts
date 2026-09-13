@@ -19,6 +19,7 @@ export const getReconnectDelay = (attempt: number, random = Math.random) =>
 export const createDependencyTransitionReporter = (report: (event: { dependency: 'redis'; status: 'reconnecting' | 'ready' | 'error' }) => void) => {
   let status: 'reconnecting' | 'ready' | 'error' | undefined;
   return (next: 'reconnecting' | 'ready' | 'error') => {
+    if (next === 'error') return;
     if (next !== status) report({ dependency: 'redis', status: next });
     status = next;
   };

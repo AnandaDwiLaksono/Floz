@@ -10,7 +10,8 @@
     "test": "vitest run --pool=forks --poolOptions.forks.singleFork",
     "test:integration": "vitest run --pool=forks --poolOptions.forks.singleFork --dir test --testNamePattern \".*\" test/outbox.integration.test.ts test/outbox-db.integration.test.ts test/recurrence.integration.test.ts test/notification-reconciliation.integration.test.ts",
     "build": "tsc",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "failed-jobs": "node dist/failed-jobs.js"
   },
   "dependencies": {
     "@floz/config": "workspace:*",

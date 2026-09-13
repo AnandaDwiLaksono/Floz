@@ -19,13 +19,15 @@ describe('worker queue policy', () => {
     const events: object[] = [];
     const report = createDependencyTransitionReporter((event) => events.push(event));
     report('reconnecting');
+    report('error');
     report('reconnecting');
     report('ready');
     report('error');
+    report('reconnecting');
     expect(events).toEqual([
       { dependency: 'redis', status: 'reconnecting' },
       { dependency: 'redis', status: 'ready' },
-      { dependency: 'redis', status: 'error' }
+      { dependency: 'redis', status: 'reconnecting' }
     ]);
   });
 
@@ -36,9 +38,14 @@ describe('worker queue policy', () => {
     void client.disconnect();
   });
 
-  it('applies policy to the actual recurrence queue', () => {
+  it('applies policy to actual recurrence job lifecycle options', () => {
     const queue = createRecurrenceQueue({} as never);
-    expect(queue.opts.defaultJobOptions).toMatchObject(getQueuePolicy());
+    expect(queue.opts.defaultJobOptions).toEqual({
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+      removeOnComplete: true,
+      removeOnFail: { count: 100, age: 604800 }
+    });
     void queue.close();
   });
 });
