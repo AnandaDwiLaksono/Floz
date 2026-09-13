@@ -80,13 +80,13 @@ export async function runReconciliationIteration(input: { sql: Sql; claimSql: Sq
   }
 }
 
-export function startReconciliationLoop(input: { sql: Sql; claimSql: Sql; intervalMs: number; batchSize: number; now?: () => Date; onError?: (error: unknown) => void; databaseUrl?: string }): () => Promise<void> {
+export function startReconciliationLoop(input: { sql: Sql; claimSql: Sql; intervalMs: number; batchSize: number; now?: () => Date; onError?: (error: unknown) => void; databaseUrl?: string; progress?: (active: boolean) => Promise<void> | void }): () => Promise<void> {
   let running = false;
   let active: Promise<void> = Promise.resolve();
   const tick = () => {
     if (running) return;
     running = true;
-    active = runReconciliationIteration({ sql: input.sql, claimSql: input.claimSql, now: (input.now ?? (() => new Date()))(), batchSize: input.batchSize, databaseUrl: input.databaseUrl }).then(() => undefined).catch(input.onError ?? (() => undefined)).finally(() => { running = false; });
+    active = Promise.resolve(input.progress?.(true)).then(() => runReconciliationIteration({ sql: input.sql, claimSql: input.claimSql, now: (input.now ?? (() => new Date()))(), batchSize: input.batchSize, databaseUrl: input.databaseUrl })).then(() => undefined).catch(input.onError ?? (() => undefined)).finally(async () => { running = false; await input.progress?.(false); });
   };
   tick();
   const timer = setInterval(tick, input.intervalMs);

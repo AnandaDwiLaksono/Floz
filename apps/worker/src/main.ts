@@ -58,7 +58,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
       : (() => {
         if (!databaseUrl) throw new Error('DATABASE_URL is required');
         const { sql } = createDatabase(databaseUrl);
-        return { workers: [new Worker(QUEUES.recurrenceWakeup, createRecurrenceWorker({ sql }), { connection: connection as never, concurrency: env.WORKER_CONCURRENCY }), new Worker(QUEUES.notificationDueSoon, createNotificationDueSoonWorker({ sql }), { connection: connection as never, concurrency: env.WORKER_CONCURRENCY })], database: sql };
+        return { workers: [new Worker(QUEUES.recurrenceWakeup, createRecurrenceWorker({ sql, progress: (active) => heartbeat.progress?.(active) }), { connection: connection as never, concurrency: env.WORKER_CONCURRENCY }), new Worker(QUEUES.notificationDueSoon, createNotificationDueSoonWorker({ sql, progress: (active) => heartbeat.progress?.(active) }), { connection: connection as never, concurrency: env.WORKER_CONCURRENCY })], database: sql };
       })();
   const dispatcherFactory = deps.startDispatcher ?? ((value: Closeable) => {
     if (!databaseUrl) throw new Error('DATABASE_URL is required');
@@ -81,7 +81,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
     const { sql } = createDatabase(databaseUrl);
     const { sql: claimSql } = createDatabase(databaseUrl);
     let stop: Promise<void> | undefined;
-    const stopLoop = startReconciliationLoop({ sql, claimSql, intervalMs: env.RECURRENCE_RECONCILIATION_INTERVAL_MS, batchSize: env.RECURRENCE_RECONCILIATION_BATCH_SIZE, onError: (error) => logger.error({ err: sanitizeError(error), event: 'reconciliation.failed' }, 'recurrence reconciliation failed'), databaseUrl });
+    const stopLoop = startReconciliationLoop({ sql, claimSql, intervalMs: env.RECURRENCE_RECONCILIATION_INTERVAL_MS, batchSize: env.RECURRENCE_RECONCILIATION_BATCH_SIZE, onError: (error) => logger.error({ err: sanitizeError(error), event: 'reconciliation.failed' }, 'recurrence reconciliation failed'), databaseUrl, progress: (active) => heartbeat.progress?.(active) });
     return { loop: { requestStop: () => { stop ??= stopLoop(); }, completed: () => stop ?? Promise.resolve() }, databases: [sql, claimSql] };
   });
   const reconciliationResult = reconciliationFactory();

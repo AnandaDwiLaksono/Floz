@@ -34,7 +34,7 @@ describe('worker shutdown coordinator', () => {
   it('shuts down in dependency-safe order', async () => {
     const { calls, coordinator } = setup();
     await coordinator.stop();
-    expect(calls).toEqual(['not-ready', 'heartbeat', 'request-loops', 'workers', 'loops-finished', 'queues', 'redis', 'advisory', 'database']);
+    expect(calls).toEqual(['heartbeat', 'not-ready', 'request-loops', 'workers', 'loops-finished', 'queues', 'redis', 'advisory', 'database']);
   });
 
   it('memoizes repeated shutdown requests', async () => {

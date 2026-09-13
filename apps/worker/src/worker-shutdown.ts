@@ -48,8 +48,11 @@ export function createWorkerShutdownCoordinator(resources: WorkerShutdownResourc
     const forced = setTimeout(() => { failed = true; void startCleanup(); }, 30_000);
     const hard = setTimeout(() => (resources.hardTerminate ?? ((code) => process.exit(code)))(1), 35_000);
     try {
-      const stoppingRequests = [resources.markNotReady ?? (() => undefined), resources.requestHeartbeat ?? (() => undefined), resources.requestLoopStops, resources.closeWorkers].map(invoke);
-      await settle([() => Promise.all(stoppingRequests).then(() => undefined), resources.waitForLoops]);
+      const heartbeat = invoke(resources.requestHeartbeat ?? (() => undefined));
+      const notReady = invoke(resources.markNotReady ?? (() => undefined));
+      const drainRequests = [resources.requestLoopStops, resources.closeWorkers].map(invoke);
+      await settle([() => Promise.all([notReady, ...drainRequests]).then(() => undefined), resources.waitForLoops]);
+      await settle([() => heartbeat]);
       await startCleanup();
       resources.exit(failed ? 1 : 0);
     } finally {
