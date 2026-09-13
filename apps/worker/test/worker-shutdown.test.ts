@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Worker } from 'bullmq';
 import { createWorkerShutdownCoordinator, memoizeBullWorkerClose } from '../src/worker-shutdown.js';
 
 const deferred = () => {
@@ -32,7 +33,7 @@ describe('worker shutdown coordinator', () => {
   it('shuts down in dependency-safe order', async () => {
     const { calls, coordinator } = setup();
     await coordinator.stop();
-    expect(calls).toEqual(['not-ready', 'heartbeat', 'request-loops', 'workers', 'loops-finished', 'queues', 'advisory', 'database', 'redis']);
+    expect(calls).toEqual(['not-ready', 'request-loops', 'workers', 'heartbeat', 'loops-finished', 'queues', 'redis', 'advisory', 'database']);
   });
 
   it('memoizes repeated shutdown requests', async () => {
@@ -51,7 +52,7 @@ describe('worker shutdown coordinator', () => {
     expect(calls).not.toContain('queues');
     await vi.advanceTimersByTimeAsync(1);
     await stopping;
-    expect(calls.slice(-4)).toEqual(['queues', 'advisory', 'database', 'redis']);
+    expect(calls.slice(-4)).toEqual(['queues', 'redis', 'advisory', 'database']);
   });
 
   it('hard-fails at exactly 35 seconds when cleanup hangs without detached continuation', async () => {
@@ -67,23 +68,50 @@ describe('worker shutdown coordinator', () => {
     expect(coordinator.resources.exit).toHaveBeenCalledWith(1);
     hung.resolve();
     await Promise.resolve();
-    expect(calls).not.toContain('database');
+    expect(coordinator.resources.exit).toHaveBeenCalledWith(1);
   });
 
-  it('closes later owners after a transient cleanup error and exits one', async () => {
-    const { coordinator } = setup();
-    coordinator.resources.closeQueues = vi.fn(async () => { throw new Error('transient'); });
+  it('continues remaining cleanup after a transient error and releases advisory ownership before database pools', async () => {
+    const { calls, coordinator } = setup();
+    coordinator.resources.closeQueues = vi.fn(async () => { calls.push('queues'); throw new Error('transient'); });
     await coordinator.stop();
-    expect(coordinator.resources.closeDatabaseOwners).toHaveBeenCalled();
-    expect(coordinator.resources.closeRedis).toHaveBeenCalled();
+    expect(calls.slice(-3)).toEqual(['redis', 'advisory', 'database']);
     expect(coordinator.resources.exit).toHaveBeenCalledWith(1);
+  });
+
+  it('forces bounded cleanup after the 30 second grace result and clears both timers', async () => {
+    vi.useFakeTimers();
+    const graceful = deferred();
+    const { calls, coordinator } = setup();
+    coordinator.resources.waitForLoops = () => graceful.promise;
+    const stopping = coordinator.stop();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await stopping;
+    expect(calls).toContain('queues');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('starts the hard deadline before a hung stopping hook and still runs best-effort cleanup', async () => {
+    vi.useFakeTimers();
+    const hung = deferred();
+    const { calls, coordinator } = setup();
+    coordinator.resources.markNotReady = () => hung.promise;
+    const stopping = coordinator.stop();
+    await Promise.resolve();
+    expect(calls).toContain('request-loops');
+    expect(calls).toContain('workers');
+    await vi.advanceTimersByTimeAsync(35_000);
+    await stopping;
+    expect(calls.slice(-3)).toEqual(['redis', 'advisory', 'database']);
+    expect(coordinator.resources.exit).toHaveBeenCalledWith(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
 describe('BullMQ close memoization', () => {
-  it('calls the installed BullMQ worker close(false) once and never escalates', async () => {
-    const close = vi.fn(async () => undefined);
-    const worker = { close };
+  it('memoizes the installed BullMQ Worker.close(false) method without escalation', async () => {
+    const close = vi.spyOn(Worker.prototype, 'close').mockResolvedValue();
+    const worker = Object.create(Worker.prototype) as Worker;
     const memoized = memoizeBullWorkerClose(worker);
     expect(memoized()).toBe(memoized());
     await memoized();

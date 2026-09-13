@@ -13,6 +13,7 @@ import { createWorkerShutdownCoordinator, memoizeBullWorkerClose } from './worke
 
 type Closeable = { close(force?: boolean): Promise<unknown> };
 type DatabaseOwner = { end(): Promise<unknown> };
+type AdvisoryOwner = { release(): Promise<void> };
 type Connection = { close?(): Promise<unknown>; quit?(): Promise<unknown> };
 type Loop = { requestStop(): void; completed(): Promise<void> };
 type WorkerEnv = ReturnType<typeof parseWorkerEnv>;
@@ -30,7 +31,7 @@ export type WorkerRuntimeDeps = {
   createWorker?: (connection: Connection, concurrency: number) => Closeable;
   createWorkers?: (connection: Connection, concurrency: number) => { workers: Closeable[]; database: DatabaseOwner };
   startDispatcher?: (queue: Closeable) => { loop: Loop; database: DatabaseOwner } | (() => Promise<void>);
-  startReconciliation?: () => { loop: Loop; databases: [DatabaseOwner, DatabaseOwner] } | (() => Promise<void>);
+  startReconciliation?: () => { loop: Loop; databases: [DatabaseOwner, DatabaseOwner]; advisory?: AdvisoryOwner } | (() => Promise<void>);
 };
 
 const controlledLoop = (run: (signal: AbortSignal) => Promise<void>): Loop => {
@@ -88,7 +89,7 @@ export async function startWorkerRuntime(deps: WorkerRuntimeDeps = {}) {
     waitForLoops: () => Promise.allSettled(loops.map((loop) => loop.completed())).then(() => undefined),
     closeWorkers: () => Promise.allSettled(closeWorkers.map((close) => close())).then((results) => { const failed = results.find((result) => result.status === 'rejected'); if (failed?.status === 'rejected') throw failed.reason; }),
     closeQueues: () => queue.close(false).then(() => undefined),
-    releaseAdvisoryLocks: () => Promise.resolve(),
+    releaseAdvisoryLocks: () => ('advisory' in reconciliationOwner ? reconciliationOwner.advisory?.release() : undefined) ?? reconciliationOwner.loop.completed(),
     closeDatabaseOwners: () => Promise.allSettled(databases.map((database) => database.end())).then((results) => { const failed = results.find((result) => result.status === 'rejected'); if (failed?.status === 'rejected') throw failed.reason; }),
     closeRedis: () => Promise.resolve(connection.quit?.() ?? connection.close?.()).then(() => undefined),
     exit: deps.exit ?? ((code) => { process.exitCode = code; }),
