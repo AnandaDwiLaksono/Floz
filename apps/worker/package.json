@@ -12,7 +12,8 @@
     "build": "tsc",
     "start": "node dist/main.js",
     "failed-jobs": "node dist/failed-jobs.js",
-    "health": "node dist/health.js"
+    "health": "node dist/health.js",
+    "readiness": "node dist/readiness.js"
   },
   "dependencies": {
     "@floz/config": "workspace:*",
