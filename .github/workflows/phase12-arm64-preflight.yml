@@ -1,0 +1,36 @@
+name: phase12-arm64-preflight
+
+on:
+  push:
+    branches:
+      - phase12-arm64-ci
+
+permissions:
+  contents: read
+
+jobs:
+  arm64-runtime:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Record native runner architecture
+        shell: bash
+        run: |
+          set -eu
+          echo "runner_os=${RUNNER_OS}"
+          echo "runner_arch=${RUNNER_ARCH}"
+          echo "uname=$(uname -m)"
+          echo "node_arch=$(node -p 'process.arch')"
+          test "$(uname -m)" = "aarch64"
+          test "$(node -p 'process.arch')" = "arm64"
+
+      - name: Run reviewed ARM64 container
+        shell: bash
+        run: |
+          set -eu
+          image='docker.io/library/busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0'
+          echo "docker_server=$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')"
+          echo "requested_platform=linux/arm64"
+          echo "image=${image}"
+          container_arch="$(docker run --rm --platform linux/arm64 --network none --user 65534:65534 "${image}" uname -m)"
+          echo "container_arch=${container_arch}"
+          test "${container_arch}" = "aarch64" || test "${container_arch}" = "arm64"
