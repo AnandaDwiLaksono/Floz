@@ -1,8 +1,8 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkReadiness } from '../src/readiness.js';
+import { checkReadiness, runReadinessCli } from '../src/readiness.js';
 
 const dirs: string[] = [];
 const dir = async () => { const value = await mkdtemp(join(tmpdir(), 'floz-readiness-')); dirs.push(value); return value; };
@@ -31,7 +31,7 @@ describe('worker dependency readiness', () => {
     let pgOwners = 0;
     const probe = { ...options(directory, () => new Promise<never>(() => undefined)), timeoutMs: 30, postgresFactory: () => { pgOwners++; return { unsafe: () => new Promise<never>(() => undefined), end: async () => undefined }; } };
     const first = checkReadiness(probe);
-    await new Promise((resolve) => setImmediate(resolve));
+    for (;;) { try { await readFile(join(directory, 'readiness.lock')); break; } catch { await new Promise((resolve) => setImmediate(resolve)); } }
     await expect(checkReadiness(probe)).resolves.toMatchObject({ healthy: false, reason: 'overlap' });
     await first;
     expect(pgOwners).toBe(1);
@@ -47,10 +47,49 @@ describe('worker dependency readiness', () => {
     expect(result).toMatchObject({ healthy: false, reason: 'local' });
   });
 
-  it('retains lock until cleanup settles after cleanup failure', async () => {
+  it('returns cleanup failure and retains lock until cleanup settles', async () => {
     const directory = await dir();
-    const probe = { ...options(directory), postgresFactory: () => ({ unsafe: async () => 1, end: async () => { throw new Error('cleanup'); } }) };
-    expect(await checkReadiness(probe)).toEqual({ healthy: true });
-    expect(await checkReadiness(probe)).toEqual({ healthy: true });
+    let finish!: () => void;
+    const cleanup = new Promise<void>((resolve) => { finish = resolve; });
+    const probe = { ...options(directory), postgresFactory: () => ({ unsafe: async () => 1, end: () => cleanup }) };
+    const first = checkReadiness(probe);
+    for (;;) { try { await readFile(join(directory, 'readiness.lock')); break; } catch { await new Promise((resolve) => setImmediate(resolve)); } }
+    await expect(checkReadiness(probe)).resolves.toMatchObject({ healthy: false, reason: 'overlap' });
+    finish();
+    await expect(first).resolves.toEqual({ healthy: true });
+    await expect(checkReadiness({ ...options(directory), postgresFactory: () => ({ unsafe: async () => 1, end: async () => { throw new Error('cleanup'); } }) })).resolves.toMatchObject({ healthy: false, reason: 'cleanup' });
+  });
+
+  it('applies the absolute deadline to local health and factories', async () => {
+    const started = Date.now();
+    await expect(checkReadiness({ ...options(await dir()), totalTimeoutMs: 30, localHealth: () => new Promise(() => undefined) })).resolves.toMatchObject({ healthy: false, reason: 'timeout' });
+    expect(Date.now() - started).toBeLessThan(200);
+    await expect(checkReadiness({ ...options(await dir()), totalTimeoutMs: 30, postgresFactory: () => new Promise(() => undefined) })).resolves.toMatchObject({ healthy: false, reason: 'timeout' });
+  });
+
+  it('recovers only a stale lock bound to the current worker identity', async () => {
+    const directory = await dir();
+    const worker = { pid: process.pid, instanceId: 'worker-a', startTime: 1 };
+    await writeFile(join(directory, 'current.json'), JSON.stringify(worker));
+    await writeFile(join(directory, 'readiness.lock'), JSON.stringify({ pid: 999999, nonce: 'old', startedAt: 1, worker }));
+    await expect(checkReadiness(options(directory))).resolves.toEqual({ healthy: true });
+    await writeFile(join(directory, 'readiness.lock'), JSON.stringify({ pid: 999999, nonce: 'old', startedAt: 1, worker: { ...worker, instanceId: 'other' } }));
+    await expect(checkReadiness(options(directory))).resolves.toMatchObject({ healthy: false, reason: 'overlap' });
+  });
+
+  it('writes lock identity and uses bounded Redis options with normalized TLS', async () => {
+    const directory = await dir();
+    await writeFile(join(directory, 'current.json'), JSON.stringify({ pid: process.pid, instanceId: 'worker-a', startTime: 1 }));
+    let lock: unknown;
+    const result = await checkReadiness({ ...options(directory), redisUrl: 'rediss://redis.example.test:6380', redisFactory: (url, redisOptions) => { lock = readFile(join(directory, 'readiness.lock'), 'utf8'); expect(url).toContain('rediss:'); expect(redisOptions).toMatchObject({ maxRetriesPerRequest: 1, connectTimeout: 2000, commandTimeout: 2000, tls: {} }); return { ping: async () => 'PONG', disconnect: () => undefined }; } });
+    expect(result).toEqual({ healthy: true });
+    expect(JSON.parse(await lock as string)).toMatchObject({ pid: process.pid, worker: { instanceId: 'worker-a', startTime: 1 } });
+  });
+
+  it('sets CLI exit code for dependency and cleanup failures', async () => {
+    process.exitCode = undefined;
+    await runReadinessCli({ ...options(await dir()), postgresFactory: () => { throw new Error('pg'); } });
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
   });
 });
