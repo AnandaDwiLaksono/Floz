@@ -98,11 +98,24 @@ describe('worker local health', () => {
     const now = Date.now();
     await writeFile(join(dir, 'current.json'), JSON.stringify({ pid: process.pid, instanceId: 'cli', startTime: now }));
     await writeFile(join(dir, 'health.json'), state({ instanceId: 'cli', startTime: now, timestamp: now, progressAt: now }));
-    process.env.FLOZ_WORKER_RUNTIME_DIR = dir;
-    process.env.FLOZ_WORKER_INSTANCE_ID = 'cli';
-    delete process.env.DATABASE_URL;
-    delete process.env.REDIS_URL;
-    expect(await runHealthCli()).toEqual({ healthy: true });
-    expect(process.exitCode).not.toBe(1);
+    const originalEnv = {
+      FLOZ_WORKER_RUNTIME_DIR: process.env.FLOZ_WORKER_RUNTIME_DIR,
+      FLOZ_WORKER_INSTANCE_ID: process.env.FLOZ_WORKER_INSTANCE_ID,
+      DATABASE_URL: process.env.DATABASE_URL,
+      REDIS_URL: process.env.REDIS_URL
+    };
+    try {
+      process.env.FLOZ_WORKER_RUNTIME_DIR = dir;
+      process.env.FLOZ_WORKER_INSTANCE_ID = 'cli';
+      delete process.env.DATABASE_URL;
+      delete process.env.REDIS_URL;
+      expect(await runHealthCli()).toEqual({ healthy: true });
+      expect(process.exitCode).not.toBe(1);
+    } finally {
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });

@@ -34,21 +34,30 @@ describe('Task 3 — PostgreSQL Owner Budget & Concurrency Verification', () => 
       };
     });
 
+    const originalDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/floz';
 
-    const runtime = await startWorkerRuntime({
-      env: parseWorkerEnv({ NODE_ENV: 'test' }),
-      heartbeat: { initialize: async () => undefined, stopping: async () => undefined, remove: async () => undefined },
-      createConnection: () => ({ close: vi.fn().mockResolvedValue(undefined) }),
-      createQueue: () => ({ close: vi.fn().mockResolvedValue(undefined) })
-    });
+    try {
+      const runtime = await startWorkerRuntime({
+        env: parseWorkerEnv({ NODE_ENV: 'test' }),
+        heartbeat: { initialize: async () => undefined, stopping: async () => undefined, remove: async () => undefined },
+        createConnection: () => ({ close: vi.fn().mockResolvedValue(undefined) }),
+        createQueue: () => ({ close: vi.fn().mockResolvedValue(undefined) })
+      });
 
-    // 1 pool in worker handler + 1 pool in dispatcher + 2 pools in reconciliation (sql + claimSql) = 4
-    expect(workerCreatedDatabases).toBe(4);
+      // 1 pool in worker handler + 1 pool in dispatcher + 2 pools in reconciliation (sql + claimSql) = 4
+      expect(workerCreatedDatabases).toBe(4);
 
-    await runtime.stop();
-    createDatabaseSpy.mockRestore();
+      await runtime.stop();
+    } finally {
+      if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = originalDatabaseUrl;
+      createDatabaseSpy.mockRestore();
+    }
+
+    expect(process.env.DATABASE_URL).toBe(originalDatabaseUrl);
   });
+
 
   it('verifies the approved PostgreSQL connection budget totals', () => {
     const apiPersistentSlots = 2;
