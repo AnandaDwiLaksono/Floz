@@ -50,6 +50,16 @@ describe('worker local health', () => {
     expect(await readLocalWorkerHealth({ directory: dir, now: () => 1_000, isProcessAlive: () => true })).toMatchObject({ healthy: false, reason: 'malformed' });
   });
 
+  it('does not recreate health after removal races queued writes', async () => {
+    const dir = await directory();
+    const heartbeat = await createWorkerHeartbeat({ directory: dir, instanceId: 'instance-a', pid: process.pid, now: () => 1_000 });
+    await heartbeat.initialize();
+    const updates = Array.from({ length: 20 }, () => heartbeat.progress(true));
+    await heartbeat.remove();
+    await Promise.all(updates);
+    await expect(readFile(join(dir, 'health.json'))).rejects.toThrow();
+  });
+
   it('keeps active state until concurrent operations all settle', async () => {
     const dir = await directory();
     let now = 1_000;

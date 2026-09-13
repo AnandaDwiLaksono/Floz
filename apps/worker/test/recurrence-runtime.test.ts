@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseWorkerEnv } from '@floz/config';
 import { buildWakeupJobId } from '../src/queues.js';
 import { startWorkerRuntime } from '../src/main.js';
+import { createNotificationDueSoonWorker } from '../src/recurrence-worker.js';
 
 describe('recurrence worker runtime', () => {
   it('builds deterministic wake-up job IDs', () => {
@@ -21,6 +22,15 @@ describe('recurrence worker runtime', () => {
     expect(() => parseWorkerEnv({ WORKER_CONCURRENCY: '0' })).toThrow();
     expect(() => parseWorkerEnv({ WORKER_CONCURRENCY: '1.5' })).toThrow();
     expect(parseWorkerEnv({ REDIS_TLS: 'false' }).REDIS_TLS).toBe('false');
+  });
+
+  it('settles notification progress when database setup fails', async () => {
+    const progress: boolean[] = [];
+    const handler = createNotificationDueSoonWorker({ sql: {} as never, databaseUrl: 'invalid', progress: async (active) => { progress.push(active); } });
+
+    await expect(handler({ data: { workspaceId: 'workspace-1', taskId: 'task-1', dueVersion: 1 } } as never)).rejects.toThrow();
+
+    expect(progress).toEqual([true, false]);
   });
 
   it('closes injected worker, queue, and connection once', async () => {

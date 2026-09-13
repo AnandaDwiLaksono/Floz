@@ -23,11 +23,14 @@ export function createNotificationDueSoonWorker(input: { sql: Sql; databaseUrl?:
     const { workspaceId, taskId, dueVersion } = job.data ?? {};
     if (!workspaceId || !taskId || dueVersion === undefined) return 'noop';
     if (!databaseUrl) throw new Error('DATABASE_URL is required');
-    await input.progress?.(true);
-    const { db, sql: clientSql } = createDatabase(databaseUrl);
-    try {
-      await db.transaction(async (tx) => { await createDueSoonNotifications(tx, { workspaceId, taskId, expectedDueVersion: dueVersion, now: (input.now ?? (() => new Date()))() }); });
-    } finally { await clientSql.end(); await input.progress?.(false); }
+     await input.progress?.(true);
+     let clientSql: Sql | undefined;
+     try {
+       const database = createDatabase(databaseUrl);
+       clientSql = database.sql;
+       await database.db.transaction(async (tx) => { await createDueSoonNotifications(tx, { workspaceId, taskId, expectedDueVersion: dueVersion, now: (input.now ?? (() => new Date()))() }); });
+     } finally { await clientSql?.end(); await input.progress?.(false); }
+
     return 'processed';
   };
 }
