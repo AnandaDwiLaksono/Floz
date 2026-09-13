@@ -42,7 +42,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required}
       REDIS_URL: ${REDIS_URL:?REDIS_URL required}
     networks: [private]
-    tmpfs: ["/run/floz-worker:rw,noexec,nosuid,size=1m,mode=0700,uid=100,gid=100"]
+    tmpfs: ["/run/floz-worker:rw,noexec,nosuid,size=1m,mode=1777"]
     read_only: true
   migrator:
     build: { context: .., dockerfile: infra/docker/migrate.Dockerfile }

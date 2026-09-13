@@ -31,7 +31,7 @@ export async function createWorkerHeartbeat(input: { directory?: string; instanc
   const now = input.now ?? Date.now;
   const identity: WorkerIdentity = { pid: input.pid ?? process.pid, instanceId: input.instanceId ?? randomUUID(), startTime: now() };
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  await chmod(directory, 0o700);
+  await chmod(directory, 0o700).catch(() => undefined);
   for (const name of await readdir(directory)) if (name === 'health.json' || name === 'current.json' || /^(health|current)\.json\.\d+\.[0-9a-f-]+\.tmp$/i.test(name)) await rm(pathFor(directory, name), { force: true });
   await atomicWrite(directory, 'current.json', identity);
   let state: WorkerHealthState = { ...identity, timestamp: identity.startTime, initialized: false, stopping: false, progressAt: identity.startTime, active: false };

@@ -17,7 +17,7 @@ export type CreateDatabaseOptions = {
 
 export function createDatabase(url: string, options?: CreateDatabaseOptions) {
   const nodeEnv = (options?.nodeEnv ?? process.env.NODE_ENV ?? 'development') as NodeEnv;
-  const { ssl } = normalizePostgresTls(url, options?.dbSsl, nodeEnv);
+  const { ssl } = normalizePostgresTls(url, options?.dbSsl ?? process.env.DB_SSL, nodeEnv);
 
   if (nodeEnv === 'production') {
     const max = options?.max ?? 1;
