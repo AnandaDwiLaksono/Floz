@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "pnpm --filter @floz/config --filter @floz/domain --filter @floz/observability --filter @floz/database build",
     "dev": "tsx watch src/main.ts",
     "lint": "eslint src test --ext .ts",
     "typecheck": "tsc --noEmit",

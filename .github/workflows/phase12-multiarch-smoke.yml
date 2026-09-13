@@ -25,6 +25,7 @@ jobs:
           echo "node=$(node -p 'process.arch')"
           test "$(node -p 'process.arch')" = "arm64"
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: pnpm --filter @floz/infra test
       - name: Build and smoke native images
         shell: pwsh
