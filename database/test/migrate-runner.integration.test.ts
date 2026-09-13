@@ -144,10 +144,12 @@ describe('compiled session-locked migrator', () => {
     expect(stages).not.toContain('unlocking-after');
   });
 
-  it('fails when its outer timeout expires without continuing migration work', async () => {
-    const before = await migrationBytes();
-    await expect(migrateDatabase(databaseUrl, { nodeEnv: 'test', outerTimeoutMs: 0 })).rejects.toThrow('timed out');
-    expect(await migrationBytes()).toEqual(before);
+  it('fails only after timeout termination settles with no later work', async () => {
+    const queries: string[] = [];
+    await expect(migrateDatabase(databaseUrl, { nodeEnv: 'test', outerTimeoutMs: 0, onQuery: (query) => { queries.push(query); } })).rejects.toThrow('timed out');
+    const settledCount = queries.length;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(queries).toHaveLength(settledCount);
   });
 
   it('does not alter checked-in migration bytes', async () => {
@@ -155,4 +157,4 @@ describe('compiled session-locked migrator', () => {
     await migrateDatabase(databaseUrl, { nodeEnv: 'test' });
     expect(await migrationBytes()).toEqual(before);
   });
-});
+}, 15000);

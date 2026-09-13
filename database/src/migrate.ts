@@ -99,15 +99,18 @@ export async function migrateDatabase(url: string, options: MigrateOptions = {})
     }
   };
   let timedOut = false;
+  let cleanup: Promise<unknown> | undefined;
   const timer = setTimeout(() => {
     timedOut = true;
-    void sql.end({ timeout: 0 });
+    cleanup = sql.end({ timeout: 0 });
   }, options.outerTimeoutMs ?? migrationTimeoutMs);
   try {
     const result = await run();
+    if (cleanup) await cleanup;
     if (timedOut) throw new Error('Database migration timed out');
     return result;
   } catch (error) {
+    if (cleanup) await cleanup;
     if (timedOut) throw new Error('Database migration timed out');
     throw error;
   } finally {
