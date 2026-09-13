@@ -54,6 +54,7 @@ describe('production artifacts', () => {
     expect(workflow).toContain('docker inspect');
     expect(workflow).toContain('curl');
     expect(workflow).toContain('docker run --rm');
+    expect(workflow.indexOf("trap 'docker rm -f floz-api floz-worker floz-web' EXIT")).toBeLessThan(workflow.indexOf('docker run -d --name floz-api'));
   });
 
   test('smoke executes every service and verifies uid, CA and digest', () => {

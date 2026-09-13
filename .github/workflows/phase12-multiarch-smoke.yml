@@ -32,11 +32,12 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/floz
         run: |
           docker network create phase12 || true
+          trap 'docker rm -f floz-api floz-worker floz-web' EXIT
           docker run --rm --network host -e NODE_ENV=test -e DATABASE_URL="$DATABASE_URL" floz-migrator:phase12
+
           docker run -d --name floz-api --network host -e NODE_ENV=test -e API_PORT=3001 -e DATABASE_URL="$DATABASE_URL" -e BETTER_AUTH_SECRET='phase12-ci-secret-with-sufficient-entropy-123' -e BETTER_AUTH_URL=https://localhost -e ALLOWED_ORIGINS=https://localhost floz-api:phase12
           docker run -d --name floz-worker --network host -e NODE_ENV=test -e DATABASE_URL="$DATABASE_URL" -e REDIS_URL=redis://127.0.0.1:6379 --tmpfs /run/floz-worker:rw,noexec,nosuid,size=1m,mode=0700,uid=100,gid=100 floz-worker:phase12
           docker run -d --name floz-web --network host -e NODE_ENV=production -e NEXT_PUBLIC_API_URL=https://localhost floz-web:phase12
-          trap 'docker rm -f floz-api floz-worker floz-web' EXIT
           for i in $(seq 1 45); do curl -fsS http://127.0.0.1:3001/api/v1/health/ready && break; sleep 1; done
           curl -fsS http://127.0.0.1:3001/api/v1/health/ready
           for i in $(seq 1 45); do [ "$(docker inspect -f '{{.State.Health.Status}}' floz-worker)" = healthy ] && break; sleep 1; done
