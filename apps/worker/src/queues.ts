@@ -6,6 +6,24 @@ import { normalizeRedisTls } from '@floz/config';
 
 export const QUEUES = { recurrenceWakeup: 'recurrence-wakeup', notificationDueSoon: 'notification-due-soon' } as const;
 
+export const getQueuePolicy = () => ({
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 1000 },
+  removeOnComplete: true,
+  removeOnFail: { count: 100, age: 604800 }
+});
+
+export const getReconnectDelay = (attempt: number, random = Math.random) =>
+  Math.min(5000, Math.min(4000, 100 * 2 ** Math.min(attempt, 6)) + Math.floor(random() * 1001));
+
+export const createDependencyTransitionReporter = (report: (event: { dependency: 'redis'; status: 'reconnecting' | 'ready' | 'error' }) => void) => {
+  let status: 'reconnecting' | 'ready' | 'error' | undefined;
+  return (next: 'reconnecting' | 'ready' | 'error') => {
+    if (next !== status) report({ dependency: 'redis', status: next });
+    status = next;
+  };
+};
+
 export function buildWakeupJobId(input: { recurrenceRuleId: string; scheduledFor: string }): string {
   return `recurrence-${createHash('sha256').update(JSON.stringify([input.recurrenceRuleId, input.scheduledFor])).digest('hex')}`;
 }
@@ -30,14 +48,22 @@ export function createRedisConnection(config: {
   const url = new URL(config.REDIS_URL);
   const options: RedisOptions = {
     tls: tls ? {} : undefined,
-    maxRetriesPerRequest: null
+    maxRetriesPerRequest: null,
+    retryStrategy: getReconnectDelay
   };
-  return new Redis(url.toString(), options);
+  const client = new Redis(url.toString(), options);
+  const report = createDependencyTransitionReporter((event) => {
+    process.stderr.write(`${JSON.stringify(event)}\n`);
+  });
+  client.on('reconnecting', () => report('reconnecting'));
+  client.on('ready', () => report('ready'));
+  client.on('error', () => report('error'));
+  return client;
 }
 
 export function createRecurrenceQueue(connection: Redis): Queue {
   return new Queue(QUEUES.recurrenceWakeup, {
     connection,
-    defaultJobOptions: { attempts: 3, backoff: { type: 'exponential', delay: 1000 }, removeOnComplete: true }
+    defaultJobOptions: getQueuePolicy()
   });
 }
