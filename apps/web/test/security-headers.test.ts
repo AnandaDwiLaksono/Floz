@@ -1,13 +1,23 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { chromium } from '@playwright/test';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const require = createRequire(__filename);
+const next = require.resolve('next/dist/bin/next');
 const port = 3199;
 const baseUrl = `http://127.0.0.1:${port}`;
+const distDir = '.next-security-headers-test';
+const env = { ...process.env, FLOZ_NEXT_DIST_DIR: distDir };
 let server: ChildProcess;
+
+async function buildApp() {
+  const build = spawn(process.execPath, [next, 'build'], { env, stdio: 'inherit' });
+  const [code] = await once(build, 'exit');
+  expect(code).toBe(0);
+}
 
 async function waitForServer() {
   for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -22,17 +32,17 @@ async function waitForServer() {
 
 describe('production security headers', () => {
   beforeAll(async () => {
-    server = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'dev', '--hostname', '127.0.0.1', '--port', String(port)], {
-      stdio: 'ignore',
-    });
+    await buildApp();
+    server = spawn(process.execPath, [next, 'start', '--hostname', '127.0.0.1', '--port', String(port)], { env, stdio: 'ignore' });
     await waitForServer();
-  }, 15000);
+  }, 120000);
 
   afterAll(async () => {
     if (server) {
       server.kill();
       await once(server, 'exit').catch(() => undefined);
     }
+    await rm(distDir, { recursive: true, force: true });
   });
 
   it('serves the exact security headers', async () => {
