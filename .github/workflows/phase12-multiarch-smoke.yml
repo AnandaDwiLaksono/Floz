@@ -1,0 +1,63 @@
+name: Phase 12 multiarch smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: floz
+        options: >-
+          --health-cmd "pg_isready -U postgres -d floz"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-bookworm
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @floz/infra test
+      - name: Build native ARM64 images
+        shell: pwsh
+        run: ./scripts/phase12-build-multiarch.ps1 -Platform linux/arm64
+      - name: Verify native, non-root, CA and image metadata
+        shell: pwsh
+        run: ./scripts/phase12-image-smoke.ps1 -Platform linux/arm64
+      - name: Run migrator against disposable PostgreSQL
+        run: docker run --rm --network host -e NODE_ENV=test -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/floz floz-migrator:phase12
+      - name: Run API readiness
+        run: |
+          docker run -d --name floz-api --network host -e NODE_ENV=test -e API_PORT=3001 -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/floz -e REDIS_URL=redis://127.0.0.1:6379 floz-api:phase12
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3001/api/v1/health/ready && exit 0; sleep 1; done
+          docker logs floz-api
+          exit 1
+      - name: Run Worker health
+        run: |
+          docker run -d --name floz-worker --network host -e NODE_ENV=test -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/floz -e REDIS_URL=redis://127.0.0.1:6379 --tmpfs /run/floz-worker:rw,noexec,nosuid,size=1m,mode=0700,uid=100,gid=100 floz-worker:phase12
+          for i in $(seq 1 45); do [ "$(docker inspect -f '{{.State.Health.Status}}' floz-worker)" = healthy ] && exit 0; sleep 1; done
+          docker logs floz-worker
+          exit 1
+      - name: Run Web
+        run: |
+          docker run -d --name floz-web --network host -e NODE_ENV=production floz-web:phase12
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3000/ && exit 0; sleep 1; done
+          docker logs floz-web
+          exit 1

@@ -1,8 +1,32 @@
 {
-  auto_https off
+  email {$ACME_EMAIL}
 }
 
-:8080 {
-  reverse_proxy /api/* api:3001
+{$API_HOST} {
+  header {
+    Strict-Transport-Security "max-age=15552000"
+  }
+  @ready path /api/v1/health/ready
+  reverse_proxy @ready api:3001 {
+    transport http {
+      dial_timeout 5s
+    }
+    header_up -Forwarded
+    header_up -X-Forwarded-For
+    header_up -X-Forwarded-Host
+    header_up -X-Forwarded-Proto
+    header_up X-Forwarded-For {http.request.remote.host}
+    header_up X-Forwarded-Proto https
+  }
+  @api path /api/*
+  reverse_proxy @api api:3001 {
+    transport http { dial_timeout 5s }
+    header_up -Forwarded
+    header_up -X-Forwarded-For
+    header_up -X-Forwarded-Host
+    header_up -X-Forwarded-Proto
+    header_up X-Forwarded-For {http.request.remote.host}
+    header_up X-Forwarded-Proto https
+  }
   reverse_proxy web:3000
 }

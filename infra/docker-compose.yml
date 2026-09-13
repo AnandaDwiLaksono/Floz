@@ -1,24 +1,55 @@
 services:
+  caddy:
+    image: caddy:2.10.2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+    networks: [default, private]
   api:
     build:
-      context: .
+      context: ..
       dockerfile: infra/docker/api.Dockerfile
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     environment:
       API_PORT: 3001
       NODE_ENV: production
+    networks: [private]
   web:
     build:
-      context: .
+      context: ..
       dockerfile: infra/docker/web.Dockerfile
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api
+    expose:
+      - "3000"
+    networks: [private]
   worker:
     build:
-      context: .
+      context: ..
       dockerfile: infra/docker/worker.Dockerfile
     environment:
       NODE_ENV: production
+    networks: [private]
+    tmpfs:
+      - /run/floz-worker:mode=0700,uid=100,gid=100
+  migrator:
+    build:
+      context: ..
+      dockerfile: infra/docker/migrate.Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required}
+    networks: [private]
+
+networks:
+  private:
+    internal: true
+volumes:
+  caddy_data:
+  caddy_config:

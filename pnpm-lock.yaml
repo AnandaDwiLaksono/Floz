@@ -256,6 +256,15 @@ importers:
         specifier: ^3.0.8
         version: 3.2.7(@types/node@22.20.1)(jsdom@30.0.1(@noble/hashes@2.3.0))(terser@5.50.0)(tsx@4.23.12)
 
+  infra:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.8
+        version: 3.2.7(@types/node@22.20.1)(jsdom@30.0.1(@noble/hashes@2.3.0))(terser@5.50.0)(tsx@4.23.12)
+
   packages/config:
     dependencies:
       zod:
