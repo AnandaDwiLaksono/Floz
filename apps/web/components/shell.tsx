@@ -25,7 +25,7 @@ import { NotificationResource } from './notification-item';
 import { notificationRoute } from '../lib/task-route';
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { user, activeWorkspace, setActiveWorkspace, logout, loading } = useAuth();
+  const { user, activeWorkspace, setActiveWorkspace, logout, checkSession, authOutcome, loading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
@@ -150,6 +150,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+      {(authOutcome === 'unknown' || authOutcome === 'failure') && <div role={authOutcome === 'failure' ? 'alert' : 'status'} className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 bg-amber-100 p-2 text-sm text-amber-950"><span>{authOutcome === 'unknown' ? 'Session status is unknown.' : 'Log out failed. Your session was preserved.'}</span><button type="button" onClick={() => void checkSession()} className="rounded border border-amber-700 px-2 py-1 font-medium">Check session</button></div>}
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         {/* Brand Header */}
