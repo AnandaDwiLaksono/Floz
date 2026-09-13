@@ -30,14 +30,14 @@ jobs:
       - name: Build and smoke native images
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Continue'
+          $ErrorActionPreference = 'Stop'
           try {
             & ./scripts/phase12-build-multiarch.ps1 -Platform linux/arm64
-            if ($LASTEXITCODE) { throw "build failed with exit code $LASTEXITCODE" }
             & ./scripts/phase12-image-smoke.ps1 -Platform linux/arm64
-            if ($LASTEXITCODE) { throw "smoke failed with exit code $LASTEXITCODE" }
           } catch {
-            Write-Host "Error details: $_"
-            Write-Host "Exception: $($_.Exception.ToString())"
+            $msg = $_.ToString()
+            $stack = $_.ScriptStackTrace
+            Write-Host "::error::Smoke failure: $msg at $stack"
+            "## ARM64 Smoke Failure`n`n$msg`n$stack" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
             exit 1
           }
