@@ -95,7 +95,7 @@ describe('compiled session-locked migrator', () => {
     const pids: number[] = [];
     const stages: string[] = [];
     await migrateDatabase(databaseUrl, { nodeEnv: 'test', onBackendPid: (pid, stage) => { pids.push(pid); stages.push(stage); } });
-    expect(stages).toEqual(['connected', 'locked', 'journal', 'transaction', 'migrated', 'unlocking']);
+    expect(stages).toEqual(['connected', 'locked', 'journal-before', 'journal-after', 'transaction-before', 'transaction-after', 'migrated', 'unlocking-before', 'unlocking-after']);
     expect(new Set(pids).size).toBe(1);
   });
 
@@ -107,6 +107,41 @@ describe('compiled session-locked migrator', () => {
         if (stage === 'locked') await admin`select pg_terminate_backend(${pid})`;
       }
     })).rejects.toThrow();
+  });
+
+  it('fails fatally after session loss before migration transaction', async () => {
+    const stages: string[] = [];
+    await expect(migrateDatabase(databaseUrl, {
+      nodeEnv: 'test',
+      outerTimeoutMs: 1000,
+      onBackendPid: async (pid, stage) => {
+        stages.push(stage);
+        if (stage === 'transaction-before') await admin`select pg_terminate_backend(${pid})`;
+      }
+    })).rejects.toThrow();
+    expect(stages).not.toContain('transaction-after');
+  });
+
+  it('fails fatally after session loss during migration transaction', async () => {
+    const sql = postgres(databaseUrl, { max: 1 });
+    await sql.unsafe('drop index if exists task_statuses_workflow_name_lower_idx, task_statuses_active_initial_idx, workflows_active_workspace_default_idx, workflows_active_team_default_idx');
+    await sql`alter table task_statuses drop column is_active`;
+    await sql`alter table workflows drop column version`;
+    await sql`delete from drizzle.__drizzle_migrations where created_at = 1788879047610`;
+    await sql.end();
+    const stages: string[] = [];
+    let kill: Promise<unknown> | undefined;
+    await expect(migrateDatabase(databaseUrl, {
+      nodeEnv: 'test',
+      outerTimeoutMs: 1000,
+      onBackendPid: (_pid, stage) => { stages.push(stage); },
+      onMigrationTransaction: async (pid) => {
+        kill = admin`select pg_terminate_backend(${pid})`;
+        await kill;
+      }
+    })).rejects.toThrow();
+    await kill;
+    expect(stages).not.toContain('unlocking-after');
   });
 
   it('fails when its outer timeout expires without continuing migration work', async () => {

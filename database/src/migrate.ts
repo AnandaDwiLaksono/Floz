@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { normalizePostgresTls, parseMigrationEnv, type NodeEnv } from '@floz/config';
 import postgres from 'postgres';
 
@@ -9,9 +9,11 @@ const migrationTimeoutMs = 60000;
 
 export type MigrateOptions = {
   outerTimeoutMs?: number;
-  onBackendPid?: (pid: number, stage: 'connected' | 'locked' | 'journal' | 'transaction' | 'migrated' | 'unlocking') => void | Promise<void>;
+  onBackendPid?: (pid: number, stage: 'connected' | 'locked' | 'journal-before' | 'journal-after' | 'transaction-before' | 'transaction-after' | 'migrated' | 'unlocking-before' | 'unlocking-after') => void | Promise<void>;
   nodeEnv?: NodeEnv;
   dbSsl?: string;
+  onQuery?: (query: string) => void;
+  onMigrationTransaction?: (pid: number) => void | Promise<void>;
 };
 
 export const migrationAdvisoryKey = (environment: string, database: string) => createHash('sha256')
@@ -36,6 +38,7 @@ export async function migrateDatabase(url: string, options: MigrateOptions = {})
     max_lifetime: null,
     ssl: ssl === false ? undefined : nodeEnv === 'production' ? { rejectUnauthorized: true } : ssl,
     connection: { statement_timeout: 10000, lock_timeout: 3000 },
+    debug: options.onQuery ? (_id, query) => options.onQuery?.(query) : false,
     onclose: () => {
       closed = true;
       void sql.end({ timeout: 0 });
@@ -54,20 +57,42 @@ export async function migrateDatabase(url: string, options: MigrateOptions = {})
       ensureOpen();
       const locked = (await sql.unsafe(`select pg_try_advisory_lock(${key}) as locked`))[0].locked;
       if (!locked) throw new Error('Database migration advisory lock unavailable');
+      let unlocked = false;
       try {
         await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'locked');
         ensureOpen();
-        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'journal');
+        const db = drizzle(sql);
+        const migrationConfig = { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) };
+        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'journal-before');
+        const migrations = readMigrationFiles(migrationConfig);
         ensureOpen();
-        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'transaction');
+        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'journal-after');
         ensureOpen();
-        await migrate(drizzle(sql), { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) });
+        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'transaction-before');
+        const internal = db as unknown as { dialect: { migrate: (migrations: ReturnType<typeof readMigrationFiles>, session: unknown, config: typeof migrationConfig) => Promise<void> }; session: { transaction: (callback: (tx: unknown) => Promise<void>) => Promise<void> } };
+        const transaction = internal.session.transaction.bind(internal.session);
+        const session = options.onMigrationTransaction ? {
+          ...internal.session,
+          transaction: (callback: (tx: unknown) => Promise<void>) => transaction(async (tx) => {
+            await options.onMigrationTransaction?.(pid);
+            ensureOpen();
+            await callback(tx);
+          })
+        } : internal.session;
+        await internal.dialect.migrate(migrations, session, migrationConfig);
+        ensureOpen();
+        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'transaction-after');
         ensureOpen();
         await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'migrated');
-        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'unlocking');
+        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'unlocking-before');
+        ensureOpen();
+        await sql.unsafe(`select pg_advisory_unlock(${key})`);
+        unlocked = true;
+        ensureOpen();
+        await options.onBackendPid?.(Number((await sql`select pg_backend_pid() as pid`)[0].pid), 'unlocking-after');
         return { backendPid: pid };
       } finally {
-        if (!closed) await sql.unsafe(`select pg_advisory_unlock(${key})`);
+        if (!closed && !unlocked) await sql.unsafe(`select pg_advisory_unlock(${key})`);
       }
     } finally {
       await sql.end({ timeout: 5000 });
