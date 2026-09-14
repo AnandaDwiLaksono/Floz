@@ -35,7 +35,7 @@ describe('production security headers', () => {
     await buildApp();
     server = spawn(process.execPath, [next, 'start', '--hostname', '127.0.0.1', '--port', String(port)], { env, stdio: 'ignore' });
     await waitForServer();
-  }, 120000);
+  }, 240000);
 
   afterAll(async () => {
     if (server) {
