@@ -4,6 +4,14 @@ const weekOf = (value) => {
   return date.toISOString().slice(0, 10);
 };
 
+export async function applyRetention(archives, { replacement, deleteArchive }) {
+  if (!replacement?.successful || !replacement?.verified) return [];
+  const retained = new Set(selectRetention([...archives, replacement]).map(({ id }) => id));
+  const deleted = [];
+  for (const { id } of archives) if (!retained.has(id)) { await deleteArchive(id); deleted.push(id); }
+  return deleted;
+}
+
 export function selectRetention(archives) {
   const eligible = archives.filter((archive) => archive.successful && archive.verified).sort((a, b) => b.snapshotStartedAt.localeCompare(a.snapshotStartedAt));
   const days = new Set();
