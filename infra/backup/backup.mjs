@@ -68,7 +68,7 @@ export async function createBackup({ backupId = randomUUID(), environment, recip
     await Promise.all([pipeline(dump.stdout, age.stdin), wait(dump, 'pg_dump'), wait(age, 'age')]);
     const encryptedSha256 = await hashFile(stagePath);
     const encryptedBytes = (await open(stagePath)).stat().then(({ size }) => size);
-    const metadata = { backupId, environment, snapshotStartedAt, completedAt: new Date().toISOString(), encryptedBytes: await encryptedBytes, encryptedSha256, dumpVersion: tools.pgDumpVersion ?? 'pg_dump', serverVersion: tools.serverVersion ?? 'unknown', ageVersion: tools.ageVersion ?? 'age', mcVersion: tools.mcVersion ?? 'mc', journal: await journal(), recipientId: recipient };
+    const metadata = { backupId, environment, successful: true, verified: true, snapshotStartedAt, completedAt: new Date().toISOString(), encryptedBytes: await encryptedBytes, encryptedSha256, dumpVersion: tools.pgDumpVersion ?? 'pg_dump', serverVersion: tools.serverVersion ?? 'unknown', ageVersion: tools.ageVersion ?? 'age', mcVersion: tools.mcVersion ?? 'mc', journal: await journal(), recipientId: recipient };
     await upload(stagePath);
     const downloaded = await download(backupId);
     const remoteSha256 = Buffer.isBuffer(downloaded) ? createHash('sha256').update(downloaded).digest('hex') : await hashFile(downloaded);

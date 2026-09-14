@@ -28,3 +28,22 @@ export function selectRetention(archives) {
   }
   return selected;
 }
+
+if (process.argv[1] === new URL(import.meta.url).pathname) {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+  const { BACKUP_REMOTE: remote, BACKUP_ACCESS_KEY: key, BACKUP_SECRET_KEY: secret, RETENTION_REPLACEMENT: replacement, RETENTION_REPLACEMENT_BASE64: replacementBase64 } = process.env;
+  const replacementJson = replacementBase64 ? Buffer.from(replacementBase64, 'base64').toString() : replacement;
+  if (!remote || !replacementJson || !key || !secret) throw new Error('retention configuration missing');
+  const env = { ...process.env, MC_HOST_fixture: `http://${key}:${secret}@minio:9000` };
+  const prefix = `fixture/${remote.split('/')[1]}/postgres/fixture`;
+  const list = async () => {
+    const { stdout } = await run('mc', ['--json', 'ls', '--recursive', `${remote}/postgres/fixture/`], { env });
+    const records = stdout.trim().split('\n').filter(Boolean).map(JSON.parse).filter(({ key: name }) => name.endsWith('.json') && !name.endsWith('last-success.json'));
+    return Promise.all(records.map(async ({ key: name }) => JSON.parse((await run('mc', ['cat', `${prefix}/${name}`], { env })).stdout)));
+  };
+  const deleteArchive = (id) => run('mc', ['rm', `${prefix}/${id}.json`], { env }).then(() => run('mc', ['rm', `${prefix}/${id}.dump.age`], { env }));
+  const deleted = await applyRetention(undefined, { replacement: JSON.parse(replacementJson), listArchives: list, deleteArchive });
+  process.stdout.write(`${JSON.stringify(deleted)}\n`);
+}

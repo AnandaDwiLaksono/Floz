@@ -69,6 +69,16 @@ describe('backup pipeline', () => {
     expect(script).toContain('backup-retention');
     expect(script).toContain('fixture-retention');
     expect(script).not.toMatch(/fixture-admin[^\n]*BACKUP_ACCESS_KEY/);
+    expect(script).toContain('sslmode=verify-full');
+    expect(script).toContain('sslrootcert=/tls/ca.crt');
+    expect(script).not.toContain('sslmode=disable');
+    expect(script).toContain('DNS:phase12-backup-postgres');
+    expect(script).toContain('TLS bad CA rejected');
+    expect(script).toContain('TLS hostname mismatch rejected');
+    expect(script).toContain('/app/infra/backup/retention.mjs');
+    expect(script).toContain('Retention list failure rejected');
+    expect(script).toContain('Retention delete failure rejected');
+    expect(script).toMatch(/Remove-Item[^\n]*TlsDir/);
   });
 
   test('fails when encrypted-stage cleanup fails after a successful backup', async () => {
