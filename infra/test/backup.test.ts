@@ -78,6 +78,11 @@ describe('backup pipeline', () => {
     expect(script).toContain('/app/infra/backup/retention.mjs');
     expect(script).toContain('Retention list failure rejected');
     expect(script).toContain('Retention delete failure rejected');
+    expect(script).toContain('ExpectedRetention');
+    expect(script).toContain('BeforeRetentionObjects');
+    expect(script).toContain('ProtectedRetentionIds');
+    expect(script).toContain('StaleRetentionIds');
+    expect(script).not.toContain('$Deleted.Count -ne 24');
     expect(script).toMatch(/Remove-Item[^\n]*TlsDir/);
   });
 

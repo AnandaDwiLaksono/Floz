@@ -72,13 +72,28 @@ try {
   if (!$Metadata.encryptedSha256 -or $Metadata.encryptedBytes -le 0) { throw 'Real encrypted backup evidence missing' }
   docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-upload $UploadSecret --api S3v4 --path on >/dev/null && mc stat fixture/$Bucket/postgres/fixture/last-success.json >/dev/null && mc stat fixture/$Bucket/postgres/fixture/$($Metadata.backupId).json >/dev/null && mc stat fixture/$Bucket/postgres/fixture/$($Metadata.backupId).dump.age >/dev/null"
   if ($LASTEXITCODE) { throw 'Verified backup objects missing' }
-  1..31 | ForEach-Object {
-    $Id = "archive-$_"; $Started = (Get-Date '2026-08-31T00:00:00Z').AddDays(-$_).ToString('o'); $Record = "{`"id`":`"$Id`",`"successful`":true,`"verified`":true,`"snapshotStartedAt`":`"$Started`"}"; $RecordBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Record))
+  $RetentionRecords = 1..31 | ForEach-Object {
+    $Id = "archive-$_"; $Started = (Get-Date '2026-08-31T00:00:00Z').AddDays(-$_).ToUniversalTime().ToString('o'); $Record = @{ id = $Id; successful = $true; verified = $true; snapshotStartedAt = $Started }; $RecordJson = $Record | ConvertTo-Json -Compress; $RecordBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($RecordJson))
     docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-upload $UploadSecret --api S3v4 --path on >/dev/null && echo $RecordBase64 | base64 -d | mc pipe fixture/$Bucket/postgres/fixture/$Id.json >/dev/null && printf archive | mc pipe fixture/$Bucket/postgres/fixture/$Id.dump.age >/dev/null"
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    $Record
   }
-  $Replacement = "{`"id`":`"$($Metadata.backupId)`",`"successful`":true,`"verified`":true,`"snapshotStartedAt`":`"2026-08-31T00:00:00.000Z`"}"
+  $ReplacementRecord = @{ id = $Metadata.backupId; successful = $true; verified = $true; snapshotStartedAt = '2026-08-31T00:00:00.000Z' }
+  $Replacement = $ReplacementRecord | ConvertTo-Json -Compress
   $ReplacementBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Replacement))
+  $DurableRetentionRecords = @($RetentionRecords) + @{ id = $Metadata.backupId; successful = $Metadata.successful; verified = $Metadata.verified; snapshotStartedAt = $Metadata.snapshotStartedAt }
+  $RetentionRecordsBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((@($DurableRetentionRecords) + $ReplacementRecord | ConvertTo-Json -Compress)))
+  $ExpectedRetention = docker run --rm -v "${Infra}:/app/infra:ro" -e RETENTION_RECORDS_BASE64=$RetentionRecordsBase64 --entrypoint node floz-backup:phase12 --input-type=module -e "import {selectRetention} from '/app/infra/backup/retention.mjs'; console.log(JSON.stringify(selectRetention(JSON.parse(Buffer.from(process.env.RETENTION_RECORDS_BASE64,'base64')))))"
+  if ($LASTEXITCODE) { exit $LASTEXITCODE }
+  $ExpectedRetention = $ExpectedRetention | ConvertFrom-Json
+  if (@($ExpectedRetention | Where-Object { $_.classes -contains 'daily' }).Count -ne 7) { throw 'Retention did not select seven daily classes' }
+  if (@($ExpectedRetention | Where-Object { $_.classes -contains 'weekly' } | Select-Object -ExpandProperty week -Unique).Count -ne 4) { throw 'Retention did not select four weekly classes' }
+  if (@($ExpectedRetention | Where-Object { $_.classes.Count -gt 1 }).Count -eq 0) { throw 'Retention daily weekly overlap missing' }
+  $ProtectedRetentionIds = @($ExpectedRetention | Select-Object -ExpandProperty id)
+  $ProtectedArchiveIds = @($RetentionRecords | Where-Object { $_.id -in $ProtectedRetentionIds } | ForEach-Object { $_.id })
+  $StaleRetentionIds = @($RetentionRecords | Where-Object { $_.id -notin $ProtectedRetentionIds } | ForEach-Object { $_.id })
+  $BeforeRetentionObjects = @(docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-upload $UploadSecret --api S3v4 --path on >/dev/null && mc ls --json --recursive fixture/$Bucket/postgres/fixture | grep 'archive-' ")
+  if ($LASTEXITCODE) { exit $LASTEXITCODE }
   $LastSuccess = docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-upload $UploadSecret --api S3v4 --path on >/dev/null && mc cat fixture/$Bucket/postgres/fixture/last-success.json"
   $ErrorActionPreference = 'Continue'
   docker run --rm --network $Network -v "${Infra}:/app/infra:ro" -e BACKUP_REMOTE="fixture/$Bucket" -e BACKUP_ACCESS_KEY=$ListFailureKey -e BACKUP_SECRET_KEY=$ListFailureSecret -e RETENTION_REPLACEMENT_BASE64=$ReplacementBase64 floz-backup:phase12 /app/infra/backup/retention.mjs 2>$null | Out-Null
@@ -96,8 +111,18 @@ try {
   if ($LASTEXITCODE) { throw 'Retention failure removed protected archive' }
   $Retention = docker run --rm --network $Network -v "${Infra}:/app/infra:ro" -e BACKUP_REMOTE="fixture/$Bucket" -e BACKUP_ACCESS_KEY=$RetentionKey -e BACKUP_SECRET_KEY=$RetentionSecret -e RETENTION_REPLACEMENT_BASE64=$ReplacementBase64 floz-backup:phase12 /app/infra/backup/retention.mjs
   if ($LASTEXITCODE) { exit $LASTEXITCODE }
-  $Deleted = $Retention | ConvertFrom-Json
-  if ($Deleted.Count -ne 24) { throw 'Retention selected daily weekly overlap incorrectly' }
+  $Deleted = @($Retention | ConvertFrom-Json | ForEach-Object { $_ })
+  $AfterRetentionObjects = @(docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-upload $UploadSecret --api S3v4 --path on >/dev/null && mc ls --json --recursive fixture/$Bucket/postgres/fixture | grep 'archive-' ")
+  if ($LASTEXITCODE) { exit $LASTEXITCODE }
+  $AfterRetentionIds = @($AfterRetentionObjects | ForEach-Object { [IO.Path]::GetFileName(($_ | ConvertFrom-Json).key) -replace '\.dump\.age$|\.json$','' } | Sort-Object -Unique)
+  if (@($BeforeRetentionObjects).Count -ne (@($RetentionRecords).Count * 2)) { throw 'Retention before-state fixture incomplete' }
+  $DeletedIds = (@($Deleted | ForEach-Object { [string]$_ } | Sort-Object) -join ',')
+  $ExpectedDeletedIds = (@($StaleRetentionIds | ForEach-Object { [string]$_ } | Sort-Object) -join ',')
+  if ($DeletedIds -ne $ExpectedDeletedIds) { throw "Retention deleted IDs differ from stale IDs: actual=$DeletedIds expected=$ExpectedDeletedIds" }
+  if (@($ProtectedArchiveIds | Where-Object { $_ -notin $AfterRetentionIds }).Count) { throw 'Retention deleted protected archive' }
+  if (@($StaleRetentionIds | Where-Object { $_ -in $AfterRetentionIds }).Count) { throw 'Retention retained stale archive' }
+  if (@($AfterRetentionObjects).Count -ne (@($ProtectedArchiveIds).Count * 2)) { throw 'Retention after-state object count incorrect' }
+  Write-Output "Retention evidence: daily=7 weekly=4 overlap=$(@($ExpectedRetention | Where-Object { $_.classes.Count -gt 1 }).Count) protected=$(@($ProtectedArchiveIds).Count) stale=$(@($StaleRetentionIds).Count) beforeObjects=$(@($BeforeRetentionObjects).Count) afterObjects=$(@($AfterRetentionObjects).Count) deleted=$(@($Deleted).Count)"
   $ErrorActionPreference = 'Continue'
 
   $ErrorActionPreference = 'Continue'
