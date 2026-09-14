@@ -34,7 +34,7 @@ export async function mcConfig({ mc = 'mc', endpoint, accessKey, secretKey }) {
   }
 }
 
-export async function createBackup({ backupId = randomUUID(), environment, recipient, stage, databaseUrl: source = process.env.DATABASE_URL, spawnChild = spawn, upload, download, journal = async () => ({}), publishMetadata, publishLastSuccess, tools = {}, remote = process.env.BACKUP_REMOTE, endpoint = process.env.BACKUP_ENDPOINT, accessKey = process.env.BACKUP_ACCESS_KEY, secretKey = process.env.BACKUP_SECRET_KEY }) {
+export async function createBackup({ backupId = randomUUID(), environment, recipient, stage, databaseUrl: source = process.env.DATABASE_URL, spawnChild = spawn, upload, download, journal = async () => ({}), publishMetadata, publishLastSuccess, retain, removeStage = rm, tools = {}, remote = process.env.BACKUP_REMOTE, endpoint = process.env.BACKUP_ENDPOINT, accessKey = process.env.BACKUP_ACCESS_KEY, secretKey = process.env.BACKUP_SECRET_KEY }) {
   if (!validRecipient(recipient)) throw new Error('invalid age recipient');
   if (!source || !safeName(environment) || !safeName(backupId) || !remote || !/^fixture\/[a-z0-9][a-z0-9._-]*$/i.test(remote) || endpoint !== 'http://minio:9000') throw new Error('unsafe backup target');
   const snapshotStartedAt = new Date().toISOString();
@@ -75,9 +75,10 @@ export async function createBackup({ backupId = randomUUID(), environment, recip
     if (remoteSha256 !== encryptedSha256) throw new Error('encrypted backup hash mismatch');
     await publishMetadata(metadata);
     await publishLastSuccess({ backupId, environment, snapshotStartedAt, completedAt: metadata.completedAt, encryptedSha256, verified: true });
+    if (retain) await retain(metadata);
     return metadata;
   } finally {
-    await rm(stagePath, { force: true });
+    await removeStage(stagePath, { force: true });
     await rm(verifyPath, { force: true });
     await session?.close();
     if (workDir) await rm(workDir, { recursive: true, force: true });
