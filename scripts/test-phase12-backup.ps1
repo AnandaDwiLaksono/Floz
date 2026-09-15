@@ -4,6 +4,7 @@ $PostgresImage = 'postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b
 $Network = 'phase12-backup'
 $Minio = 'phase12-backup-minio'
 $Postgres = 'phase12-backup-postgres'
+$RestorePostgres = 'phase12-restore-postgres'
 $Bucket = 'fixture-backups'
 $Password = 'fixture-password'
 $UploadKey = 'fixture-upload'
@@ -14,6 +15,8 @@ $ListFailureKey = 'fixture-no-list'
 $ListFailureSecret = 'fixture-no-list-secret'
 $DeleteFailureKey = 'fixture-no-delete'
 $DeleteFailureSecret = 'fixture-no-delete-secret'
+$RestoreKey = 'fixture-restore'
+$RestoreSecret = 'fixture-restore-secret'
 $Recipient = $null
 $TlsDir = Join-Path ([IO.Path]::GetTempPath()) "phase12-backup-tls-$([guid]::NewGuid())"
 $OpenSslConf = 'C:\Program Files\Git\usr\ssl\openssl.cnf'
@@ -21,6 +24,8 @@ $OpenSslConf = 'C:\Program Files\Git\usr\ssl\openssl.cnf'
 pnpm --filter @floz/infra exec vitest run test/backup.test.ts test/retention.test.ts test/restore-fixture.test.ts
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 docker build -f infra/docker/backup.Dockerfile -t floz-backup:phase12 .
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+docker build -f infra/docker/migrate.Dockerfile -t floz-migrate:phase12 .
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 docker network create --internal $Network 2>$null | Out-Null
 New-Item -ItemType Directory -Path $TlsDir | Out-Null
@@ -45,16 +50,23 @@ try {
   }
   $ErrorActionPreference = 'Stop'
   if (!$Ready) { throw 'PostgreSQL fixture did not become ready' }
-  docker exec $Postgres psql -U postgres -d fixture -c 'create table fixture_check (id integer primary key, value text not null); insert into fixture_check values (1, ''ok'');' | Out-Null
+  docker exec $Postgres psql -U postgres -d fixture -c 'create database fixture_restore' | Out-Null
+  docker run --rm --network $Network -e DATABASE_URL="postgres://postgres:$Password@db:5432/fixture" -e NODE_ENV=test floz-migrate:phase12
+  if ($LASTEXITCODE) { exit $LASTEXITCODE }
+  Get-Content -Raw .\infra\backup\task19-fixture.sql | docker exec -i $Postgres psql -U postgres -d fixture | Out-Null
+  if ($LASTEXITCODE) { exit $LASTEXITCODE }
+  $SourceLedger = docker exec $Postgres psql -U postgres -d fixture -Atc "select md5(string_agg(table_name || ':' || row_count, ',' order by table_name)) from (select table_name, (xpath('/row/count/text()', query_to_xml(format('select count(*) as count from %I', table_name), false, true, '')))[1]::text as row_count from information_schema.tables where table_schema='public') ledger"
   if ($LASTEXITCODE) { exit $LASTEXITCODE }
   $Key = docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c 'age-keygen'
   $Secret = ($Key | Select-String 'AGE-SECRET-KEY').ToString().Trim()
+  Set-Content -LiteralPath "$TlsDir/age-identity.txt" -Value $Secret
   $Recipient = ($Key | Select-String 'public key').ToString().Split(':')[-1].Trim()
   $UploadPolicy = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("{`"Version`":`"2012-10-17`",`"Statement`":[{`"Effect`":`"Allow`",`"Action`":[`"s3:PutObject`",`"s3:GetObject`"],`"Resource`":[`"arn:aws:s3:::$Bucket/postgres/fixture/*`"]},{`"Effect`":`"Allow`",`"Action`":[`"s3:ListBucket`"],`"Resource`":[`"arn:aws:s3:::$Bucket`"]}]}"))
   $RetentionPolicy = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("{`"Version`":`"2012-10-17`",`"Statement`":[{`"Effect`":`"Allow`",`"Action`":[`"s3:ListBucket`"],`"Resource`":[`"arn:aws:s3:::$Bucket`"]},{`"Effect`":`"Allow`",`"Action`":[`"s3:GetObject`",`"s3:DeleteObject`"],`"Resource`":[`"arn:aws:s3:::$Bucket/postgres/fixture/*`"]}]}"))
   $NoListPolicy = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("{`"Version`":`"2012-10-17`",`"Statement`":[{`"Effect`":`"Allow`",`"Action`":[`"s3:GetObject`",`"s3:DeleteObject`"],`"Resource`":[`"arn:aws:s3:::$Bucket/postgres/fixture/*`"]}]}"))
   $NoDeletePolicy = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("{`"Version`":`"2012-10-17`",`"Statement`":[{`"Effect`":`"Allow`",`"Action`":[`"s3:ListBucket`"],`"Resource`":[`"arn:aws:s3:::$Bucket`"]},{`"Effect`":`"Allow`",`"Action`":[`"s3:GetObject`"],`"Resource`":[`"arn:aws:s3:::$Bucket/postgres/fixture/*`"]}]}"))
-  docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-admin $Password --api S3v4 --path on && mc mb fixture/$Bucket && echo $UploadPolicy | base64 -d >/tmp/upload.json && echo $RetentionPolicy | base64 -d >/tmp/retention.json && echo $NoListPolicy | base64 -d >/tmp/no-list.json && echo $NoDeletePolicy | base64 -d >/tmp/no-delete.json && mc admin policy create fixture backup-upload /tmp/upload.json && mc admin policy create fixture backup-retention /tmp/retention.json && mc admin policy create fixture backup-no-list /tmp/no-list.json && mc admin policy create fixture backup-no-delete /tmp/no-delete.json && mc admin user add fixture $UploadKey $UploadSecret && mc admin user add fixture $RetentionKey $RetentionSecret && mc admin user add fixture $ListFailureKey $ListFailureSecret && mc admin user add fixture $DeleteFailureKey $DeleteFailureSecret && mc admin policy attach fixture backup-upload --user $UploadKey && mc admin policy attach fixture backup-retention --user $RetentionKey && mc admin policy attach fixture backup-no-list --user $ListFailureKey && mc admin policy attach fixture backup-no-delete --user $DeleteFailureKey"
+  $RestorePolicy = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("{`"Version`":`"2012-10-17`",`"Statement`":[{`"Effect`":`"Allow`",`"Action`":[`"s3:ListBucket`",`"s3:GetBucketLocation`"],`"Resource`":[`"arn:aws:s3:::$Bucket`"]},{`"Effect`":`"Allow`",`"Action`":[`"s3:GetObject`"],`"Resource`":[`"arn:aws:s3:::$Bucket/postgres/fixture/*`"]}]}"))
+  docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-admin $Password --api S3v4 --path on && mc mb fixture/$Bucket && echo $UploadPolicy | base64 -d >/tmp/upload.json && echo $RetentionPolicy | base64 -d >/tmp/retention.json && echo $NoListPolicy | base64 -d >/tmp/no-list.json && echo $NoDeletePolicy | base64 -d >/tmp/no-delete.json && mc admin policy create fixture backup-upload /tmp/upload.json && mc admin policy create fixture backup-retention /tmp/retention.json && mc admin policy create fixture backup-no-list /tmp/no-list.json && mc admin policy create fixture backup-no-delete /tmp/no-delete.json && echo $RestorePolicy | base64 -d >/tmp/restore.json && mc admin policy create fixture backup-restore-read /tmp/restore.json && mc admin user add fixture $UploadKey $UploadSecret && mc admin user add fixture $RetentionKey $RetentionSecret && mc admin user add fixture $ListFailureKey $ListFailureSecret && mc admin user add fixture $DeleteFailureKey $DeleteFailureSecret && mc admin user add fixture $RestoreKey $RestoreSecret && mc admin policy attach fixture backup-upload --user $UploadKey && mc admin policy attach fixture backup-retention --user $RetentionKey && mc admin policy attach fixture backup-no-list --user $ListFailureKey && mc admin policy attach fixture backup-no-delete --user $DeleteFailureKey && mc admin policy attach fixture backup-restore-read --user $RestoreKey"
   if ($LASTEXITCODE) { exit $LASTEXITCODE }
   $Infra = (Resolve-Path '.\infra').Path
   openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout "$TlsDir/bad-ca.key" -out "$TlsDir/bad-ca.crt" -subj '/CN=bad-ca' | Out-Null
@@ -70,6 +82,31 @@ try {
   if ($LASTEXITCODE) { exit $LASTEXITCODE }
   $Metadata = $Result | ConvertFrom-Json
   if (!$Metadata.encryptedSha256 -or $Metadata.encryptedBytes -le 0) { throw 'Real encrypted backup evidence missing' }
+  $RestoreSnapshot = (Get-Date $Metadata.snapshotStartedAt).ToUniversalTime().AddMinutes(-1).ToString('o')
+  $Restore = docker run --rm --network $Network -v "${Infra}:/app/infra:ro" -v "${TlsDir}:/tls:ro" -e DATABASE_URL="postgres://postgres:$Password@$Postgres`:5432/fixture?sslmode=verify-full&sslrootcert=/tls/ca.crt" -e RESTORE_DATABASE_URL="postgres://postgres:$Password@$Postgres`:5432/fixture_restore?sslmode=verify-full&sslrootcert=/tls/ca.crt" -e BACKUP_ENDPOINT='http://minio:9000' -e BACKUP_REMOTE="fixture/$Bucket" -e RESTORE_ACCESS_KEY='fixture-restore' -e RESTORE_SECRET_KEY=$RestoreSecret -e RESTORE_AGE_IDENTITY='/tls/age-identity.txt' -e RESTORE_BACKUP_ID=$($Metadata.backupId) -e RESTORE_ENCRYPTED_SHA256=$($Metadata.encryptedSha256) -e RESTORE_SNAPSHOT_STARTED_AT=$RestoreSnapshot floz-backup:phase12 /app/infra/backup/restore-fixture.mjs
+  if ($LASTEXITCODE) { exit $LASTEXITCODE }
+  $ErrorActionPreference = 'Continue'
+  docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-restore $RestoreSecret --api S3v4 --path on >/dev/null && mc cat fixture/$Bucket/postgres/fixture/$($Metadata.backupId).dump.age >/dev/null"
+  $RestoreReadExit = $LASTEXITCODE
+  docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-restore $RestoreSecret --api S3v4 --path on >/dev/null && printf denied | mc pipe fixture/$Bucket/postgres/fixture/restore-write-proof.txt >/dev/null"
+  $RestoreWriteExit = $LASTEXITCODE
+  docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc rm fixture/$Bucket/postgres/fixture/$($Metadata.backupId).dump.age >/dev/null"
+  $RestoreDeleteExit = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($RestoreReadExit) { throw 'Restore read probe failed' }
+  if ($RestoreWriteExit -eq 0) { throw 'Restore write permission rejected' }
+  if ($RestoreDeleteExit -eq 0) { throw 'Restore delete permission rejected' }
+  docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-admin $Password --api S3v4 --path on >/dev/null && mc stat fixture/$Bucket/postgres/fixture/$($Metadata.backupId).dump.age >/dev/null"
+  if ($LASTEXITCODE) { throw 'Admin artifact verification failed' }
+  $TargetLedger = docker exec $Postgres psql -U postgres -d fixture_restore -Atc "select md5(string_agg(table_name || ':' || row_count, ',' order by table_name)) from (select table_name, (xpath('/row/count/text()', query_to_xml(format('select count(*) as count from %I', table_name), false, true, '')))[1]::text as row_count from information_schema.tables where table_schema='public') ledger"
+  if ($TargetLedger -ne $SourceLedger) { throw "Target ledger mismatch: source=$SourceLedger target=$TargetLedger" }
+  $ErrorActionPreference = 'Continue'
+  docker exec $Postgres psql -U postgres -d fixture_restore -c "insert into notification_dedup_ledger (workspace_id,dedup_key) values ('00000000-0000-0000-0000-000000000020','task19-fixture')" 2>$null | Out-Null
+  $ConstraintExit = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($ConstraintExit -eq 0) { throw 'Restored constraint behavior rejected' }
+  $SourceLedgerAfter = docker exec $Postgres psql -U postgres -d fixture -Atc "select md5(string_agg(table_name || ':' || row_count, ',' order by table_name)) from (select table_name, (xpath('/row/count/text()', query_to_xml(format('select count(*) as count from %I', table_name), false, true, '')))[1]::text as row_count from information_schema.tables where table_schema='public') ledger"
+  if ($SourceLedger -ne $SourceLedgerAfter) { throw 'Source changed during real restore checks' }
   docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-upload $UploadSecret --api S3v4 --path on >/dev/null && mc stat fixture/$Bucket/postgres/fixture/last-success.json >/dev/null && mc stat fixture/$Bucket/postgres/fixture/$($Metadata.backupId).json >/dev/null && mc stat fixture/$Bucket/postgres/fixture/$($Metadata.backupId).dump.age >/dev/null"
   if ($LASTEXITCODE) { throw 'Verified backup objects missing' }
   $RetentionRecords = 1..31 | ForEach-Object {
@@ -133,7 +170,7 @@ try {
   $AfterFailure = docker run --rm --network $Network --entrypoint sh floz-backup:phase12 -c "mc alias set fixture http://minio:9000 fixture-upload $UploadSecret --api S3v4 --path on >/dev/null && mc cat fixture/$Bucket/postgres/fixture/last-success.json"
   if ($LastSuccess -ne $AfterFailure) { throw 'Failure displaced last-success' }
 } finally {
-  docker rm -f $Postgres, $Minio 2>$null | Out-Null
+  docker rm -f $Postgres, $RestorePostgres, $Minio 2>$null | Out-Null
   docker network rm $Network 2>$null | Out-Null
   Remove-Item -LiteralPath $TlsDir -Recurse -Force -ErrorAction SilentlyContinue
 }

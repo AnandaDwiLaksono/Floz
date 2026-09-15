@@ -24,8 +24,10 @@ const tlsUrl = (url) => {
 };
 
 const realRun = (command, args) => new Promise((resolve, reject) => {
-  const child = spawn(command, args, { stdio: 'ignore' });
-  child.once('error', reject).once('close', (code) => code === 0 ? resolve() : reject(new Error(`${command} failed`)));
+  const child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+  let stderr = '';
+  child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+  child.once('error', reject).once('close', (code) => code === 0 ? resolve() : reject(new Error(`${command} failed (exit ${code}): ${stderr.trim()}`)));
 });
 const capture = (command, args) => new Promise((resolve, reject) => {
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'ignore'] });
@@ -106,7 +108,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       sourceFingerprint: () => capture('psql', [source, '--tuples-only', '--no-align', '--command', "select md5(string_agg(t::text,'|' order by t::text)) from (select table_name,(xpath('/row/count/text()',query_to_xml(format('select count(*) as count from %I',table_name),false,true,'')))[1]::text from information_schema.tables where table_schema='public') t"]),
       targetIsolated: async () => identity(source) !== identity(target),
       integrity: async () => {
-        const value = await capture('psql', [target, '--tuples-only', '--no-align', '--command', "select json_build_object('journal',(select count(*)>0 from __drizzle_migrations),'relations',(select count(*)=0 from tasks t left join workspaces w on w.id=t.workspace_id where w.id is null),'constraints',(select count(*)>0 from pg_constraint where contype='f'),'auth',(select count(*)>0 from users) and (select count(*)>0 from accounts) and (select count(*)>0 from sessions),'workspaceIsolation',(select count(distinct workspace_id)=2 from tasks),'tasks',(select count(*)>=2 from tasks),'outbox',(select count(*)>0 from outbox_events),'notificationDedup',(select count(*)>0 from notification_dedup_ledger))"]);
+        const value = await capture('psql', [target, '--tuples-only', '--no-align', '--command', "select json_build_object('journal',(select count(*)>0 from drizzle.__drizzle_migrations),'relations',(select count(*)=0 from tasks t left join workspaces w on w.id=t.workspace_id where w.id is null),'constraints',(select count(*)>0 from pg_constraint where contype='f'),'auth',(select count(*)>0 from users) and (select count(*)>0 from accounts) and (select count(*)>0 from sessions),'workspaceIsolation',(select count(distinct workspace_id)=2 from tasks),'tasks',(select count(*)>=2 from tasks),'outbox',(select count(*)>0 from outbox_events),'notificationDedup',(select count(*)>0 from notification_dedup_ledger))"]);
         return JSON.parse(value);
       },
     });

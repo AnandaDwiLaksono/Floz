@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { restoreFixture } from '../backup/restore-fixture.mjs';
+import { readFileSync } from 'node:fs';
+
+const integration = readFileSync('../scripts/test-phase12-backup.ps1', 'utf8');
+const task19 = readFileSync('backup/task19-fixture.sql', 'utf8');
 
 const sha256 = (value: Buffer) => createHash('sha256').update(value).digest('hex');
 const encrypted = Buffer.from('encrypted-fixture');
@@ -26,6 +30,37 @@ const options = async (overrides = {}) => {
   }
   return merged;
 };
+
+describe('Task19 real backup fixture wiring', () => {
+  test('migrates canonical schema, seeds representative tables, then restores to an isolated target with read-only credentials', () => {
+    expect(integration).toMatch(/floz-migrate:phase12/);
+    expect(integration).toMatch(/task19-fixture\.sql/);
+    expect(integration).toMatch(/fixture_restore/);
+    expect(integration).toMatch(/RESTORE_ACCESS_KEY='fixture-restore'/);
+    expect(integration).toMatch(/backup-restore-read/);
+    expect(integration).toMatch(/restore-fixture\.mjs/);
+    expect(integration).toMatch(/RESTORE_DATABASE_URL=.*fixture_restore/);
+    expect(integration).toMatch(/RESTORE_BACKUP_ID=\$\(\$Metadata\.backupId\)/);
+    expect(integration).toMatch(/fixture\/\$\(\$Metadata\.backupId\)\.dump\.age/);
+    expect(integration).toMatch(/Restore read probe failed/);
+    expect(integration).toMatch(/Restore write permission rejected/);
+    expect(integration).toMatch(/Restore delete permission rejected/);
+    expect(integration).toMatch(/Admin artifact verification failed/);
+    expect(task19).toMatch(/INSERT INTO users/);
+    expect(task19).toMatch(/INSERT INTO workspaces/);
+    expect(task19).toMatch(/INSERT INTO tasks/);
+    expect(task19).toMatch(/INSERT INTO outbox_events/);
+    expect(task19).toMatch(/INSERT INTO notification_dedup_ledger/);
+  });
+
+  test('checks restored ledger equality, constraint behavior, and unchanged source', () => {
+    expect(integration).toMatch(/SourceLedger/);
+    expect(integration).toMatch(/TargetLedger/);
+    expect(integration).toMatch(/TargetLedger -ne \$SourceLedger/);
+    expect(integration).toMatch(/SourceLedger -ne \$SourceLedgerAfter/);
+    expect(integration).toMatch(/constraint behavior rejected/);
+  });
+});
 
 describe('isolated encrypted restore fixture', () => {
   test('downloads with restore-only credentials, verifies ciphertext before age decrypt, restores isolated TLS target, then cleans plaintext', async () => {
@@ -67,8 +102,9 @@ describe('isolated encrypted restore fixture', () => {
   });
 
   test('rejects invalid or future snapshot timestamps before download', async () => {
-    for (const snapshotStartedAt of ['invalid', new Date(Date.now() + 1).toISOString()]) {
-      const fixture = await options({ snapshotStartedAt, now: () => Date.now() });
+    const clock = Date.now();
+    for (const snapshotStartedAt of ['invalid', new Date(clock + 1).toISOString()]) {
+      const fixture = await options({ snapshotStartedAt, now: () => clock });
       await expect(restoreFixture(fixture as never)).rejects.toThrow('invalid snapshot start');
       expect(fixture.calls).toEqual([]);
     }
