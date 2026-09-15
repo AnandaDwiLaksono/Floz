@@ -34,6 +34,22 @@ jobs:
           try {
             & ./scripts/phase12-build-multiarch.ps1 -Platform linux/arm64
             & ./scripts/phase12-image-smoke.ps1 -Platform linux/arm64
+            docker buildx build --platform linux/arm64 --load -f infra/docker/backup.Dockerfile -t floz-backup:phase12 .
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            docker run --rm --platform linux/arm64 floz-backup:phase12 -e 'console.log("uname=" + require("os").arch() + " uid=" + process.getuid())'
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            docker run --rm --platform linux/arm64 --entrypoint pg_dump floz-backup:phase12 --version
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            docker run --rm --platform linux/arm64 --entrypoint pg_restore floz-backup:phase12 --version
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            docker run --rm --platform linux/arm64 --entrypoint age floz-backup:phase12 --version
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            docker run --rm --platform linux/arm64 --entrypoint mc floz-backup:phase12 --version
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            docker run --rm --platform linux/arm64 --entrypoint sh floz-backup:phase12 -c 'test -r /etc/ssl/certs/ca-certificates.crt && id -u | grep -v "^0$"'
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            docker run --rm --platform linux/arm64 --entrypoint sh floz-backup:phase12 -c 'set -eux; KEY=$(age-keygen); SEC=$(echo "$KEY" | grep "AGE-SECRET-KEY" | tr -d "\r\n"); PUB=$(echo "$KEY" | grep "public key" | cut -d: -f2 | tr -d " \r\n"); echo "arm64-smoke" | age -r "$PUB" > /tmp/smoke.age; test "$(age -d -i <(echo "$SEC") /tmp/smoke.age)" = "arm64-smoke"'
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
           } catch {
             $msg = $_.ToString()
             $stack = $_.ScriptStackTrace
