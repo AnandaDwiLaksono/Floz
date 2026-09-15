@@ -18,7 +18,7 @@ $Recipient = $null
 $TlsDir = Join-Path ([IO.Path]::GetTempPath()) "phase12-backup-tls-$([guid]::NewGuid())"
 $OpenSslConf = 'C:\Program Files\Git\usr\ssl\openssl.cnf'
 
-pnpm --filter @floz/infra exec vitest run test/backup.test.ts test/retention.test.ts
+pnpm --filter @floz/infra exec vitest run test/backup.test.ts test/retention.test.ts test/restore-fixture.test.ts
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 docker build -f infra/docker/backup.Dockerfile -t floz-backup:phase12 .
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
