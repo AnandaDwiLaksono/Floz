@@ -48,7 +48,7 @@ jobs:
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
             docker run --rm --platform linux/arm64 --entrypoint sh floz-backup:phase12 -c 'test -r /etc/ssl/certs/ca-certificates.crt && id -u | grep -v "^0$"'
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
-            docker run --rm --platform linux/arm64 --entrypoint sh floz-backup:phase12 -c 'set -eux; KEY=$(age-keygen); SEC=$(echo "$KEY" | grep "AGE-SECRET-KEY" | tr -d "\r\n"); PUB=$(echo "$KEY" | grep "public key" | cut -d: -f2 | tr -d " \r\n"); echo "arm64-smoke" | age -r "$PUB" > /tmp/smoke.age; test "$(age -d -i <(echo "$SEC") /tmp/smoke.age)" = "arm64-smoke"'
+            docker run --rm --platform linux/arm64 --entrypoint sh floz-backup:phase12 -c 'set -eu; age-keygen -o /tmp/id.txt; PUB=$(age-keygen -y /tmp/id.txt); echo "arm64-smoke" | age -r "$PUB" > /tmp/smoke.age; RES=$(age -d -i /tmp/id.txt /tmp/smoke.age); test "$RES" = "arm64-smoke"; echo AGE_ARM64_OK'
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           } catch {
             $msg = $_.ToString()
