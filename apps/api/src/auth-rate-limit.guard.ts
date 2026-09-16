@@ -18,7 +18,7 @@ export type TimeProvider = () => number;
 @Injectable()
 export class AuthRateLimitGuard implements CanActivate, OnModuleDestroy {
   private readonly maxKeys = 10000;
-  private readonly maxRequests = 10;
+  private readonly maxRequests = process.env.AUTH_RATE_LIMIT_MAX ? Number(process.env.AUTH_RATE_LIMIT_MAX) : 10;
   private readonly windowDurationMs = 60000;
   private static readonly sharedMap = new Map<string, RateLimitEntry>();
   private readonly ipMap = AuthRateLimitGuard.sharedMap;

@@ -334,9 +334,9 @@ export class FlozController {
   }
 
   @Get('workspaces/:workspaceId/approval-requests')
-  async listApprovalRequests(@Req() req: Request, @Param('workspaceId') wid: string, @Query() query: ApprovalQueryDto) {
+  async listApprovalRequests(@Req() req: Request, @Param('workspaceId') wid: string) {
     const ctx = await this.member(req, wid);
-    return this.approvals.list(wid, ctx.user.id, ctx.membership.role, query);
+    return this.approvals.list(wid, ctx.user.id, ctx.membership.role, req.query as ApprovalQueryDto);
   }
 
   @Get('workspaces/:workspaceId/approval-requests/:approvalRequestId')

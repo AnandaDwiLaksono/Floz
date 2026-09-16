@@ -1,9 +1,17 @@
 import { BadRequestException } from '@nestjs/common';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class ListNotificationsQueryDto {
+  @IsOptional()
+  @IsString()
   read?: string;
-  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  limit?: string;
+
+  @IsOptional()
+  @IsString()
   cursor?: string;
 }
 

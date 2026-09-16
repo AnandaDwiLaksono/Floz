@@ -17,6 +17,81 @@ function Get-FreePort {
   return $port
 }
 
+function Invoke-NativeProcess {
+  param(
+    [string]$FilePath,
+    [string]$Arguments
+  )
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $FilePath
+  $psi.Arguments = $Arguments
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  try {
+    $proc = [System.Diagnostics.Process]::Start($psi)
+  } catch {
+    throw "Failed to execute '$FilePath $Arguments': $_"
+  }
+  $stdout = $proc.StandardOutput.ReadToEnd()
+  $stderr = $proc.StandardError.ReadToEnd()
+  $proc.WaitForExit()
+  return [PSCustomObject]@{
+    ExitCode = $proc.ExitCode
+    StdOut   = $stdout.Trim()
+    StdErr   = $stderr.Trim()
+  }
+}
+
+function Wait-ForRedis {
+  param(
+    [string]$ContainerName,
+    [int]$MaxAttempts = 30,
+    [int]$SleepMs = 500
+  )
+  $lastResult = $null
+  for ($i = 0; $i -lt $MaxAttempts; $i++) {
+    $inspect = Invoke-NativeProcess 'docker' "inspect -f {{.State.Running}} $ContainerName"
+    if ($inspect.ExitCode -ne 0 -or $inspect.StdOut -ne 'true') {
+      throw "Redis container '$ContainerName' is not running (inspect exit=$($inspect.ExitCode), err=$($inspect.StdErr))"
+    }
+
+    $lastResult = Invoke-NativeProcess 'docker' "exec $ContainerName redis-cli ping"
+    if ($lastResult.ExitCode -eq 0 -and $lastResult.StdOut -eq 'PONG') {
+      return
+    }
+    Start-Sleep -Milliseconds $SleepMs
+  }
+  $inspectState = (Invoke-NativeProcess 'docker' "inspect -f {{.State.Status}} $ContainerName").StdOut
+  $diag = "containerState=$inspectState, exitCode=$($lastResult.ExitCode), stdOut='$($lastResult.StdOut)', stdErr='$($lastResult.StdErr)'"
+  throw "Redis did not become ready within deadline ($diag)"
+}
+
+function Wait-ForPostgres {
+  param(
+    [string]$ContainerName,
+    [int]$MaxAttempts = 30,
+    [int]$SleepSec = 1
+  )
+  $lastResult = $null
+  for ($i = 0; $i -lt $MaxAttempts; $i++) {
+    $inspect = Invoke-NativeProcess 'docker' "inspect -f {{.State.Running}} $ContainerName"
+    if ($inspect.ExitCode -ne 0 -or $inspect.StdOut -ne 'true') {
+      throw "Postgres container '$ContainerName' is not running (inspect exit=$($inspect.ExitCode), err=$($inspect.StdErr))"
+    }
+
+    $lastResult = Invoke-NativeProcess 'docker' "exec $ContainerName pg_isready -U postgres -d floz"
+    if ($lastResult.ExitCode -eq 0) {
+      return
+    }
+    Start-Sleep -Seconds $SleepSec
+  }
+  $inspectState = (Invoke-NativeProcess 'docker' "inspect -f {{.State.Status}} $ContainerName").StdOut
+  $diag = "containerState=$inspectState, exitCode=$($lastResult.ExitCode), stdOut='$($lastResult.StdOut)', stdErr='$($lastResult.StdErr)'"
+  throw "Postgres did not become ready within deadline ($diag)"
+}
+
 function Wait-ForHttp($url, $job, $stdout, $stderr, $label) {
   for ($i = 0; $i -lt 60; $i++) {
     if ($job.State -ne 'Running') {
@@ -32,34 +107,24 @@ function Wait-ForHttp($url, $job, $stdout, $stderr, $label) {
 }
 
 try {
+  $runPg = $null
   for ($i = 0; $i -lt 10; $i++) {
     $dbPort = Get-FreePort
-    docker run --name $name -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=floz -p "127.0.0.1:${dbPort}:5432" -d postgres:16-alpine 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { break }
+    $runPg = Invoke-NativeProcess 'docker' "run --name $name -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=floz -p 127.0.0.1:${dbPort}:5432 -d postgres:16-alpine"
+    if ($runPg.ExitCode -eq 0) { break }
     Start-Sleep -Milliseconds 200
   }
-  if ($LASTEXITCODE -ne 0) { throw 'Unable to bind a PostgreSQL test port' }
+  if ($runPg.ExitCode -ne 0) { throw "Unable to bind a PostgreSQL test port: $($runPg.StdErr)" }
 
   $redisPort = Get-FreePort
-  docker run --name $redisName -p "127.0.0.1:${redisPort}:6379" -d redis:7-alpine
-  if ($LASTEXITCODE -ne 0) { throw 'Unable to start disposable Redis' }
+  $runRedis = Invoke-NativeProcess 'docker' "run --name $redisName -p 127.0.0.1:${redisPort}:6379 -d redis:7-alpine"
+  if ($runRedis.ExitCode -ne 0) { throw "Unable to start disposable Redis: $($runRedis.StdErr)" }
   $env:REDIS_URL = "redis://127.0.0.1:$redisPort"
   $env:REDIS_TLS = 'false'
-  for ($i = 0; $i -lt 30; $i++) {
-    $pong = docker exec $redisName redis-cli ping 2>$null
-    if ($LASTEXITCODE -eq 0 -and $pong -eq 'PONG') { break }
-    Start-Sleep -Milliseconds 500
-  }
-  if ($pong -ne 'PONG') { throw 'Redis did not become ready' }
+  Wait-ForRedis $redisName
   $env:DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:$dbPort/floz"
   $env:BETTER_AUTH_SECRET = 'test-secret-at-least-32-characters-long'
-
-  for ($i = 0; $i -lt 30; $i++) {
-    docker exec $name pg_isready -U postgres -d floz 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { break }
-    Start-Sleep -Seconds 1
-  }
-  if ($LASTEXITCODE -ne 0) { throw 'Postgres did not become ready' }
+  Wait-ForPostgres $name
 
   pnpm --filter @floz/database migrate
   if ($LASTEXITCODE -ne 0) { throw 'Database migration failed' }
@@ -91,17 +156,20 @@ try {
     $webStdout = Join-Path $logDir "web-$attempt.out.log"
     $webStderr = Join-Path $logDir "web-$attempt.err.log"
     $apiJob = Start-Job -ScriptBlock {
-      param($root, $databaseUrl, $secret, $authUrl, $port, $origin, $stdout, $stderr)
+      param($root, $databaseUrl, $redisUrl, $redisTls, $secret, $authUrl, $port, $origin, $stdout, $stderr)
       Set-Location $root
       $env:DATABASE_URL = $databaseUrl
+      $env:REDIS_URL = $redisUrl
+      $env:REDIS_TLS = $redisTls
       $env:BETTER_AUTH_SECRET = $secret
       $env:BETTER_AUTH_URL = $authUrl
       $env:API_PORT = $port
       $env:ALLOWED_ORIGIN = $origin
       $env:NODE_ENV = 'test'
+      $env:AUTH_RATE_LIMIT_MAX = '1000'
       $env:FLOZ_TEST_REPORTING_NOW = '2026-09-03T00:00:00.000Z'
-      node apps/api/dist/src/main.js > $stdout 2> $stderr
-    } -ArgumentList $root, $env:DATABASE_URL, $env:BETTER_AUTH_SECRET, $env:BETTER_AUTH_URL, $apiPort, $env:ALLOWED_ORIGIN, $apiStdout, $apiStderr
+      cmd /c "node apps/api/dist/src/main.js > `"$stdout`" 2> `"$stderr`""
+    } -ArgumentList $root, $env:DATABASE_URL, $env:REDIS_URL, $env:REDIS_TLS, $env:BETTER_AUTH_SECRET, $env:BETTER_AUTH_URL, $apiPort, $env:ALLOWED_ORIGIN, $apiStdout, $apiStderr
     try {
       Wait-ForHttp "http://127.0.0.1:$apiPort/api/v1/health" $apiJob $apiStdout $apiStderr 'API'
       $webJob = Start-Job -ScriptBlock {
@@ -110,18 +178,20 @@ try {
         $env:NEXT_PUBLIC_API_URL = $apiUrl
         $env:PORT = $port
         $env:FLOZ_NEXT_DIST_DIR = $distDir
-        pnpm start -- --hostname 127.0.0.1 > $stdout 2> $stderr
+        cmd /c "npx next start -H 127.0.0.1 -p %PORT% > `"$stdout`" 2> `"$stderr`""
       } -ArgumentList $root, $env:NEXT_PUBLIC_API_URL, $webPort, $nextDistDir, $webStdout, $webStderr
       Wait-ForHttp "http://127.0.0.1:$webPort/login" $webJob $webStdout $webStderr 'Web'
       $workerStdout = Join-Path $logDir "worker-$attempt.out.log"
       $workerStderr = Join-Path $logDir "worker-$attempt.err.log"
       $workerJob = Start-Job -ScriptBlock {
-        param($root, $databaseUrl, $stdout, $stderr)
+        param($root, $databaseUrl, $redisUrl, $redisTls, $stdout, $stderr)
         Set-Location $root
         $env:DATABASE_URL = $databaseUrl
+        $env:REDIS_URL = $redisUrl
+        $env:REDIS_TLS = $redisTls
         $env:NODE_ENV = 'test'
-        node apps/worker/dist/main.js > $stdout 2> $stderr
-      } -ArgumentList $root, $env:DATABASE_URL, $workerStdout, $workerStderr
+        cmd /c "node apps/worker/dist/main.js > `"$stdout`" 2> `"$stderr`""
+      } -ArgumentList $root, $env:DATABASE_URL, $env:REDIS_URL, $env:REDIS_TLS, $workerStdout, $workerStderr
       Start-Sleep -Seconds 1
       break
     } catch {
