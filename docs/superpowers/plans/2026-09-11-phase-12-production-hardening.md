@@ -363,9 +363,9 @@ Every command naming a Phase 12-only file or script below is **proposed future**
 
 **Files:** Modify only authorized internal Gate A evidence and Phase 12 plan status after all Task 22 evidence is complete; never alter accepted design.
 
-- [ ] Independently cross-check every coverage-matrix row against recorded scenario evidence, every owner total (8/9/11), every unsafe route inventory row, digest/provenance, fixture-only backup scope, and exclusions.
-- [ ] Record failures/blockers verbatim-safe without secret values. Gate A may be presented for human acceptance only if every required deterministic engineering scenario has evidence; it must not claim Gate B, provider quota, production archive, real domain, actual-environment restore, RPO, or RTO.
-- [ ] Proposed commit after explicit future authorization: `docs: close Phase 12 Gate A evidence review`.
+- [x] Independently cross-check every coverage-matrix row against recorded scenario evidence, every owner total (8/9/11), every unsafe route inventory row, digest/provenance, fixture-only backup scope, and exclusions.
+- [x] Record failures/blockers verbatim-safe without secret values. Gate A may be presented for human acceptance only if every required deterministic engineering scenario has evidence; it must not claim Gate B, provider quota, production archive, real domain, actual-environment restore, RPO, or RTO.
+- [x] Proposed commit after explicit future authorization: `docs: close Phase 12 Gate A evidence review`.
 
 ### Task 24: Post-Gate-A documentation synchronization and publication plan
 
