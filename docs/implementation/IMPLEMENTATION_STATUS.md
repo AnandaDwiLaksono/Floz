@@ -19,24 +19,30 @@ Completed
 - Phase 9 Operator Usability & Administration: ADMIN-only account provisioning with one-time temporary credentials and no auto-membership/session, profile and password management with session hygiene, no-workspace onboarding, workspace settings, member identity projection and lifecycle with last-active-admin and active-team-manager invariants under row locking, team administration with archive/restore and manager invariants, multi-assignee task creation, task filter controls with canonical `overdue=true` and cursor hygiene, calendar reschedule with context preservation, and field worker server-authoritative quick status. See `PHASE_9_REPORT.md`.
 - Phase 10 Approval & Collaboration Core: migration 0007 (`0007_bizarre_kabuki.sql`), one-step approval engine with terminal row-locking and canonical audit outbox/history, task comments with soft delete, structured mentions, in-app approval/mention notification worker handlers, manager/admin pending approvals dashboard metrics, web approval list/detail/create/decision/cancel UX with accessibility and keyboard navigation, and real-stack Playwright E2E coverage. See `PHASE_10_REPORT.md`.
 - Phase 11 Workflow Configuration: migration 0008 (`0008_lyrical_richard_fisk.sql`), optimistic aggregate versioning (`workflows.version`), workflow/status soft-delete lifecycle (`is_active`), partial unique indexes for workspace/team defaults, dynamic team/workspace default resolution, active-target runtime transition enforcement with archived status escape (`422 INVALID_TRANSITION`), My Work/Kanban/Recurrence read projection compatibility, non-droppable archived Kanban columns with escape dropdowns, ADMIN-only Workflow Settings UI with selector, creation modal, metadata editor, status editor with accessible keyboard reordering, desktop transition matrix, mobile accordion editor, version conflict reload UI, and real-stack Playwright E2E scenarios A-D. See `PHASE_11_REPORT.md`.
+- Phase 12 Production Hardening: production environment validation, verified PostgreSQL TLS, DB connection owner budgets (API max 2, Worker max 1, Normal baseline 8, Readiness 9, Peak maintenance 11), `WORKER_CONCURRENCY = 1`, `CookieOriginGuard` on 40 unsafe mutation routes, fixed 10/60s/IP auth rate limiter, unmounted public signup, payload & query validation, sanitized observability logs, API 30s/35s graceful shutdown coordinator with Linux SIGTERM proof, worker queue retry policy (attempts 3, base 1000ms, 0 DLQ), instance-aware local health with 0 network calls, explicit worker readiness CLI, Next.js security headers & CSP baseline, compiled session-locked migration runner (`dist/migrate.js`) with 0 schema migrations, non-root (UID 999) multiarch Docker images on Node 22 Debian-slim, Caddy ingress reverse proxy with HSTS, streaming `age` X25519 encrypted backup pipeline with SHA-256 byte hashing, reconciled 7d/4w retention policy (15 physical objects remaining in storage), isolated clean-target restore harness, and complete 14-step Gate A engineering verification (837 unit/integration tests, 23 Playwright tests, AMD64 runtime smoke, exact-SHA ARM64 CI run 35053695365). See `PHASE_12_REPORT.md` and `docs/superpowers/evidence/2026-09-11-phase-12-gate-a.md`.
 
 In Progress
-- None. Checkpoint F reached. Final human acceptance pending; publication pending.
+- None. Phase 12 Checkpoints A–I (Tasks 1–24) fully complete and awaiting explicit final human acceptance.
 
 Next
-- Phase 12 is not started. Await explicit publication and Phase 12 authorization.
+- Phase 13 (Deployment & Operational Gate B Verification) has NOT started. Await explicit human authorization before commencing Phase 13 or publishing to `origin/main`.
 
 Blocked
 - None.
 
-Phase 11 verification
-- Complete through Checkpoint F. Clean DB (`scripts/test-clean-db.ps1`) 82/82 passed, exit 0; E2E (`scripts/test-e2e.ps1`) 23/23 Playwright passed, exit 0; worker integration 16/16 passed against real PostgreSQL + Redis; lint, typecheck, and build PASS.
-- Root `pnpm test` passed twice consecutively with zero failures/skips: database 60, config 2, domain 19, api 133, web 179, worker 33 = 426 tests per run.
-- Task 12 E2E suite committed via `bd412517d6cd806ee292eff54f589a90370121d3`.
-- Targeted compatibility corrections committed via `1bdd277` (Kanban archived-column drop block) and `ae1efd0` (Worker integration test fixtures).
+Phase 12 Verification Summary (Gate A)
+- Implementation Candidate SHA: `b523527dba3b7852a2fd921a917131bb5d4c4fa7`
+- 100% complete across all 14 ordered steps (All PASS).
+- Clean DB: 6 files, 82 tests passed (exit 0).
+- Monorepo unit/integration tests: 80 files, 837 tests passed (exit 0).
+- Playwright real-stack E2E: 23 browser tests passed (exit 0).
+- Worker integration: 15 files, 79 tests passed (exit 0).
+- Backup & restore: 3 files + live MinIO/PG containers, 35 tests passed (exit 0).
+- Monorepo lint & typecheck: 11 packages checked, 0 errors (exit 0).
+- Multiarch images: AMD64 local runtime smoke PASS; ARM64 native GitHub Actions runner PASS (Run 35053695365, Job 104659282251).
+- Secret & repository hygiene: 0 findings, 0 leaked credentials, worktree clean.
 
-Known limitations
-- Approval workflow configuration, multi-step/quorum/reassignment, attachments, rich text/reactions, notification preferences UI, push, email delivery, and remaining product UI beyond Phase 10 are out of scope.
-- Reporting has no historical snapshots, exports, scheduled reports, charting warehouse, saved filters, custom KPI formulas, audit analytics, or cross-workspace reporting.
-- Calendar start-only tasks (`start_at != null && due_at == null`) remain unsupported and are excluded from projection.
-- `CUSTOM` recurrence remains unsupported; password recovery/reset for existing accounts and email/push delivery remain out of scope.
+Gate A Limitations & Exclusions
+- Gate A represents controlled deterministic engineering evidence only.
+- Gate B (production Oracle deployment, live Neon PostgreSQL, live Upstash Redis, live Cloudflare R2 backup, live public domain DNS/TLS) has NOT run.
+- Provider quotas, production RPO <= 24h, production RTO <= 4h, and operational launch approval are NOT claimed.

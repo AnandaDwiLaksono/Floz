@@ -5,7 +5,6 @@
 - Open (Phase 6 follow-up): Exact `CUSTOM` recurrence grammar remains reserved and unsupported.
 - Open: Inactive/removed future assignee behavior if recurrence template references change after creation.
 - Open: DST ambiguous/nonexistent local time semantics beyond anchored timezone conversions.
-- Open: Email, push, object storage, and deployment provider.
 - Open: Granular RBAC beyond provisional ADMIN-only team mutation policy.
 - Resolved (Phase 8): Operational reporting excludes soft-deleted tasks, terminal statuses, and `CANCELLED`; KPI eligibility excludes soft-deleted tasks and `CANCELLED` but includes completed terminal work.
 - Resolved (Phase 8): Reporting intervals use half-open bounds (`from <= value < to`); overdue uses strict `due_at < evaluation_at`; KPI calculations cap completion state at evaluation time.
@@ -24,3 +23,9 @@
 - Resolved (Phase 11): Workflow Configuration uses optimistic aggregate versioning (`workflows.version`) where stale matrix/status mutations yield `409 VERSION_CONFLICT` triggering UI config reloads rather than blind retries.
 - Resolved (Phase 11): Active team defaults (`is_default = true`, `team_id IS NOT NULL`) override the active workspace default (`team_id IS NULL`), enforced by dual partial unique indices `workflows_active_team_default_idx` and `workflows_active_workspace_default_idx`.
 - Resolved (Phase 11): Workflow and Status soft delete (`is_active = false`) preserves task history; archived statuses exclude incoming tasks/drag-over actions (`422 INVALID_TRANSITION`) but maintain UI readability and support exact escape paths to active targets.
+- Resolved (Phase 12): API PostgreSQL pool fixed capacity is locked to `max = 2` for AuthService to avoid concurrent connection starvation during burst operations; Worker owners remain locked to `max = 1` across all persistent and transient clients. Normal runtime baseline connection budget is 8; readiness probe brings runtime to 9; peak maintenance budget is 11.
+- Resolved (Phase 12): API and Worker graceful termination use a two-stage shutdown protocol with a 30-second graceful request/job drain period followed by a 35-second hard process watchdog exit.
+- Resolved (Phase 12): Caddy uses official Alpine image `caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d` as an approved exception to the Debian-slim monorepo standard, owning HTTPS HSTS headers and upstream dial timeouts.
+- Resolved (Phase 12): Multiarch native ARM64 runtime verification executes via a dedicated GitHub Actions workflow (`.github/workflows/phase12-multiarch-smoke.yml`) on `ubuntu-24.04-arm` runners against exact candidate commit SHAs.
+- Resolved (Phase 12): Backup pipeline streams serial `pg_dump -Fc` directly into `age` X25519 recipient encryption and MinIO/S3 storage with SHA-256 byte hashing and separated IAM credentials for upload, retention, and restore actors.
+- Resolved (Phase 12): Phase 12 verification scope is strictly bounded to Gate A (controlled deterministic engineering verification in isolated fixtures); Gate B (production deployment, live Neon/Upstash credentials, live Cloudflare R2 backup, live DNS/TLS) is deferred to Phase 13.
