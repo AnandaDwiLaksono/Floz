@@ -127,6 +127,39 @@ describe('Notification API', () => {
       .set('Cookie', f.adminCookie)
       .expect(400);
 
+    // Limit string query validation
+    await request(app!.getHttpServer())
+      .get(`/api/v1/workspaces/${f.workspaceId}/notifications?limit=20`)
+      .set('Cookie', f.adminCookie)
+      .expect(200);
+
+    await request(app!.getHttpServer())
+      .get(`/api/v1/workspaces/${f.workspaceId}/notifications?limit=0`)
+      .set('Cookie', f.adminCookie)
+      .expect(400);
+
+    await request(app!.getHttpServer())
+      .get(`/api/v1/workspaces/${f.workspaceId}/notifications?limit=101`)
+      .set('Cookie', f.adminCookie)
+      .expect(400);
+
+    await request(app!.getHttpServer())
+      .get(`/api/v1/workspaces/${f.workspaceId}/notifications?limit=invalid`)
+      .set('Cookie', f.adminCookie)
+      .expect(400);
+
+    // Unknown query property rejection
+    await request(app!.getHttpServer())
+      .get(`/api/v1/workspaces/${f.workspaceId}/notifications?unknown_key=malicious`)
+      .set('Cookie', f.adminCookie)
+      .expect(400);
+
+    // Duplicate non-string query form (array) rejected
+    await request(app!.getHttpServer())
+      .get(`/api/v1/workspaces/${f.workspaceId}/notifications?limit=10&limit=20`)
+      .set('Cookie', f.adminCookie)
+      .expect(400);
+
     // 5. Mark read (404 isolation test - trying to read member's notification)
     await request(app!.getHttpServer())
       .patch(`/api/v1/workspaces/${f.workspaceId}/notifications/${notifs[4].id}`)

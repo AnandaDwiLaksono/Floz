@@ -9,7 +9,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -23,7 +22,7 @@ import {
   validateListNotificationsQuery,
   validatePatchNotification,
 } from './notification.dto.js';
-import { ValidatedBody } from './ingress.dto.js';
+import { ValidatedBody, ValidatedQuery } from './ingress.dto.js';
 
 @Controller('workspaces/:workspaceId/notifications')
 export class NotificationController {
@@ -41,7 +40,7 @@ export class NotificationController {
   async list(
     @Req() req: Request,
     @Param('workspaceId') workspaceId: string,
-    @Query() query: ListNotificationsQueryDto
+    @ValidatedQuery(ListNotificationsQueryDto) query: ListNotificationsQueryDto
   ) {
     const ctx = await this.member(req, workspaceId);
     let validatedQuery;

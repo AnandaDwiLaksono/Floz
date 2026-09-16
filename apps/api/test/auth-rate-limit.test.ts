@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { Test } from '@nestjs/testing';
-import { type ExecutionContext, type INestApplication } from '@nestjs/common';
+import { type ExecutionContext, HttpException, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import type { Request } from 'express';
 import { AppModule } from '../src/app.module.js';
@@ -233,5 +233,65 @@ describe('Task 5 — AuthRateLimitGuard Verification', () => {
     expect(internalGuard.normalizeIp('::ffff:203.0.113.4')).toBe('203.0.113.4');
     expect(internalGuard.normalizeIp('127.0.0.1')).toBe('127.0.0.1');
     expect(internalGuard.normalizeIp('::1')).toBe('::1');
+  });
+
+  it('strictly enforces 10 quota in production even if AUTH_RATE_LIMIT_MAX is set to a large value', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalMax = process.env.AUTH_RATE_LIMIT_MAX;
+    try {
+      process.env.NODE_ENV = 'production';
+      process.env.AUTH_RATE_LIMIT_MAX = '1000';
+
+      rateLimitGuard.reset();
+
+      const headers: Record<string, string> = {};
+      const mockContext = (ip: string) =>
+        ({
+          switchToHttp: () => ({
+            getRequest: () => ({
+              method: 'POST',
+              path: '/api/v1/auth/login',
+              headers: {},
+              socket: { remoteAddress: ip }
+            }),
+            getResponse: () => ({
+              setHeader: (name: string, val: string) => {
+                headers[name] = val;
+              }
+            })
+          })
+        }) as unknown as ExecutionContext;
+
+      // First 10 requests are admitted
+      for (let i = 1; i <= 10; i += 1) {
+        expect(rateLimitGuard.canActivate(mockContext('192.168.1.99'))).toBe(true);
+      }
+
+      // 11th request MUST throw 429 even though AUTH_RATE_LIMIT_MAX=1000
+      let thrownError: HttpException | null = null;
+      try {
+        rateLimitGuard.canActivate(mockContext('192.168.1.99'));
+      } catch (err) {
+        thrownError = err as HttpException;
+      }
+
+      expect(thrownError).not.toBeNull();
+      expect(thrownError?.getStatus()).toBe(429);
+      expect(thrownError?.getResponse()).toEqual({
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Too many requests.',
+          details: []
+        }
+      });
+      expect(headers['Retry-After']).toBe('60');
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+      if (originalMax !== undefined) {
+        process.env.AUTH_RATE_LIMIT_MAX = originalMax;
+      } else {
+        delete process.env.AUTH_RATE_LIMIT_MAX;
+      }
+    }
   });
 });

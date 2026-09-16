@@ -9,7 +9,7 @@ import type { TaskRole } from './task.policy.js';
 import { RecurrenceService } from './recurrence.service.js';
 import { CreateRecurringTaskDto, RecurrenceRuleQueryDto, UpdateRecurrenceRuleDto, validateCreateRecurringTask, validateRecurrenceRuleQuery, validateUpdateRecurrenceRule } from './recurrence.dto.js';
 import { ApprovalService } from './approval.service.js';
-import { CreateApprovalRequestDto, type ApprovalQueryDto, ApproveStepDto, RejectStepDto, CancelApprovalDto } from './approval.dto.js';
+import { CreateApprovalRequestDto, ApprovalQueryDto, ApproveStepDto, RejectStepDto, CancelApprovalDto } from './approval.dto.js';
 import { CommentService } from './comment.service.js';
 import { CreateCommentDto, type CommentQueryDto } from './comment.dto.js';
 import { WorkflowService } from './workflow.service.js';
@@ -38,7 +38,8 @@ import {
   ProvisionAccountDto,
   UpdateMeDto,
   UpdateTeamDto,
-  ValidatedBody
+  ValidatedBody,
+  ValidatedQuery
 } from './ingress.dto.js';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
@@ -334,9 +335,9 @@ export class FlozController {
   }
 
   @Get('workspaces/:workspaceId/approval-requests')
-  async listApprovalRequests(@Req() req: Request, @Param('workspaceId') wid: string) {
+  async listApprovalRequests(@Req() req: Request, @Param('workspaceId') wid: string, @ValidatedQuery(ApprovalQueryDto) query: ApprovalQueryDto) {
     const ctx = await this.member(req, wid);
-    return this.approvals.list(wid, ctx.user.id, ctx.membership.role, req.query as ApprovalQueryDto);
+    return this.approvals.list(wid, ctx.user.id, ctx.membership.role, query);
   }
 
   @Get('workspaces/:workspaceId/approval-requests/:approvalRequestId')

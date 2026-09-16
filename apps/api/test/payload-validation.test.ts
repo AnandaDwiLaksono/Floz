@@ -131,6 +131,15 @@ describe('Task 6 — Strict CORS, Logout, Validation and Payload Ingress', () =>
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
+
+    it('rejects unknown query properties on query DTO routes with 400 VALIDATION_ERROR', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/workspaces/00000000-0000-0000-0000-000000000001/approval-requests?unknown_key=malicious')
+        .set('Origin', 'http://localhost:3000');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
   });
 
   describe('C. Body Limits and Malformed JSON Envelopes', () => {

@@ -38,7 +38,7 @@ async function createApp() {
   const app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, transformOptions: { enableImplicitConversion: false } }));
   app.useGlobalFilters(new ErrorFilter());
   await app.init();
   return app;
@@ -328,6 +328,36 @@ describe('Phase 10 Task 2 — Approval Creation, List & Detail API', () => {
       .expect(200);
     expect(page2.body.data.length).toBe(1);
     expect(page2.body.meta.pagination.has_more).toBe(false);
+
+    // Limit=20 string query succeeds
+    await request(app.getHttpServer())
+      .get(`/api/v1/workspaces/${fix.workspaceId}/approval-requests?view=all&limit=20`)
+      .set('Cookie', fix.adminCookie)
+      .expect(200);
+
+    // Invalid view returns canonical 400
+    await request(app.getHttpServer())
+      .get(`/api/v1/workspaces/${fix.workspaceId}/approval-requests?view=invalid_view`)
+      .set('Cookie', fix.adminCookie)
+      .expect(400);
+
+    // Invalid status returns canonical 400
+    await request(app.getHttpServer())
+      .get(`/api/v1/workspaces/${fix.workspaceId}/approval-requests?status=INVALID_STATUS`)
+      .set('Cookie', fix.adminCookie)
+      .expect(400);
+
+    // Unknown query property returns canonical 400
+    await request(app.getHttpServer())
+      .get(`/api/v1/workspaces/${fix.workspaceId}/approval-requests?unknown_key=malicious`)
+      .set('Cookie', fix.adminCookie)
+      .expect(400);
+
+    // Duplicate non-string query form (array) rejected with 400
+    await request(app.getHttpServer())
+      .get(`/api/v1/workspaces/${fix.workspaceId}/approval-requests?limit=10&limit=20`)
+      .set('Cookie', fix.adminCookie)
+      .expect(400);
   });
 
   it('enforces read authorization on approval detail', async () => {

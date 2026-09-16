@@ -1,8 +1,19 @@
-import { Body, ValidationPipe, type Type } from '@nestjs/common';
+import { Body, Query, ValidationPipe, type Type } from '@nestjs/common';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export const ValidatedBody = (dtoClass: Type<object>) =>
   Body(
+    new ValidationPipe({
+      expectedType: dtoClass,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: false }
+    })
+  );
+
+export const ValidatedQuery = (dtoClass: Type<object>) =>
+  Query(
     new ValidationPipe({
       expectedType: dtoClass,
       whitelist: true,
