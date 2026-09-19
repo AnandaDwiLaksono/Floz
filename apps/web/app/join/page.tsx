@@ -58,6 +58,20 @@ function JoinContent() {
     }
   };
 
+  const handleRequestApproval = async () => {
+    if (!preview?.workspace_id) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.join.requestJoin(preview.workspace_id);
+      setSuccess('Join request submitted! Please wait for a workspace administrator to approve.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to submit join request.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (authLoading) {
     return <div className="text-center">Loading...</div>;
   }
@@ -119,6 +133,16 @@ function JoinContent() {
                 className="w-full rounded bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
               >
                 {submitting ? 'Joining...' : !user ? 'Please Sign In to Join' : `Join as Member`}
+              </button>
+            )}
+
+            {preview.action === 'REQUEST_APPROVAL' && (
+              <button
+                onClick={handleRequestApproval}
+                disabled={submitting || !user}
+                className="w-full rounded bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+              >
+                {submitting ? 'Submitting request...' : !user ? 'Please Sign In to Request' : 'Request to Join'}
               </button>
             )}
 

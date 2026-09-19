@@ -18,6 +18,7 @@ import { ReadinessService } from './readiness.service.js';
 
 import { InvitationService } from './invitation.service';
 import { JoinCodeService } from './join-code.service';
+import { JoinRequestService } from './join-request.service';
 
 @Module({
   controllers: [HealthController, FlozController, NotificationController],
@@ -33,6 +34,7 @@ import { JoinCodeService } from './join-code.service';
     WorkflowService,
     InvitationService,
     JoinCodeService,
+    JoinRequestService,
     AuthRateLimitGuard,
     ReadinessService,
     {

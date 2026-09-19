@@ -55,6 +55,7 @@ import { ReportingClock } from './reporting-clock';
 import { createEmailAdapter, type EmailDeliveryAdapter } from './email-adapter.js';
 import { InvitationService } from './invitation.service.js';
 import { JoinCodeService } from './join-code.service.js';
+import { JoinRequestService } from './join-request.service.js';
 
 const ok = <T>(data: T) => ({ data });
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -73,7 +74,8 @@ export class FlozController {
     @Inject(ReportingClock) private readonly clock: ReportingClock,
     @Inject(WorkflowService) private readonly workflowService: WorkflowService,
     @Inject(InvitationService) private readonly invitationService: InvitationService,
-    @Inject(JoinCodeService) private readonly joinCodeService: JoinCodeService
+    @Inject(JoinCodeService) private readonly joinCodeService: JoinCodeService,
+    @Inject(JoinRequestService) private readonly joinRequestService: JoinRequestService
   ) {}
 
   private get auth() { return this.authService.auth; }
@@ -342,7 +344,48 @@ export class FlozController {
       const res = await this.joinCodeService.joinByCode(body.join_code, user.id);
       return ok(res);
     }
+    if (body.workspace_id) {
+      const res = await this.joinRequestService.submitRequest(body.workspace_id, user.id);
+      return ok(res);
+    }
     throw new BadRequestException('VALIDATION_ERROR');
+  }
+
+  @Get('me/workspace-join-requests')
+  async myJoinRequests(@Req() req: Request) {
+    const user = await this.current(req);
+    if (!user) throw new UnauthorizedException('UNAUTHENTICATED');
+    const list = await this.joinRequestService.listUserRequests(user.id);
+    return ok(list);
+  }
+
+  @Post('workspace-join-requests/:requestId/cancel')
+  async cancelJoinRequest(@Req() req: Request, @Param('requestId') reqId: string) {
+    const user = await this.current(req);
+    if (!user) throw new UnauthorizedException('UNAUTHENTICATED');
+    const res = await this.joinRequestService.cancelRequest(reqId, user.id);
+    return ok(res);
+  }
+
+  @Get('workspaces/:workspaceId/join-requests')
+  async listJoinRequests(@Req() req: Request, @Param('workspaceId') wid: string) {
+    await this.admin(req, wid);
+    const list = await this.joinRequestService.listWorkspaceRequests(wid);
+    return ok(list);
+  }
+
+  @Post('workspaces/:workspaceId/join-requests/:requestId/approve')
+  async approveJoinRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Param('requestId') reqId: string) {
+    const { user } = await this.admin(req, wid);
+    const res = await this.joinRequestService.approveRequest(wid, reqId, user.id);
+    return ok(res);
+  }
+
+  @Post('workspaces/:workspaceId/join-requests/:requestId/reject')
+  async rejectJoinRequest(@Req() req: Request, @Param('workspaceId') wid: string, @Param('requestId') reqId: string) {
+    const { user } = await this.admin(req, wid);
+    const res = await this.joinRequestService.rejectRequest(wid, reqId, user.id);
+    return ok(res);
   }
 
   @Post('workspaces/:workspaceId/accounts')

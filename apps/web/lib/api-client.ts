@@ -396,6 +396,8 @@ export const api = {
       apiFetch<{ data: { workspace_id: string; workspace_name: string; join_policy?: string; action?: string } }>('/workspace-joins/preview', { method: 'POST', body: JSON.stringify(body) }),
     joinByCode: (join_code: string) =>
       apiFetch<{ data: { workspace_id: string; role: string; status: string } }>('/workspace-joins', { method: 'POST', body: JSON.stringify({ join_code }) }),
+    requestJoin: (workspace_id: string) =>
+      apiFetch<{ data: { id: string; status: string } }>('/workspace-joins', { method: 'POST', body: JSON.stringify({ workspace_id }) }),
     getSettings: (workspaceId: string) =>
       apiFetch<{ data: { join_policy: string; has_active_code: boolean; code_expires_at: string | null } }>(`/workspaces/${workspaceId}/join-settings`),
     updateSettings: (workspaceId: string, join_policy: string) =>
@@ -404,6 +406,16 @@ export const api = {
       apiFetch<{ data: { join_code: string; expires_at: string } }>(`/workspaces/${workspaceId}/join-code`, { method: 'POST' }),
     revokeCode: (workspaceId: string) =>
       apiFetch<{ data: { success: boolean } }>(`/workspaces/${workspaceId}/join-code`, { method: 'DELETE' }),
+    listRequests: (workspaceId: string) =>
+      apiFetch<{ data: { id: string; userId: string; userName: string; userEmail: string; status: string; requestedAt: string }[] }>(`/workspaces/${workspaceId}/join-requests`),
+    approveRequest: (workspaceId: string, requestId: string) =>
+      apiFetch<{ data: { success: boolean } }>(`/workspaces/${workspaceId}/join-requests/${requestId}/approve`, { method: 'POST' }),
+    rejectRequest: (workspaceId: string, requestId: string) =>
+      apiFetch<{ data: { success: boolean } }>(`/workspaces/${workspaceId}/join-requests/${requestId}/reject`, { method: 'POST' }),
+    myRequests: () =>
+      apiFetch<{ data: { id: string; workspaceId: string; workspaceName: string; status: string; requestedAt: string }[] }>('/me/workspace-join-requests'),
+    cancelRequest: (requestId: string) =>
+      apiFetch<{ data: { success: boolean } }>(`/workspace-join-requests/${requestId}/cancel`, { method: 'POST' }),
   },
   workspaces: {
     create: (body: { name: string; timezone?: string }) =>
