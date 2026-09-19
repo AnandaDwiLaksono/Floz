@@ -85,6 +85,32 @@ export class PreviewInvitationDto {
   token?: string;
 }
 
+export class PatchJoinSettingsDto {
+  @IsOptional()
+  @IsString()
+  join_policy?: string;
+}
+
+export class JoinPreviewDto {
+  @IsOptional()
+  @IsString()
+  join_code?: string;
+
+  @IsOptional()
+  @IsString()
+  workspace_id?: string;
+}
+
+export class WorkspaceJoinDto {
+  @IsOptional()
+  @IsString()
+  join_code?: string;
+
+  @IsOptional()
+  @IsString()
+  workspace_id?: string;
+}
+
 export class ProvisionAccountDto {
   @IsOptional()
   @IsString()

@@ -17,6 +17,7 @@ import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 import { ReadinessService } from './readiness.service.js';
 
 import { InvitationService } from './invitation.service';
+import { JoinCodeService } from './join-code.service';
 
 @Module({
   controllers: [HealthController, FlozController, NotificationController],
@@ -31,6 +32,7 @@ import { InvitationService } from './invitation.service';
     ReportingClock,
     WorkflowService,
     InvitationService,
+    JoinCodeService,
     AuthRateLimitGuard,
     ReadinessService,
     {

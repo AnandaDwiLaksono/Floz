@@ -35,7 +35,9 @@ import {
   CreateInvitationDto,
   CreateTeamDto,
   CreateWorkspaceDto,
+  JoinPreviewDto,
   LoginDto,
+  PatchJoinSettingsDto,
   PatchMemberDto,
   PatchWorkspaceDto,
   PreviewInvitationDto,
@@ -45,12 +47,14 @@ import {
   UpdateMeDto,
   UpdateTeamDto,
   ValidatedBody,
-  ValidatedQuery
+  ValidatedQuery,
+  WorkspaceJoinDto
 } from './ingress.dto.js';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
 import { createEmailAdapter, type EmailDeliveryAdapter } from './email-adapter.js';
 import { InvitationService } from './invitation.service.js';
+import { JoinCodeService } from './join-code.service.js';
 
 const ok = <T>(data: T) => ({ data });
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -68,7 +72,8 @@ export class FlozController {
     @Inject(CommentService) private readonly comments: CommentService,
     @Inject(ReportingClock) private readonly clock: ReportingClock,
     @Inject(WorkflowService) private readonly workflowService: WorkflowService,
-    @Inject(InvitationService) private readonly invitationService: InvitationService
+    @Inject(InvitationService) private readonly invitationService: InvitationService,
+    @Inject(JoinCodeService) private readonly joinCodeService: JoinCodeService
   ) {}
 
   private get auth() { return this.authService.auth; }
@@ -275,6 +280,69 @@ export class FlozController {
     if (!user) throw new UnauthorizedException('UNAUTHENTICATED');
     const list = await this.invitationService.listPendingForEmail(user.email);
     return ok(list);
+  }
+
+  @Get('workspaces/:workspaceId/join-settings')
+  async getJoinSettings(@Req() req: Request, @Param('workspaceId') wid: string) {
+    await this.admin(req, wid);
+    const settings = await this.joinCodeService.getJoinSettings(wid);
+    return ok(settings);
+  }
+
+  @Patch('workspaces/:workspaceId/join-settings')
+  async patchJoinSettings(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: PatchJoinSettingsDto) {
+    await this.admin(req, wid);
+    if (!body.join_policy) throw new BadRequestException('VALIDATION_ERROR');
+    const updated = await this.joinCodeService.updateJoinSettings(wid, body.join_policy);
+    return ok(updated);
+  }
+
+  @Post('workspaces/:workspaceId/join-code')
+  async generateJoinCode(@Req() req: Request, @Param('workspaceId') wid: string, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const { user } = await this.admin(req, wid);
+    const result = await this.joinCodeService.generateOrRotateCode(wid, user.id);
+    return ok(result);
+  }
+
+  @Delete('workspaces/:workspaceId/join-code')
+  async revokeJoinCode(@Req() req: Request, @Param('workspaceId') wid: string) {
+    await this.admin(req, wid);
+    const result = await this.joinCodeService.revokeCode(wid);
+    return ok(result);
+  }
+
+  @Post('workspace-joins/preview')
+  async previewJoin(@Body() body: JoinPreviewDto) {
+    if (body.join_code) {
+      const res = await this.joinCodeService.previewByCode(body.join_code);
+      return ok(res);
+    }
+    if (body.workspace_id) {
+      const ws = (await this.flozServiceSql<{ id: string; name: string; joinPolicy: string }[]>`
+        SELECT id, name, join_policy AS "joinPolicy" FROM workspaces WHERE id = ${body.workspace_id} AND is_active = true LIMIT 1
+      `)[0];
+      if (!ws) throw new NotFoundException('WORKSPACE_NOT_FOUND');
+      return ok({
+        workspace_id: ws.id,
+        workspace_name: ws.name,
+        join_policy: ws.joinPolicy,
+        action: ws.joinPolicy === 'APPROVAL_REQUIRED' ? 'REQUEST_APPROVAL' : ws.joinPolicy === 'JOIN_CODE' ? 'JOIN_CODE_REQUIRED' : 'INVITATION_REQUIRED'
+      });
+    }
+    throw new BadRequestException('VALIDATION_ERROR');
+  }
+
+  @Post('workspace-joins')
+  @HttpCode(201)
+  async joinWorkspace(@Req() req: Request, @Body() body: WorkspaceJoinDto) {
+    const user = await this.current(req);
+    if (!user) throw new UnauthorizedException('UNAUTHENTICATED');
+    if (body.join_code) {
+      const res = await this.joinCodeService.joinByCode(body.join_code, user.id);
+      return ok(res);
+    }
+    throw new BadRequestException('VALIDATION_ERROR');
   }
 
   @Post('workspaces/:workspaceId/accounts')

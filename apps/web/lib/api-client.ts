@@ -391,6 +391,20 @@ export const api = {
     decline: (token: string) => apiFetch<{ data: unknown }>('/workspace-invitations/decline', { method: 'POST', body: JSON.stringify({ token }) }),
     myPending: () => apiFetch<{ data: { id: string; workspaceName: string; role: string; expiresAt: string }[] }>('/me/workspace-invitations'),
   },
+  join: {
+    preview: (body: { join_code?: string; workspace_id?: string }) =>
+      apiFetch<{ data: { workspace_id: string; workspace_name: string; join_policy?: string; action?: string } }>('/workspace-joins/preview', { method: 'POST', body: JSON.stringify(body) }),
+    joinByCode: (join_code: string) =>
+      apiFetch<{ data: { workspace_id: string; role: string; status: string } }>('/workspace-joins', { method: 'POST', body: JSON.stringify({ join_code }) }),
+    getSettings: (workspaceId: string) =>
+      apiFetch<{ data: { join_policy: string; has_active_code: boolean; code_expires_at: string | null } }>(`/workspaces/${workspaceId}/join-settings`),
+    updateSettings: (workspaceId: string, join_policy: string) =>
+      apiFetch<{ data: { join_policy: string } }>(`/workspaces/${workspaceId}/join-settings`, { method: 'PATCH', body: JSON.stringify({ join_policy }) }),
+    generateCode: (workspaceId: string) =>
+      apiFetch<{ data: { join_code: string; expires_at: string } }>(`/workspaces/${workspaceId}/join-code`, { method: 'POST' }),
+    revokeCode: (workspaceId: string) =>
+      apiFetch<{ data: { success: boolean } }>(`/workspaces/${workspaceId}/join-code`, { method: 'DELETE' }),
+  },
   workspaces: {
     create: (body: { name: string; timezone?: string }) =>
       apiFetch<{ data: WorkspaceMembershipInfo }>('/workspaces', {
