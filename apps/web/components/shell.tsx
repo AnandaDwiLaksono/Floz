@@ -203,6 +203,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   </span>
                 </button>
               ))}
+              <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+              <Link
+                href="/onboarding/create-workspace"
+                role="menuitem"
+                onClick={() => setWsDropdownOpen(false)}
+                className="flex items-center space-x-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <span>+ Create Workspace</span>
+              </Link>
+              <Link
+                href="/join"
+                role="menuitem"
+                onClick={() => setWsDropdownOpen(false)}
+                className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <span>+ Join Workspace</span>
+              </Link>
             </div>
           )}
         </div>
