@@ -68,11 +68,64 @@ export const workspaces = pgTable('workspaces', {
   name: varchar('name', { length: 255 }).notNull(),
   slug: varchar('slug', { length: 255 }).notNull().unique(),
   timezone: varchar('timezone', { length: 64 }).notNull().default('Asia/Jakarta'),
+  joinPolicy: varchar('join_policy', { length: 32 }).notNull().default('INVITE_ONLY'),
   isActive: boolean('is_active').notNull().default(true),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: now(),
   updatedAt: updated()
 });
+
+export const workspaceInvitations = pgTable('workspace_invitations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  email: varchar('email', { length: 320 }).notNull(),
+  roleId: uuid('role_id').notNull().references(() => roles.id),
+  tokenHash: varchar('token_hash', { length: 255 }).notNull().unique(),
+  status: varchar('status', { length: 32 }).notNull().default('PENDING'),
+  invitedBy: uuid('invited_by').notNull().references(() => users.id),
+  acceptedBy: uuid('accepted_by').references(() => users.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  declinedAt: timestamp('declined_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: now(),
+  updatedAt: updated()
+}, (table) => ({
+  workspaceEmailPending: uniqueIndex('workspace_invitations_workspace_email_pending_idx').on(table.workspaceId, table.email).where(sql`status = 'PENDING'`),
+  workspaceStatusIdx: index('workspace_invitations_workspace_status_idx').on(table.workspaceId, table.status),
+  emailStatusIdx: index('workspace_invitations_email_status_idx').on(table.email, table.status),
+  expiresAtIdx: index('workspace_invitations_expires_at_idx').on(table.expiresAt)
+}));
+
+export const workspaceJoinRequests = pgTable('workspace_join_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 32 }).notNull().default('PENDING'),
+  requestedVia: varchar('requested_via', { length: 32 }).notNull().default('WORKSPACE_ID'),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  createdAt: now(),
+  updatedAt: updated()
+}, (table) => ({
+  workspaceUserPending: uniqueIndex('workspace_join_requests_workspace_user_pending_idx').on(table.workspaceId, table.userId).where(sql`status = 'PENDING'`),
+  workspaceStatusIdx: index('workspace_join_requests_workspace_status_idx').on(table.workspaceId, table.status, table.requestedAt),
+  userStatusIdx: index('workspace_join_requests_user_status_idx').on(table.userId, table.status)
+}));
+
+export const workspaceJoinCodes = pgTable('workspace_join_codes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  codeHash: varchar('code_hash', { length: 255 }).notNull().unique(),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: now(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true })
+}, (table) => ({
+  workspaceActiveCode: uniqueIndex('workspace_join_codes_active_code_idx').on(table.workspaceId).where(sql`is_active = true`)
+}));
 
 export const workspaceMemberships = pgTable('workspace_memberships', {
   id: uuid('id').primaryKey().defaultRandom(),

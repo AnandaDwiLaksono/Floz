@@ -64,6 +64,13 @@
       "when": 1788879047610,
       "tag": "0008_lyrical_richard_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789100000000,
+      "tag": "0009_phase13_self_service_onboarding",
+      "breakpoints": true
     }
   ]
 }
