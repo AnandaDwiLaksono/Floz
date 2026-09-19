@@ -28,14 +28,17 @@ import {
   UpdateWorkflowDto
 } from './workflow.dto.js';
 import {
+  AcceptInvitationDto,
   AddMemberDto,
   AddTeamMemberDto,
   ChangePasswordDto,
+  CreateInvitationDto,
   CreateTeamDto,
   CreateWorkspaceDto,
   LoginDto,
   PatchMemberDto,
   PatchWorkspaceDto,
+  PreviewInvitationDto,
   ProvisionAccountDto,
   RegisterDto,
   ResendVerificationDto,
@@ -47,6 +50,7 @@ import {
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
 import { createEmailAdapter, type EmailDeliveryAdapter } from './email-adapter.js';
+import { InvitationService } from './invitation.service.js';
 
 const ok = <T>(data: T) => ({ data });
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -63,7 +67,8 @@ export class FlozController {
     @Inject(ApprovalService) private readonly approvals: ApprovalService,
     @Inject(CommentService) private readonly comments: CommentService,
     @Inject(ReportingClock) private readonly clock: ReportingClock,
-    @Inject(WorkflowService) private readonly workflowService: WorkflowService
+    @Inject(WorkflowService) private readonly workflowService: WorkflowService,
+    @Inject(InvitationService) private readonly invitationService: InvitationService
   ) {}
 
   private get auth() { return this.authService.auth; }
@@ -207,6 +212,69 @@ export class FlozController {
     if (!body.name?.trim()) throw new BadRequestException('VALIDATION_ERROR');
     const ws = await this.floz.createWorkspace(user.id, { name: body.name.trim(), timezone: body.timezone });
     return ok(ws);
+  }
+
+  @Get('workspaces/:workspaceId/invitations')
+  async listInvitations(@Req() req: Request, @Param('workspaceId') wid: string) {
+    await this.admin(req, wid);
+    const list = await this.invitationService.listInvitations(wid);
+    return ok(list);
+  }
+
+  @Post('workspaces/:workspaceId/invitations')
+  @HttpCode(201)
+  async createInvitation(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: CreateInvitationDto) {
+    const { user } = await this.admin(req, wid);
+    if (!body.email || !body.role) throw new BadRequestException('VALIDATION_ERROR');
+    const result = await this.invitationService.createInvitation(wid, user.id, body.email, body.role);
+    return ok(result);
+  }
+
+  @Post('workspaces/:workspaceId/invitations/:invitationId/resend')
+  async resendInvitation(@Req() req: Request, @Param('workspaceId') wid: string, @Param('invitationId') invId: string) {
+    await this.admin(req, wid);
+    const result = await this.invitationService.resendInvitation(wid, invId);
+    return ok(result);
+  }
+
+  @Post('workspaces/:workspaceId/invitations/:invitationId/revoke')
+  async revokeInvitation(@Req() req: Request, @Param('workspaceId') wid: string, @Param('invitationId') invId: string) {
+    await this.admin(req, wid);
+    const result = await this.invitationService.revokeInvitation(wid, invId);
+    return ok(result);
+  }
+
+  @Post('workspace-invitations/preview')
+  async previewInvitation(@Body() body: PreviewInvitationDto) {
+    if (!body.token) throw new BadRequestException('VALIDATION_ERROR');
+    const result = await this.invitationService.previewInvitation(body.token);
+    return ok(result);
+  }
+
+  @Post('workspace-invitations/accept')
+  async acceptInvitation(@Req() req: Request, @Body() body: AcceptInvitationDto) {
+    const user = await this.current(req);
+    if (!user) throw new UnauthorizedException('UNAUTHENTICATED');
+    if (!body.token) throw new BadRequestException('VALIDATION_ERROR');
+    const result = await this.invitationService.acceptInvitation(body.token, user.id);
+    return ok(result);
+  }
+
+  @Post('workspace-invitations/decline')
+  async declineInvitation(@Req() req: Request, @Body() body: AcceptInvitationDto) {
+    const user = await this.current(req);
+    if (!user) throw new UnauthorizedException('UNAUTHENTICATED');
+    if (!body.token) throw new BadRequestException('VALIDATION_ERROR');
+    const result = await this.invitationService.declineInvitation(body.token, user.id);
+    return ok(result);
+  }
+
+  @Get('me/workspace-invitations')
+  async myInvitations(@Req() req: Request) {
+    const user = await this.current(req);
+    if (!user) throw new UnauthorizedException('UNAUTHENTICATED');
+    const list = await this.invitationService.listPendingForEmail(user.email);
+    return ok(list);
   }
 
   @Post('workspaces/:workspaceId/accounts')

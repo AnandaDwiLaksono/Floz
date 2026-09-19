@@ -63,6 +63,28 @@ export class CreateWorkspaceDto {
   timezone?: string;
 }
 
+export class CreateInvitationDto {
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  role?: string;
+}
+
+export class AcceptInvitationDto {
+  @IsOptional()
+  @IsString()
+  token?: string;
+}
+
+export class PreviewInvitationDto {
+  @IsOptional()
+  @IsString()
+  token?: string;
+}
+
 export class ProvisionAccountDto {
   @IsOptional()
   @IsString()

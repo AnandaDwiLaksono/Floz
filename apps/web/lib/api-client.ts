@@ -381,6 +381,16 @@ export const api = {
     updateProfile: (body: { full_name?: string; timezone?: string; locale?: string; avatar_url?: string | null }) => apiFetch<{ data: CurrentUser }>('/me', { method: 'PATCH', body: JSON.stringify(body) }),
     changePassword: (body: { current_password: string; new_password: string }) => apiFetch<void>('/me/password', { method: 'PATCH', body: JSON.stringify(body) }),
   },
+  invitations: {
+    list: (workspaceId: string) => apiFetch<{ data: unknown[] }>(`/workspaces/${workspaceId}/invitations`),
+    create: (workspaceId: string, body: { email: string; role: string }) => apiFetch<{ data: unknown }>(`/workspaces/${workspaceId}/invitations`, { method: 'POST', body: JSON.stringify(body) }),
+    resend: (workspaceId: string, id: string) => apiFetch<{ data: unknown }>(`/workspaces/${workspaceId}/invitations/${id}/resend`, { method: 'POST' }),
+    revoke: (workspaceId: string, id: string) => apiFetch<{ data: unknown }>(`/workspaces/${workspaceId}/invitations/${id}/revoke`, { method: 'POST' }),
+    preview: (token: string) => apiFetch<{ data: { workspace_name: string; invited_email: string; role: string; expires_at: string } }>('/workspace-invitations/preview', { method: 'POST', body: JSON.stringify({ token }) }),
+    accept: (token: string) => apiFetch<{ data: { workspace_id: string; status: string } }>('/workspace-invitations/accept', { method: 'POST', body: JSON.stringify({ token }) }),
+    decline: (token: string) => apiFetch<{ data: unknown }>('/workspace-invitations/decline', { method: 'POST', body: JSON.stringify({ token }) }),
+    myPending: () => apiFetch<{ data: { id: string; workspaceName: string; role: string; expiresAt: string }[] }>('/me/workspace-invitations'),
+  },
   workspaces: {
     create: (body: { name: string; timezone?: string }) =>
       apiFetch<{ data: WorkspaceMembershipInfo }>('/workspaces', {
