@@ -2,8 +2,8 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { AuthService } from './auth';
 import type { TransactionSql } from 'postgres';
 
-type UserRow = { id: string; email: string; name: string; image: string | null; timezone: string; locale: string; isActive: boolean };
-type WorkspaceRow = { id: string; name: string; slug: string; timezone: string; role: string; membershipStatus: string };
+type UserRow = { id: string; email: string; name: string; image: string | null; timezone: string; locale: string; isActive: boolean; emailVerified?: boolean };
+type WorkspaceRow = { id: string; name: string; slug: string; timezone: string; role: string; membershipStatus: string; joinPolicy?: string };
 type MembershipRow = { workspaceId: string; userId: string; role: string; status: string };
 type MemberRow = { userId: string; fullName: string; email: string; role: string; status: string };
 type TeamRow = { id: string; workspace_id: string; name: string; description: string | null; manager_user_id: string | null; isActive: boolean; created_at: Date; updated_at: Date };
@@ -21,8 +21,8 @@ export class FlozService {
 
   private get sql() { return this.authService.database.sql; }
 
-  async user(id: string): Promise<UserRow | null> { return ((await this.sql<UserRow[]>`SELECT id, email, name, image, timezone, locale, is_active AS "isActive" FROM users WHERE id = ${id} LIMIT 1`)[0] ?? null) as UserRow | null; }
-  async userByEmail(email: string): Promise<UserRow | null> { return ((await this.sql<UserRow[]>`SELECT id, email, name, image, timezone, locale, is_active AS "isActive" FROM users WHERE lower(email) = lower(${email}) LIMIT 1`)[0] ?? null) as UserRow | null; }
+  async user(id: string): Promise<UserRow | null> { return ((await this.sql<UserRow[]>`SELECT id, email, name, image, timezone, locale, is_active AS "isActive", email_verified AS "emailVerified" FROM users WHERE id = ${id} LIMIT 1`)[0] ?? null) as UserRow | null; }
+  async userByEmail(email: string): Promise<UserRow | null> { return ((await this.sql<UserRow[]>`SELECT id, email, name, image, timezone, locale, is_active AS "isActive", email_verified AS "emailVerified" FROM users WHERE lower(email) = lower(${email}) LIMIT 1`)[0] ?? null) as UserRow | null; }
   async updateUser(id: string, input: { name?: string; timezone?: string; locale?: string; image?: string | null }): Promise<UserRow | null> { return ((await this.sql<UserRow[]>`UPDATE users SET name = COALESCE(${input.name ?? null}, name), timezone = COALESCE(${input.timezone ?? null}, timezone), locale = COALESCE(${input.locale ?? null}, locale), image = CASE WHEN ${input.image === undefined} THEN image ELSE ${input.image ?? null} END, updated_at = NOW() WHERE id = ${id} RETURNING id, email, name, image, timezone, locale, is_active AS "isActive"`)[0] ?? null) as UserRow | null; }
   async workspacesFor(userId: string, activeOnly = false): Promise<WorkspaceRow[]> { return await this.sql<WorkspaceRow[]>`SELECT w.id, w.name, w.slug, w.timezone, r.code AS role, wm.status AS "membershipStatus" FROM workspace_memberships wm INNER JOIN workspaces w ON w.id = wm.workspace_id INNER JOIN roles r ON r.id = wm.role_id WHERE wm.user_id = ${userId}${activeOnly ? this.sql` AND wm.status = 'ACTIVE' AND w.is_active = true` : this.sql``}`; }
   async workspace(id: string): Promise<{ id: string; name: string; slug: string; timezone: string } | null> { return ((await this.sql<{ id: string; name: string; slug: string; timezone: string }[]>`SELECT id, name, slug, timezone FROM workspaces WHERE id = ${id} LIMIT 1`)[0] ?? null) as { id: string; name: string; slug: string; timezone: string } | null; }

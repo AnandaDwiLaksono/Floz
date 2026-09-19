@@ -32,10 +32,13 @@ import {
   AddTeamMemberDto,
   ChangePasswordDto,
   CreateTeamDto,
+  CreateWorkspaceDto,
   LoginDto,
   PatchMemberDto,
   PatchWorkspaceDto,
   ProvisionAccountDto,
+  RegisterDto,
+  ResendVerificationDto,
   UpdateMeDto,
   UpdateTeamDto,
   ValidatedBody,
@@ -43,6 +46,7 @@ import {
 } from './ingress.dto.js';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
+import { createEmailAdapter, type EmailDeliveryAdapter } from './email-adapter.js';
 
 const ok = <T>(data: T) => ({ data });
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -63,6 +67,98 @@ export class FlozController {
   ) {}
 
   private get auth() { return this.authService.auth; }
+  private get flozServiceSql() { return this.authService.database.sql; }
+
+  @Post('auth/register')
+  @UseGuards(AuthRateLimitGuard)
+  @HttpCode(202)
+  async register(
+    @Body(
+      new ValidationPipe({
+        expectedType: RegisterDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: false }
+      })
+    )
+    body: RegisterDto
+  ) {
+    if (!body.email || !body.password || !body.full_name?.trim()) throw new BadRequestException('VALIDATION_ERROR');
+    const existing = await this.floz.userByEmail(body.email);
+    if (existing) throw new ConflictException('ACCOUNT_EXISTS');
+
+    const result = await this.auth.api.signUpEmail({
+      body: {
+        email: body.email.toLowerCase().trim(),
+        password: body.password,
+        name: body.full_name.trim()
+      }
+    });
+    if (!result.user?.id) throw new BadRequestException('VALIDATION_ERROR');
+
+    // Create verification token in verifications table & send email
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    await this.flozServiceSql`INSERT INTO verifications (id, identifier, value, expires_at) VALUES (${randomBytes(16).toString('hex')}, ${body.email.toLowerCase().trim()}, ${token}, ${expiresAt})`;
+
+    const emailAdapter = createEmailAdapter();
+    const verifyUrl = `${process.env.APP_URL || 'http://localhost:3000'}/verify-email?token=${token}&email=${encodeURIComponent(body.email.toLowerCase().trim())}`;
+    await emailAdapter.sendEmail({
+      to: body.email.toLowerCase().trim(),
+      subject: 'Verify your Floz account',
+      html: `<p>Welcome to Floz! Click the link below to verify your email:</p><p><a href="${verifyUrl}">Verify Email</a></p>`,
+      text: `Welcome to Floz! Verify your email at: ${verifyUrl}`
+    });
+
+    return ok({ registration_status: 'VERIFICATION_REQUIRED' });
+  }
+
+  @Post('auth/verification/resend')
+  @UseGuards(AuthRateLimitGuard)
+  @HttpCode(202)
+  async resendVerification(
+    @Body(
+      new ValidationPipe({
+        expectedType: ResendVerificationDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: false }
+      })
+    )
+    body: ResendVerificationDto
+  ) {
+    if (!body.email) throw new BadRequestException('VALIDATION_ERROR');
+    const user = await this.floz.userByEmail(body.email);
+    if (user && !user.emailVerified) {
+      const token = randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await this.flozServiceSql`INSERT INTO verifications (id, identifier, value, expires_at) VALUES (${randomBytes(16).toString('hex')}, ${body.email.toLowerCase().trim()}, ${token}, ${expiresAt})`;
+      const emailAdapter = createEmailAdapter();
+      const verifyUrl = `${process.env.APP_URL || 'http://localhost:3000'}/verify-email?token=${token}&email=${encodeURIComponent(body.email.toLowerCase().trim())}`;
+      await emailAdapter.sendEmail({
+        to: body.email.toLowerCase().trim(),
+        subject: 'Verify your Floz account',
+        html: `<p>Click the link below to verify your email:</p><p><a href="${verifyUrl}">Verify Email</a></p>`,
+        text: `Verify your email at: ${verifyUrl}`
+      });
+    }
+    return ok({ status: 'ACCEPTED' });
+  }
+
+  @Post('auth/verify-email')
+  @HttpCode(200)
+  async verifyEmail(@Body() body: { token?: string; email?: string }) {
+    if (!body.token || !body.email) throw new BadRequestException('VALIDATION_ERROR');
+    const verification = (await this.flozServiceSql<{ id: string; expires_at: Date }[]>`SELECT id, expires_at FROM verifications WHERE identifier = ${body.email.toLowerCase().trim()} AND value = ${body.token} LIMIT 1`)[0];
+    if (!verification) throw new BadRequestException('VERIFICATION_INVALID');
+    if (new Date(verification.expires_at) < new Date()) throw new BadRequestException('VERIFICATION_EXPIRED');
+
+    await this.flozServiceSql`UPDATE users SET email_verified = true, updated_at = NOW() WHERE lower(email) = ${body.email.toLowerCase().trim()}`;
+    await this.flozServiceSql`DELETE FROM verifications WHERE id = ${verification.id}`;
+    return ok({ verified: true });
+  }
 
   @Post('auth/login')
   @UseGuards(AuthRateLimitGuard)

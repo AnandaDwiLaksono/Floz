@@ -353,6 +353,21 @@ export async function apiFetch<T>(
 
 export const api = {
   auth: {
+    register: (body: { email?: string; password?: string; full_name?: string }) =>
+      apiFetch<{ data: { registration_status: string } }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    resendVerification: (body: { email?: string }) =>
+      apiFetch<{ data: { status: string } }>('/auth/verification/resend', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    verifyEmail: (body: { token: string; email: string }) =>
+      apiFetch<{ data: { verified: boolean } }>('/auth/verify-email', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     login: (body: { email?: string; password?: string }) =>
       apiFetch<{ data: { user: User } }>('/auth/login', {
         method: 'POST',

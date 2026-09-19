@@ -33,6 +33,36 @@ export class LoginDto {
   password?: string;
 }
 
+export class RegisterDto {
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  password?: string;
+
+  @IsOptional()
+  @IsString()
+  full_name?: string;
+}
+
+export class ResendVerificationDto {
+  @IsOptional()
+  @IsString()
+  email?: string;
+}
+
+export class CreateWorkspaceDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  timezone?: string;
+}
+
 export class ProvisionAccountDto {
   @IsOptional()
   @IsString()
