@@ -382,6 +382,11 @@ export const api = {
     changePassword: (body: { current_password: string; new_password: string }) => apiFetch<void>('/me/password', { method: 'PATCH', body: JSON.stringify(body) }),
   },
   workspaces: {
+    create: (body: { name: string; timezone?: string }) =>
+      apiFetch<{ data: WorkspaceMembershipInfo }>('/workspaces', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     myWork: (workspaceId: string, date: string) => apiFetch<{ data: MyWorkSummary; meta: { date: string; timezone: string } }>(`/workspaces/${workspaceId}/my-work?date=${encodeURIComponent(date)}`),
     dashboardMember: (workspaceId: string) => apiFetch<{ data: Dashboard }>(`/workspaces/${workspaceId}/dashboard/member`),
     dashboardManager: (workspaceId: string, params: { from: string; to: string; team_id?: string }) => apiFetch<{ data: Dashboard }>(`/workspaces/${workspaceId}/dashboard/manager?${new URLSearchParams(params)}`),

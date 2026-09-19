@@ -187,6 +187,28 @@ export class FlozController {
     return ok({ user: this.publicUser(user) });
   }
 
+  @Post('workspaces')
+  @HttpCode(201)
+  async createWorkspace(
+    @Req() req: Request,
+    @Body(
+      new ValidationPipe({
+        expectedType: CreateWorkspaceDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: false }
+      })
+    )
+    body: CreateWorkspaceDto
+  ) {
+    const user = await this.current(req);
+    if (!user) throw new UnauthorizedException('UNAUTHENTICATED');
+    if (!body.name?.trim()) throw new BadRequestException('VALIDATION_ERROR');
+    const ws = await this.floz.createWorkspace(user.id, { name: body.name.trim(), timezone: body.timezone });
+    return ok(ws);
+  }
+
   @Post('workspaces/:workspaceId/accounts')
   @UseGuards(AuthRateLimitGuard)
   async provisionAccount(@Req() req: Request, @Param('workspaceId') wid: string, @Body() body: ProvisionAccountDto, @Res({ passthrough: true }) res: Response) {

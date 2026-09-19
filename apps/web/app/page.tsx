@@ -19,6 +19,7 @@ export default function RootPage() {
       if (!user) router.push('/login');
       else if (activeWorkspace) router.push(`/workspaces/${activeWorkspace.id}/tasks`);
       else if (user.workspaces && user.workspaces.length > 0) router.push(`/workspaces/${user.workspaces[0].id}/tasks`);
+      else router.push('/onboarding');
     }
   }, [user, activeWorkspace, loading, router]);
 

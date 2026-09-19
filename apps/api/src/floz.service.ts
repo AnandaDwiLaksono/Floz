@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AuthService } from './auth';
 import type { TransactionSql } from 'postgres';
 
@@ -29,6 +29,45 @@ export class FlozService {
   async membership(userId: string, workspaceId: string): Promise<MembershipRow | null> { return ((await this.sql<MembershipRow[]>`SELECT wm.workspace_id AS "workspaceId", wm.user_id AS "userId", r.code AS role, wm.status FROM workspace_memberships wm INNER JOIN roles r ON r.id = wm.role_id WHERE wm.user_id = ${userId} AND wm.workspace_id = ${workspaceId} AND wm.status = 'ACTIVE' LIMIT 1`)[0] ?? null) as MembershipRow | null; }
   async managerMembership(userId: string, workspaceId: string) { return await this.sql`SELECT 1 FROM workspace_memberships wm INNER JOIN roles r ON r.id = wm.role_id WHERE wm.user_id = ${userId} AND wm.workspace_id = ${workspaceId} AND wm.status = 'ACTIVE' AND r.code IN ('MANAGER', 'ADMIN') LIMIT 1`; }
   async managedTeamIds(workspaceId: string, userId: string): Promise<string[]> { return (await this.sql<{ id: string }[]>`SELECT id FROM teams WHERE workspace_id = ${workspaceId} AND manager_user_id = ${userId} AND is_active = true`).map((team) => team.id); }
+  async createWorkspace(userId: string, input: { name: string; timezone?: string }): Promise<WorkspaceRow> {
+    return await this.sql.begin(async (sql: TransactionSql) => {
+      const user = (await sql<{ emailVerified: boolean }[]>`SELECT email_verified AS "emailVerified" FROM users WHERE id = ${userId}`)[0];
+      if (!user?.emailVerified) throw new ForbiddenException('EMAIL_VERIFICATION_REQUIRED');
+
+      let slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      if (!slug) slug = 'workspace';
+      const existingSlug = (await sql<{ id: string }[]>`SELECT id FROM workspaces WHERE slug = ${slug}`)[0];
+      if (existingSlug) {
+        slug = `${slug}-${Date.now().toString(36)}`;
+      }
+
+      const adminRoleId = (await sql<{ id: string }[]>`SELECT id FROM roles WHERE code = 'ADMIN' LIMIT 1`)[0]?.id;
+      if (!adminRoleId) throw new BadRequestException('ADMIN role not found');
+
+      const tz = input.timezone || 'Asia/Jakarta';
+      const ws = (await sql<{ id: string; name: string; slug: string; timezone: string; joinPolicy: string }[]>`
+        INSERT INTO workspaces (name, slug, timezone, created_by, is_active, join_policy)
+        VALUES (${input.name}, ${slug}, ${tz}, ${userId}, true, 'INVITE_ONLY')
+        RETURNING id, name, slug, timezone, join_policy AS "joinPolicy"
+      `)[0];
+
+      await sql`
+        INSERT INTO workspace_memberships (workspace_id, user_id, role_id, status)
+        VALUES (${ws.id}, ${userId}, ${adminRoleId}, 'ACTIVE')
+      `;
+
+      return {
+        id: ws.id,
+        name: ws.name,
+        slug: ws.slug,
+        timezone: ws.timezone,
+        role: 'ADMIN',
+        membershipStatus: 'ACTIVE',
+        joinPolicy: ws.joinPolicy
+      };
+    });
+  }
+
   async lockWorkspace(sql: TransactionSql, workspaceId: string) { const locked = (await sql<{ id: string }[]>`SELECT id FROM workspaces WHERE id = ${workspaceId} FOR UPDATE`)[0]; if (!locked) throw new NotFoundException('NOT_FOUND'); return locked.id; }
   async patchWorkspace(workspaceId: string, input: WorkspacePatchInput) { return await this.sql.begin(async (sql: TransactionSql) => { await this.lockWorkspace(sql, workspaceId); const updated = (await sql<{ id: string; name: string; slug: string; timezone: string }[]>`UPDATE workspaces SET name = COALESCE(${input.name ?? null}, name), timezone = COALESCE(${input.timezone ?? null}, timezone), updated_at = NOW() WHERE id = ${workspaceId} RETURNING id, name, slug, timezone`)[0]; if (!updated) throw new NotFoundException('NOT_FOUND'); return updated; }); }
     async members(workspaceId: string): Promise<MemberRow[]> { return await this.sql<MemberRow[]>`SELECT wm.user_id AS "userId", u.name AS "fullName", u.email, r.code AS role, wm.status, u.is_active AS "isActive" FROM workspace_memberships wm INNER JOIN users u ON u.id = wm.user_id INNER JOIN roles r ON r.id = wm.role_id WHERE wm.workspace_id = ${workspaceId}`; }
