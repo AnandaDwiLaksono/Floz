@@ -72,7 +72,7 @@ export class InvitationService {
 
       const rawToken = randomBytes(32).toString('hex');
       const tokenHash = this.hashToken(rawToken);
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
 
       const inv = (await sql<WorkspaceInvitationRow[]>`
         INSERT INTO workspace_invitations (workspace_id, email, role_id, token_hash, status, invited_by, expires_at)
@@ -103,7 +103,7 @@ export class InvitationService {
 
       const rawToken = randomBytes(32).toString('hex');
       const tokenHash = this.hashToken(rawToken);
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
       await sql`UPDATE workspace_invitations SET token_hash = ${tokenHash}, expires_at = ${expiresAt}, updated_at = NOW() WHERE id = ${invitationId}`;
       const ws = (await sql<{ name: string }[]>`SELECT name FROM workspaces WHERE id = ${workspaceId}`)[0];

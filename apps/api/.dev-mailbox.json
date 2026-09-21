@@ -1,0 +1,30 @@
+[
+  {
+    "to": "intended_07ea3850-333e-4b3f-b2ac-e9c3e324f9b8@example.com",
+    "subject": "You have been invited to join Test WS Mismatch on Floz",
+    "html": "<p>You have been invited to join <strong>Test WS Mismatch</strong> as MEMBER.</p><p><a href=\"http://localhost:3000/invitations/accept?token=56ae5b4c6277e61f7f906baf7d5dffe238e6ef7da2d698bc33c3fa7f6166e503\">Accept Invitation</a></p>",
+    "text": "You have been invited to join Test WS Mismatch on Floz as MEMBER. Accept here: http://localhost:3000/invitations/accept?token=56ae5b4c6277e61f7f906baf7d5dffe238e6ef7da2d698bc33c3fa7f6166e503",
+    "createdAt": "2026-09-21T04:55:56.874Z"
+  },
+  {
+    "to": "invited_e49866a2-09f4-45bf-8fa1-1461435002b1@example.com",
+    "subject": "You have been invited to join Test WS Token on Floz",
+    "html": "<p>You have been invited to join <strong>Test WS Token</strong> as MEMBER.</p><p><a href=\"http://localhost:3000/invitations/accept?token=de1eb4d6adc2e72477743a6ffd9b7a62cfa943821ca2d9a88002b8d5a38468ea\">Accept Invitation</a></p>",
+    "text": "You have been invited to join Test WS Token on Floz as MEMBER. Accept here: http://localhost:3000/invitations/accept?token=de1eb4d6adc2e72477743a6ffd9b7a62cfa943821ca2d9a88002b8d5a38468ea",
+    "createdAt": "2026-09-21T04:55:56.802Z"
+  },
+  {
+    "to": "intended_7a81b595-2057-46fb-92b4-1fdbf754cd09@example.com",
+    "subject": "You have been invited to join Test WS Mismatch on Floz",
+    "html": "<p>You have been invited to join <strong>Test WS Mismatch</strong> as MEMBER.</p><p><a href=\"http://localhost:3000/invitations/accept?token=f7d123ae6466da741502e92c9d2f0a48d636dde5d9cc8d0423f9e9fc42367cec\">Accept Invitation</a></p>",
+    "text": "You have been invited to join Test WS Mismatch on Floz as MEMBER. Accept here: http://localhost:3000/invitations/accept?token=f7d123ae6466da741502e92c9d2f0a48d636dde5d9cc8d0423f9e9fc42367cec",
+    "createdAt": "2026-09-21T04:55:26.351Z"
+  },
+  {
+    "to": "invited_bf6c4119-10ce-4313-88e2-8c98b8ac9b8f@example.com",
+    "subject": "You have been invited to join Test WS Token on Floz",
+    "html": "<p>You have been invited to join <strong>Test WS Token</strong> as MEMBER.</p><p><a href=\"http://localhost:3000/invitations/accept?token=328d363997ecbdfbb6ebc7096d52cd51bd41f3d4af901225307dd2766421d43a\">Accept Invitation</a></p>",
+    "text": "You have been invited to join Test WS Token on Floz as MEMBER. Accept here: http://localhost:3000/invitations/accept?token=328d363997ecbdfbb6ebc7096d52cd51bd41f3d4af901225307dd2766421d43a",
+    "createdAt": "2026-09-21T04:55:26.286Z"
+  }
+]

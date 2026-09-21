@@ -111,7 +111,7 @@ export class FlozController {
 
     // Create verification token in verifications table & send email
     const token = randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
     await this.flozServiceSql`INSERT INTO verifications (id, identifier, value, expires_at) VALUES (${randomBytes(16).toString('hex')}, ${body.email.toLowerCase().trim()}, ${token}, ${expiresAt})`;
 
     const emailAdapter = createEmailAdapter();
@@ -145,7 +145,7 @@ export class FlozController {
     const user = await this.floz.userByEmail(body.email);
     if (user && !user.emailVerified) {
       const token = randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       await this.flozServiceSql`INSERT INTO verifications (id, identifier, value, expires_at) VALUES (${randomBytes(16).toString('hex')}, ${body.email.toLowerCase().trim()}, ${token}, ${expiresAt})`;
       const emailAdapter = createEmailAdapter();
       const verifyUrl = `${process.env.APP_URL || 'http://localhost:3000'}/verify-email?token=${token}&email=${encodeURIComponent(body.email.toLowerCase().trim())}`;

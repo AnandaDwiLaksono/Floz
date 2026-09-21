@@ -61,7 +61,7 @@ export class JoinCodeService {
 
       const rawCode = this.generateHumanCode();
       const codeHash = this.hashCode(rawCode);
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
 
       await sql`
         INSERT INTO workspace_join_codes (workspace_id, code_hash, created_by, expires_at, is_active)
