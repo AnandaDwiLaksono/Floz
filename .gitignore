@@ -17,3 +17,5 @@ desktop.ini
 *.swp
 *.tmp
 *.log
+.dev-mailbox.json
+*.dev-mailbox.json
