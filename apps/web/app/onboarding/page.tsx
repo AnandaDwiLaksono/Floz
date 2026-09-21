@@ -4,10 +4,10 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth-context';
-import { api, ApiError } from '../../lib/api-client';
+import { api } from '../../lib/api-client';
 
 export default function OnboardingPage() {
-  const { user, loading, logout, refetchUser } = useAuth();
+  const { user, loading, logout } = useAuth();
   const router = useRouter();
   const [resending, setResending] = useState(false);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export default function OnboardingPage() {
     try {
       await api.auth.resendVerification({ email: user.email });
       setResendStatus('Verification email sent. Please check your inbox.');
-    } catch (err) {
+    } catch {
       setResendStatus('Failed to send verification email.');
     } finally {
       setResending(false);
