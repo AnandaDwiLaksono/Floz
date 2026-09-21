@@ -55,11 +55,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && authOutcome !== 'unknown' && authOutcome !== 'failure') {
-      if (!user && pathname !== '/login') router.push('/login');
+      const publicRoutes = ['/login', '/register', '/verify-email', '/join', '/invitations/accept'];
+      const isPublic = publicRoutes.some((route) => pathname === route || pathname?.startsWith(route));
+      if (!user && !isPublic) router.push('/login');
       else if (user && pathname === '/login') {
         if (activeWorkspace) router.push(`/workspaces/${activeWorkspace.id}/tasks`);
         else if (user.workspaces?.length) router.push(`/workspaces/${user.workspaces[0].id}/tasks`);
-        else router.push('/');
+        else router.push('/onboarding');
       }
     }
   }, [user, loading, pathname, router, activeWorkspace, authOutcome]);

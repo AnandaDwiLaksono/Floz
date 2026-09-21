@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createDatabase, type Sql } from '@floz/database';
+import { createDatabase } from '@floz/database';
+import type { Sql } from 'postgres';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
