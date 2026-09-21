@@ -52,7 +52,7 @@ import {
 } from './ingress.dto.js';
 import { getKpis, getManagerDashboard, getMemberDashboard, getMyWorkSummary, parseReportingDate, parseReportingInterval, type ReportingScope } from '@floz/database';
 import { ReportingClock } from './reporting-clock';
-import { createEmailAdapter, type EmailDeliveryAdapter } from './email-adapter.js';
+import { createEmailAdapter } from './email-adapter.js';
 import { InvitationService } from './invitation.service.js';
 import { JoinCodeService } from './join-code.service.js';
 import { JoinRequestService } from './join-request.service.js';
@@ -272,7 +272,7 @@ export class FlozController {
     const user = await this.current(req);
     if (!user) throw new UnauthorizedException('UNAUTHENTICATED');
     if (!body.token) throw new BadRequestException('VALIDATION_ERROR');
-    const result = await this.invitationService.declineInvitation(body.token, user.id);
+    const result = await this.invitationService.declineInvitation(body.token);
     return ok(result);
   }
 

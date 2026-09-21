@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AuthService } from './auth';
 import type { TransactionSql } from 'postgres';
 

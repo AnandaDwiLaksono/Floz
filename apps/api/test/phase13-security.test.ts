@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import type { ExecutionContext } from '@nestjs/common';
 import { CookieOriginGuard } from '../src/cookie-origin.guard';
-import { AuthRateLimitGuard } from '../src/auth-rate-limit.guard';
 
 describe('Phase 13 Security Guards & Invariant Protection', () => {
   it('CookieOriginGuard rejects unsafe mutation without Origin header', () => {
@@ -13,7 +13,7 @@ describe('Phase 13 Security Guards & Invariant Protection', () => {
           headers: {}
         })
       })
-    } as any;
+    } as unknown as ExecutionContext;
 
     expect(() => guard.canActivate(mockContext)).toThrow('FORBIDDEN');
   });
@@ -28,7 +28,7 @@ describe('Phase 13 Security Guards & Invariant Protection', () => {
           headers: { origin: 'http://localhost:3000' }
         })
       })
-    } as any;
+    } as unknown as ExecutionContext;
 
     expect(guard.canActivate(mockContext)).toBe(true);
   });

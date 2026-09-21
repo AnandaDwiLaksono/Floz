@@ -192,7 +192,7 @@ export class InvitationService {
     });
   }
 
-  async declineInvitation(rawToken: string, currentUserId: string) {
+  async declineInvitation(rawToken: string) {
     const tokenHash = this.hashToken(rawToken);
     const inv = (await this.sql<{ id: string }[]>`SELECT id FROM workspace_invitations WHERE token_hash = ${tokenHash} AND status = 'PENDING' LIMIT 1`)[0];
     if (!inv) throw new NotFoundException('INVITATION_NOT_FOUND');
