@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 const root = resolve(__dirname, '../..');
-const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
+const read = (path: string) => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
 
 describe('production artifacts', () => {
   for (const name of ['api', 'worker', 'web', 'migrate']) test(`${name} is pinned, frozen, production-only, CA-enabled and non-root`, () => {

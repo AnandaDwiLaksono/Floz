@@ -47,7 +47,7 @@ describe('compiled session-locked migrator', () => {
     expect(await runCompiled('test')).toBe(0);
     const sql = postgres(databaseUrl, { max: 1 });
     const rows = await sql`select count(*)::int as count from drizzle.__drizzle_migrations`;
-    expect(rows[0].count).toBe(9);
+    expect(rows[0].count).toBe(10);
     await sql.end();
   });
 
@@ -58,12 +58,11 @@ describe('compiled session-locked migrator', () => {
 
   it('applies the latest migration to a valid populated pre-latest database', async () => {
     const sql = postgres(databaseUrl, { max: 1 });
-    await sql.unsafe('drop index if exists task_statuses_workflow_name_lower_idx, task_statuses_active_initial_idx, workflows_active_workspace_default_idx, workflows_active_team_default_idx');
-    await sql`alter table task_statuses drop column is_active`;
-    await sql`alter table workflows drop column version`;
-    await sql`delete from drizzle.__drizzle_migrations where created_at = 1788879047610`;
+    await sql`drop table if exists workspace_join_codes, workspace_join_requests, workspace_invitations cascade`;
+    await sql`alter table workspaces drop column if exists join_policy`;
+    await sql`delete from drizzle.__drizzle_migrations where created_at = 1789100000000`;
     await migrateDatabase(databaseUrl, { nodeEnv: 'test' });
-    const latest = await sql`select count(*)::int as count from drizzle.__drizzle_migrations where created_at = 1788879047610`;
+    const latest = await sql`select count(*)::int as count from drizzle.__drizzle_migrations where created_at = 1789100000000`;
     expect(latest[0].count).toBe(1);
     await sql.end();
   });
@@ -124,10 +123,9 @@ describe('compiled session-locked migrator', () => {
 
   it('fails fatally after session loss during migration transaction', async () => {
     const sql = postgres(databaseUrl, { max: 1 });
-    await sql.unsafe('drop index if exists task_statuses_workflow_name_lower_idx, task_statuses_active_initial_idx, workflows_active_workspace_default_idx, workflows_active_team_default_idx');
-    await sql`alter table task_statuses drop column is_active`;
-    await sql`alter table workflows drop column version`;
-    await sql`delete from drizzle.__drizzle_migrations where created_at = 1788879047610`;
+    await sql`drop table if exists workspace_join_codes, workspace_join_requests, workspace_invitations cascade`;
+    await sql`alter table workspaces drop column if exists join_policy`;
+    await sql`delete from drizzle.__drizzle_migrations where created_at = 1789100000000`;
     await sql.end();
     const stages: string[] = [];
     let kill: Promise<unknown> | undefined;
