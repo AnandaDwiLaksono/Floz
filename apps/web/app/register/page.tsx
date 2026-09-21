@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { api, ApiError } from '../../lib/api-client';
+import { BrandLogo } from '../../components/brand-logo';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -55,6 +56,7 @@ export default function RegisterPage() {
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10 dark:bg-gray-950">
       <div className="w-full max-w-md space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <header className="space-y-2 text-center">
+          <div className="mx-auto w-36"><BrandLogo /></div>
           <h1 className="text-2xl font-bold">Create your Floz Account</h1>
           <p className="text-sm text-gray-600 dark:text-gray-300">Get started with self-service task management</p>
         </header>
@@ -117,8 +119,8 @@ export default function RegisterPage() {
 
         <footer className="text-center text-sm text-gray-600 dark:text-gray-400">
           Already have an account?{' '}
-          <Link href="/login" className="font-semibold text-blue-600 hover:underline dark:text-blue-400">
-            Sign In
+          <Link href="/login" className="font-semibold text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-400">
+            Sign in
           </Link>
         </footer>
       </div>

@@ -4,6 +4,7 @@ import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api, ApiError } from '../../lib/api-client';
+import { BrandLogo } from '../../components/brand-logo';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
@@ -127,6 +128,7 @@ export default function VerifyEmailPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10 dark:bg-gray-950">
       <div className="w-full max-w-md space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="mx-auto w-36"><BrandLogo /></div>
         <Suspense fallback={<div className="text-center">Loading...</div>}>
           <VerifyEmailContent />
         </Suspense>

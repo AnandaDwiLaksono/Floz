@@ -23,6 +23,7 @@ import {
 import { NotificationCenter } from './notification-center';
 import { NotificationResource } from './notification-item';
 import { notificationRoute } from '../lib/task-route';
+import { BrandLogo } from './brand-logo';
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { user, activeWorkspace, setActiveWorkspace, logout, checkSession, authOutcome, loading } = useAuth();
@@ -159,10 +160,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         {/* Brand Header */}
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center space-x-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white font-bold">
-              F
-            </div>
-            <span className="text-lg font-bold tracking-tight">Floz</span>
+            <BrandLogo />
           </div>
         </div>
 
@@ -364,7 +362,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             />
             <div ref={mobileMenuRef} className="relative flex flex-col w-4/5 max-w-sm bg-white dark:bg-gray-900 p-4 space-y-4">
               <div className="flex items-center justify-between border-b pb-3">
-                <span className="font-bold text-lg">Floz Menu</span>
+                <BrandLogo />
                 <button aria-label="Close navigation" onClick={() => setMobileMenuOpen(false)}>
                   <X className="h-6 w-6 text-gray-500" />
                 </button>

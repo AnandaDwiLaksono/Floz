@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth-context';
 import { api, ApiError } from '../../../lib/api-client';
+import { BrandLogo } from '../../../components/brand-logo';
 
 export default function CreateWorkspacePage() {
   const router = useRouter();
@@ -39,6 +40,7 @@ export default function CreateWorkspacePage() {
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10 dark:bg-gray-950">
       <div className="w-full max-w-md space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <header className="space-y-2 text-center">
+          <div className="mx-auto w-36"><BrandLogo /></div>
           <h1 className="text-2xl font-bold">Create New Workspace</h1>
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Set up your organization or team space.

@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '../../lib/auth-context';
+import { BrandLogo } from '../../components/brand-logo';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -32,8 +34,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 px-4">
       <div className="max-w-md w-full space-y-8 bg-white dark:bg-gray-900 p-8 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="text-center">
-          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-xl bg-blue-600 text-white font-black text-2xl">
-            F
+          <div className="mx-auto w-36">
+            <BrandLogo />
           </div>
           <h2 className="mt-6 text-3xl font-extrabold tracking-tight">Floz Log In</h2>
           <p className="mt-2 text-sm text-gray-500">Business Operating System</p>
@@ -92,6 +94,12 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
+        <p className="text-center text-sm text-gray-600 dark:text-gray-400">
+          Don&apos;t have an account?{' '}
+          <Link href="/register" className="font-semibold text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-400">
+            Create account
+          </Link>
+        </p>
       </div>
     </div>
   );

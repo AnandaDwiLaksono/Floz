@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth-context';
 import { api } from '../../lib/api-client';
+import { BrandLogo } from '../../components/brand-logo';
 
 export default function OnboardingPage() {
   const { user, loading, logout } = useAuth();
@@ -46,6 +47,7 @@ export default function OnboardingPage() {
     <main className="min-h-screen bg-gray-50 px-4 py-12 dark:bg-gray-950">
       <div className="mx-auto max-w-2xl space-y-8">
         <header className="space-y-2 text-center">
+          <div className="mx-auto w-36"><BrandLogo /></div>
           <h1 className="text-3xl font-bold tracking-tight">Welcome to Floz, {user.full_name}!</h1>
           <p className="text-gray-600 dark:text-gray-400">
             Let&apos;s get you started. You can create your own workspace, join an existing team, or view pending invitations.
