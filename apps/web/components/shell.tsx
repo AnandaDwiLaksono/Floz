@@ -256,10 +256,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <Settings className="h-5 w-5" />
                 <span>Settings</span>
               </Link>
-              <Link href={`/workspaces/${activeWorkspace.id}/settings`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/settings') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
-                <Settings className="h-5 w-5" />
-                <span>Settings</span>
-              </Link>
             </>
           )}
         </nav>

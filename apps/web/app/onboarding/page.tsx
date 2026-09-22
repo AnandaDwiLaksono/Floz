@@ -12,10 +12,14 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [resending, setResending] = useState(false);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [invitations, setInvitations] = useState<{ id: string; workspaceName: string; role: string; expiresAt: string }[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
+    }
+    if (!loading && user) {
+      api.invitations.myPending().then((res) => setInvitations(res.data)).catch(() => setInvitations([]));
     }
   }, [user, loading, router]);
 
@@ -72,6 +76,8 @@ export default function OnboardingPage() {
             {resendStatus && <p className="mt-2 text-xs font-medium">{resendStatus}</p>}
           </div>
         )}
+
+        <section className="space-y-3"><h2 className="text-xl font-bold">Pending Invitations</h2>{invitations.length === 0 ? <p className="text-sm text-gray-600 dark:text-gray-400">No pending invitations.</p> : <div className="space-y-2">{invitations.map((invitation) => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"><div><p className="font-semibold">{invitation.workspaceName}</p><p className="text-sm text-gray-600 dark:text-gray-400">{invitation.role} · Expires {new Date(invitation.expiresAt).toLocaleDateString()}</p></div><span className="text-sm text-gray-500">Use the invitation email link to accept</span></div>)}</div>}</section>
 
         <div className="grid gap-6 sm:grid-cols-2">
           {/* Card 1: Create Workspace */}

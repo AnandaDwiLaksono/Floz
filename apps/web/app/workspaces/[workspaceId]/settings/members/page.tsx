@@ -20,6 +20,12 @@ export default function MembersSettingsPage() {
   const [provError, setProvError] = useState<string | null>(null);
   const [provSaving, setProvSaving] = useState(false);
   const [tempPassword, setTempPassword] = useState('');
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('MEMBER');
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const [invitations, setInvitations] = useState<Array<{ id: string; email: string; roleCode?: string; status: string; expiresAt?: string }>>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState('MEMBER');
@@ -29,12 +35,37 @@ export default function MembersSettingsPage() {
 
   const loadMembers = useCallback(async () => {
     try {
-      const res = await api.workspaces.members(workspaceId);
-      setMembers(res.data);
+      const [membersRes, invitationsRes] = await Promise.all([api.workspaces.members(workspaceId), api.invitations.list(workspaceId)]);
+      setMembers(membersRes.data);
+      setInvitations(invitationsRes.data as typeof invitations);
     } finally { setLoading(false); }
   }, [workspaceId]);
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInviteError(null);
+    setInviteSaving(true);
+    try {
+      await api.invitations.create(workspaceId, { email: inviteEmail.trim(), role: inviteRole });
+      setInviteOpen(false);
+      setInviteEmail('');
+      setInviteRole('MEMBER');
+      await loadMembers();
+    } catch (err) {
+      setInviteError(err instanceof ApiError ? err.message : 'Invitation failed.');
+    } finally { setInviteSaving(false); }
+  };
+
+  const handleInvitationAction = async (action: 'resend' | 'revoke', id: string) => {
+    try {
+      await api.invitations[action](workspaceId, id);
+      await loadMembers();
+    } catch (err) {
+      setMutError(err instanceof ApiError ? err.message : 'Invitation update failed.');
+    }
+  };
 
   if (!isAdmin) return <div className="p-6 text-center text-red-600 font-semibold">Access denied. Admin only.</div>;
 
@@ -64,7 +95,7 @@ export default function MembersSettingsPage() {
     setAddSaving(true);
     try {
       const userRes = await api.workspaces.lookupUser(workspaceId, addEmail.trim());
-      await api.workspaces.addMember(workspaceId, { user_id: userRes.data.id, role: addRole, status: 'INVITED' });
+      await api.workspaces.addMember(workspaceId, { user_id: userRes.data.id, role: addRole, status: 'ACTIVE' });
       setAddOpen(false);
       setAddEmail('');
       setAddRole('MEMBER');
@@ -96,13 +127,15 @@ export default function MembersSettingsPage() {
         <Link href={`/workspaces/${workspaceId}/settings/members`} className="px-3 py-1.5 text-sm font-semibold rounded bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">Members</Link>
         <Link href={`/workspaces/${workspaceId}/settings/teams`} className="px-3 py-1.5 text-sm font-medium rounded hover:bg-gray-100 dark:hover:bg-gray-800">Teams</Link>
         <Link href={`/workspaces/${workspaceId}/settings/workflows`} className="px-3 py-1.5 text-sm font-medium rounded hover:bg-gray-100 dark:hover:bg-gray-800">Workflows</Link>
+        <Link href={`/workspaces/${workspaceId}/settings/join`} className="px-3 py-1.5 text-sm font-medium rounded hover:bg-gray-100 dark:hover:bg-gray-800">Join</Link>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-2xl font-bold">Members</h2>
-        <div className="flex gap-2">
-          <button onClick={() => { setProvisionOpen(true); setTempPassword(''); setProvError(null); }} className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded hover:bg-blue-700">Provision Account</button>
-          <button onClick={() => { setAddOpen(true); setAddError(null); }} className="px-4 py-2 text-sm font-bold border rounded hover:bg-gray-50 dark:hover:bg-gray-800">Add Member</button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => { setInviteOpen(true); setInviteError(null); }} className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded hover:bg-blue-700">Invite Member</button>
+          <button onClick={() => { setProvisionOpen(true); setTempPassword(''); setProvError(null); }} className="px-4 py-2 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800">Provision Account</button>
+          <button onClick={() => { setAddOpen(true); setAddError(null); }} className="px-4 py-2 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800">Add Existing Member</button>
         </div>
       </div>
 
@@ -151,6 +184,29 @@ export default function MembersSettingsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      <section className="space-y-3">
+        <h3 className="text-lg font-bold">Pending Invitations</h3>
+        <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+          {invitations.filter((invitation) => invitation.status === 'PENDING').length === 0 ? (
+            <p className="p-4 text-sm text-gray-500">No pending invitations.</p>
+          ) : invitations.filter((invitation) => invitation.status === 'PENDING').map((invitation) => (
+            <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 p-4 last:border-b-0 dark:border-gray-800">
+              <div><p className="font-medium">{invitation.email}</p><p className="text-xs text-gray-500">{invitation.roleCode} · {invitation.status}{invitation.expiresAt ? ` · Expires ${new Date(invitation.expiresAt).toLocaleDateString()}` : ''}</p></div>
+              <div className="flex gap-2"><button aria-label={`Resend ${invitation.email}`} onClick={() => void handleInvitationAction('resend', invitation.id)} className="rounded border px-3 py-1.5 text-sm">Resend</button><button aria-label={`Revoke ${invitation.email}`} onClick={() => void handleInvitationAction('revoke', invitation.id)} className="rounded border px-3 py-1.5 text-sm text-red-600">Revoke</button></div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {inviteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setInviteOpen(false)} />
+          <div role="dialog" aria-modal="true" aria-label="Invite Member" className="relative w-full max-w-md rounded-lg border bg-white p-6 shadow-xl dark:border-gray-800 dark:bg-gray-900">
+            <form onSubmit={handleInvite} className="space-y-4"><h3 className="text-lg font-bold">Invite Member</h3>{inviteError && <div role="alert">{inviteError}</div>}<div><label htmlFor="invite_email" className="mb-1 block text-sm font-medium">Email</label><input id="invite_email" type="email" required value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className="w-full rounded border px-3 py-2 dark:bg-gray-800" /></div><div><label htmlFor="invite_role" className="mb-1 block text-sm font-medium">Role</label><select id="invite_role" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} className="w-full rounded border px-3 py-2 dark:bg-gray-800"><option>ADMIN</option><option>MANAGER</option><option>MEMBER</option><option>FIELD_WORKER</option></select></div><div className="flex justify-end gap-2"><button type="button" onClick={() => setInviteOpen(false)} className="rounded border px-4 py-2 text-sm">Cancel</button><button type="submit" disabled={inviteSaving} className="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{inviteSaving ? 'Inviting...' : 'Invite'}</button></div></form>
+          </div>
         </div>
       )}
 

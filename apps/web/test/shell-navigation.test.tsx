@@ -12,6 +12,7 @@ describe('Task 8 shell navigation', () => {
     render(<Shell><p>Content</p></Shell>);
     expect(screen.getAllByRole('link', { name: 'Dashboard' })[0]).toHaveAttribute('href', '/workspaces/workspace-1/dashboard');
     expect(screen.getAllByRole('link', { name: 'My Work' })[0]).toHaveAttribute('href', '/workspaces/workspace-1/my-work');
+    expect(screen.getAllByRole('link', { name: 'Settings' })).toHaveLength(1);
     const switcher = screen.getByRole('button', { name: /Field Ops/ });
     expect(switcher).toHaveAttribute('aria-expanded', 'false');
     expect(switcher).toHaveAttribute('aria-controls', 'workspace-menu');

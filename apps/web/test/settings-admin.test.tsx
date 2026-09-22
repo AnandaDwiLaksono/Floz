@@ -24,6 +24,21 @@ vi.mock('../lib/api-client', () => ({
       updateProfile: vi.fn().mockResolvedValue({ data: {} }),
       changePassword: vi.fn().mockResolvedValue(undefined),
     },
+    invitations: {
+      list: vi.fn().mockResolvedValue({ data: [{ id: 'inv-1', email: 'pending@floz.com', roleCode: 'MEMBER', status: 'PENDING', expiresAt: '2030-01-01T00:00:00.000Z' }] }),
+      create: vi.fn().mockResolvedValue({ data: {} }),
+      resend: vi.fn().mockResolvedValue({ data: {} }),
+      revoke: vi.fn().mockResolvedValue({ data: {} }),
+    },
+    join: {
+      getSettings: vi.fn().mockResolvedValue({ data: { join_policy: 'INVITE_ONLY', has_active_code: false, code_expires_at: null } }),
+      updateSettings: vi.fn().mockResolvedValue({ data: { join_policy: 'JOIN_CODE' } }),
+      generateCode: vi.fn().mockResolvedValue({ data: { join_code: 'FLOZ-TEST-CODE', expires_at: '2030-01-01T00:00:00.000Z' } }),
+      revokeCode: vi.fn().mockResolvedValue({ data: { success: true } }),
+      listRequests: vi.fn().mockResolvedValue({ data: [] }),
+      approveRequest: vi.fn().mockResolvedValue({ data: { success: true } }),
+      rejectRequest: vi.fn().mockResolvedValue({ data: { success: true } }),
+    },
     workspaces: {
       get: vi.fn().mockResolvedValue({ data: { id: 'ws-123', name: 'Floz HQ', slug: 'floz-hq', timezone: 'Asia/Jakarta' } }),
       update: vi.fn().mockResolvedValue({ data: { id: 'ws-123', name: 'Floz HQ', slug: 'floz-hq', timezone: 'Asia/Jakarta' } }),
@@ -152,18 +167,33 @@ describe('Task 6 — Member & Team Administration UI', () => {
     expect(screen.queryByDisplayValue('temp-secret-pwd-123')).not.toBeInTheDocument();
   });
 
+  it('creates canonical invitations without account lookup and renders pending actions', async () => {
+    const create = api.invitations.create as unknown as ReturnType<typeof vi.fn>;
+    const lookupUser = api.workspaces.lookupUser as unknown as ReturnType<typeof vi.fn>;
+    render(<MembersSettingsPage />);
+    await waitFor(() => expect(screen.getByText('pending@floz.com')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Invite Member/i }));
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'new-invite@floz.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Invite$/i }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith('ws-123', { email: 'new-invite@floz.com', role: 'MEMBER' }));
+    expect(lookupUser).not.toHaveBeenCalled();
+    expect(screen.getByText(/Pending Invitations/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Resend pending@floz.com/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Revoke pending@floz.com/i })).toBeInTheDocument();
+  });
+
   it('adds an existing account resolved through user lookup', async () => {
     const lookupUser = api.workspaces.lookupUser as unknown as ReturnType<typeof vi.fn>;
     const addMember = api.workspaces.addMember as unknown as ReturnType<typeof vi.fn>;
     lookupUser.mockResolvedValue({ data: { id: 'u-9', email: 'found@floz.com', full_name: 'Found User' } });
     render(<MembersSettingsPage />);
-    fireEvent.click(screen.getByRole('button', { name: /Add Member/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Add Existing Member/i }));
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'found@floz.com' } });
     fireEvent.click(screen.getByRole('button', { name: /^Add$/i }));
 
     await waitFor(() => {
       expect(lookupUser).toHaveBeenCalledWith('ws-123', 'found@floz.com');
-      expect(addMember).toHaveBeenCalledWith('ws-123', { user_id: 'u-9', role: 'MEMBER', status: 'INVITED' });
+      expect(addMember).toHaveBeenCalledWith('ws-123', { user_id: 'u-9', role: 'MEMBER', status: 'ACTIVE' });
     });
   });
 
@@ -172,7 +202,7 @@ describe('Task 6 — Member & Team Administration UI', () => {
     const addMember = api.workspaces.addMember as unknown as ReturnType<typeof vi.fn>;
     lookupUser.mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'NOT_FOUND'));
     render(<MembersSettingsPage />);
-    fireEvent.click(screen.getByRole('button', { name: /Add Member/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Add Existing Member/i }));
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'ghost@floz.com' } });
     fireEvent.click(screen.getByRole('button', { name: /^Add$/i }));
 
