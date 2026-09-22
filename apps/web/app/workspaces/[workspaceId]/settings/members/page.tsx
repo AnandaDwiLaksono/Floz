@@ -9,8 +9,8 @@ import { Search } from 'lucide-react';
 
 export default function MembersSettingsPage() {
   const { workspaceId } = useParams() as { workspaceId: string };
-  const { activeWorkspace } = useAuth();
-  const isAdmin = activeWorkspace?.role === 'ADMIN';
+  const { activeWorkspace, workspaceResolving } = useAuth();
+  const isAdmin = !workspaceResolving && activeWorkspace?.id === workspaceId && activeWorkspace.role === 'ADMIN';
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -41,7 +41,7 @@ export default function MembersSettingsPage() {
     } finally { setLoading(false); }
   }, [workspaceId]);
 
-  useEffect(() => { loadMembers(); }, [loadMembers]);
+  useEffect(() => { if (isAdmin) void loadMembers(); }, [isAdmin, loadMembers]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();

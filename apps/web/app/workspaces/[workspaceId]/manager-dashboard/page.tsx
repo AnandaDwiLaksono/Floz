@@ -12,8 +12,8 @@ const label = (key: string | null) => key === null ? 'Unassigned' : key.charAt(0
 function Table({ name, rows }: { name: string; rows: Array<{ key: string | null; count: number }> }) { return <table aria-label={name} className="w-full text-left text-sm"><thead><tr><th>Category</th><th className="text-right">Count</th></tr></thead><tbody>{rows.map((row) => <tr key={row.key ?? 'unassigned'}><td>{label(row.key)}</td><td className="text-right">{row.count}</td></tr>)}</tbody></table>; }
 
 export default function ManagerDashboardPage() {
-  const { workspaceId } = useParams() as { workspaceId: string }; const { user } = useAuth();
-  const workspace = user?.workspaces.find((item) => item.id === workspaceId); const timezone = workspace?.timezone || 'UTC'; const authorized = workspace?.role === 'MANAGER' || workspace?.role === 'ADMIN';
+  const { workspaceId } = useParams() as { workspaceId: string }; const { activeWorkspace, workspaceResolving } = useAuth();
+  const workspace = !workspaceResolving && activeWorkspace?.id === workspaceId ? activeWorkspace : null; const timezone = workspace?.timezone || 'UTC'; const authorized = workspace?.role === 'MANAGER' || workspace?.role === 'ADMIN';
   const defaults = useMemo(() => reportingDefaults(timezone), [timezone]); const [from, setFrom] = useState(defaults.from); const [to, setTo] = useState(defaults.to);
   useEffect(() => { setFrom(defaults.from); setTo(defaults.to); }, [defaults]);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null); const [kpis, setKpis] = useState<ReportingKpis | null>(null); const [dashboardError, setDashboardError] = useState(''); const [kpiError, setKpiError] = useState(''); const [dashboardLoading, setDashboardLoading] = useState(true); const [kpiLoading, setKpiLoading] = useState(true);

@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean;
   authOutcome: AuthOutcome;
   activeWorkspace: WorkspaceMembershipInfo | null;
+  workspaceResolving: boolean;
   setActiveWorkspace: (ws: WorkspaceMembershipInfo) => void;
   login: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -25,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authOutcome, setAuthOutcome] = useState<AuthOutcome>('unknown');
   const [activeWorkspace, setActiveWorkspaceState] = useState<WorkspaceMembershipInfo | null>(null);
+  const [workspaceResolving, setWorkspaceResolving] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -33,9 +35,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.auth.me();
       setUser(res.data);
       setAuthOutcome('authenticated');
-      if (res.data.workspaces?.length) {
-        setActiveWorkspaceState((prev) => prev && res.data.workspaces.some((w) => w.id === prev.id) ? prev : res.data.workspaces[0]);
-      }
       return res.data;
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -52,6 +51,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refetchUser().finally(() => setLoading(false));
   }, [refetchUser]);
+
+  useEffect(() => {
+    if (authOutcome === 'authenticated' && user) {
+      const match = pathname?.match(/^\/workspaces\/([^/]+)(?:\/|$)/);
+      const routeWorkspaceId = match ? decodeURIComponent(match[1]) : null;
+      setWorkspaceResolving(true);
+      if (routeWorkspaceId) {
+        setActiveWorkspaceState(null);
+        const routeWorkspace = user.workspaces.find((workspace) => workspace.id === routeWorkspaceId);
+        if (routeWorkspace) setActiveWorkspaceState(routeWorkspace);
+        else if (user.workspaces[0]) router.replace(`/workspaces/${user.workspaces[0].id}/tasks`);
+        else router.replace('/onboarding');
+      } else {
+        setActiveWorkspaceState((previous) => previous && user.workspaces.some((workspace) => workspace.id === previous.id) ? previous : user.workspaces[0] ?? null);
+      }
+      setWorkspaceResolving(false);
+    } else if (authOutcome === 'signed-out') {
+      setActiveWorkspaceState(null);
+      setWorkspaceResolving(false);
+    }
+  }, [user, pathname, authOutcome, router]);
 
   useEffect(() => {
     if (!loading && authOutcome !== 'unknown' && authOutcome !== 'failure') {
@@ -93,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push(`/workspaces/${ws.id}/tasks`);
   };
 
-  return <AuthContext.Provider value={{ user, loading, authOutcome, activeWorkspace, setActiveWorkspace, login, logout, checkSession, refetchUser }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, authOutcome, activeWorkspace, workspaceResolving, setActiveWorkspace, login, logout, checkSession, refetchUser }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

@@ -10,13 +10,13 @@ const policies = ['INVITE_ONLY', 'JOIN_CODE', 'APPROVAL_REQUIRED'] as const;
 
 export default function JoinSettingsPage() {
   const { workspaceId } = useParams() as { workspaceId: string };
-  const { activeWorkspace } = useAuth();
+  const { activeWorkspace, workspaceResolving } = useAuth();
   const [policy, setPolicy] = useState('INVITE_ONLY');
   const [hasCode, setHasCode] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [requests, setRequests] = useState<{ id: string; userName: string; userEmail: string; status: string; requestedAt: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const isAdmin = activeWorkspace?.role === 'ADMIN';
+  const isAdmin = !workspaceResolving && activeWorkspace?.id === workspaceId && activeWorkspace.role === 'ADMIN';
 
   const load = useCallback(async () => {
     const [settings, requestList] = await Promise.all([api.join.getSettings(workspaceId), api.join.listRequests(workspaceId)]);

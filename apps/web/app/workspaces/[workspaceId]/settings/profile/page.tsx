@@ -8,7 +8,7 @@ import { api, ApiError } from '../../../../../lib/api-client';
 
 export default function ProfileSettingsPage() {
   const { workspaceId } = useParams() as { workspaceId: string };
-  const { user, activeWorkspace, refetchUser } = useAuth();
+  const { user, activeWorkspace, workspaceResolving, refetchUser } = useAuth();
   const [fullName, setFullName] = useState(user?.full_name ?? '');
   const [timezone, setTimezone] = useState(user?.timezone ?? '');
   const [locale, setLocale] = useState(user?.locale ?? '');
@@ -55,7 +55,7 @@ export default function ProfileSettingsPage() {
     }
   };
 
-  const isAdmin = activeWorkspace?.role === 'ADMIN';
+  const isAdmin = !workspaceResolving && activeWorkspace?.id === workspaceId && activeWorkspace.role === 'ADMIN';
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

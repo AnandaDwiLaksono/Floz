@@ -12,8 +12,8 @@ import WorkflowTransitionMatrix from '../../../../../components/workflow-transit
 
 export default function WorkflowSettingsPage() {
   const { workspaceId } = useParams() as { workspaceId: string };
-  const { activeWorkspace } = useAuth();
-  const isAdmin = activeWorkspace?.role === 'ADMIN';
+  const { activeWorkspace, workspaceResolving } = useAuth();
+  const isAdmin = !workspaceResolving && activeWorkspace?.id === workspaceId && activeWorkspace.role === 'ADMIN';
   const [workflows, setWorkflows] = useState<WorkflowListItem[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsError, setTeamsError] = useState<string | null>(null);

@@ -19,7 +19,7 @@ import {
 
 export default function TasksPage() {
   const { workspaceId } = useParams() as { workspaceId: string };
-  const { user, activeWorkspace } = useAuth();
+  const { user, activeWorkspace, workspaceResolving } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -109,11 +109,12 @@ export default function TasksPage() {
   const [assigneeList, setAssigneeList] = useState<{ user_id: string; is_primary: boolean }[]>([]);
 
   const currentRole = useMemo(() => {
-    return user?.workspaces.find((w) => w.id === workspaceId)?.role || 'MEMBER';
-  }, [user, workspaceId]);
+    return !workspaceResolving && activeWorkspace?.id === workspaceId ? activeWorkspace.role : 'MEMBER';
+  }, [activeWorkspace, workspaceId, workspaceResolving]);
 
   // Load static metadata (workflows, teams, members)
   useEffect(() => {
+    if (workspaceResolving || activeWorkspace?.id !== workspaceId) return;
     const loadMetadata = async () => {
       try {
         const [wfRes, teamRes, memRes] = await Promise.all([
@@ -129,10 +130,11 @@ export default function TasksPage() {
       }
     };
     loadMetadata();
-  }, [workspaceId]);
+  }, [activeWorkspace?.id, workspaceId, workspaceResolving]);
 
   // Load Task list on filter change
   const fetchTasks = useCallback(async (cursor?: string) => {
+    if (workspaceResolving || activeWorkspace?.id !== workspaceId) return;
     if (cursor) {
       setLoadingMore(true);
     } else {
@@ -168,7 +170,7 @@ export default function TasksPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [workspaceId, q, status_id, priority, assignee_id, team_id, due_from, due_to, bucket, overdue, sort]);
+  }, [activeWorkspace?.id, workspaceId, workspaceResolving, q, status_id, priority, assignee_id, team_id, due_from, due_to, bucket, overdue, sort]);
 
   useEffect(() => {
     fetchTasks();

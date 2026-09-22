@@ -8,7 +8,7 @@ import { api, ApiError } from '../../../../../lib/api-client';
 
 export default function WorkspaceSettingsPage() {
   const { workspaceId } = useParams() as { workspaceId: string };
-  const { activeWorkspace, refetchUser } = useAuth();
+  const { activeWorkspace, workspaceResolving, refetchUser } = useAuth();
   const [name, setName] = useState('');
   const [timezone, setTimezone] = useState('');
   const [loading, setLoading] = useState(true);
@@ -16,14 +16,15 @@ export default function WorkspaceSettingsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const isAdmin = activeWorkspace?.role === 'ADMIN';
+  const isAdmin = !workspaceResolving && activeWorkspace?.id === workspaceId && activeWorkspace.role === 'ADMIN';
 
   useEffect(() => {
+    if (!isAdmin) return;
     api.workspaces.get(workspaceId).then((res) => {
       setName(res.data.name);
       setTimezone(res.data.timezone);
     }).finally(() => setLoading(false));
-  }, [workspaceId]);
+  }, [isAdmin, workspaceId]);
 
   if (!isAdmin) return <div className="p-6 text-center text-red-600 font-semibold">Access denied. Admin only.</div>;
 

@@ -3,11 +3,22 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Shell } from '../components/shell';
 
+const auth = vi.hoisted(() => ({ workspaceResolving: false }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/workspaces/workspace-1/my-work', useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { full_name: 'Manager', email: 'manager@example.com', workspaces: [{ id: 'workspace-1', name: 'Field Ops', role: 'MANAGER' }, { id: 'workspace-2', name: 'Back Office', role: 'ADMIN' }] }, activeWorkspace: { id: 'workspace-1', name: 'Field Ops', role: 'MANAGER' }, loading: false, setActiveWorkspace: vi.fn(), logout: vi.fn() }) }));
+vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { full_name: 'Manager', email: 'manager@example.com', workspaces: [{ id: 'workspace-1', name: 'Field Ops', role: 'MANAGER' }, { id: 'workspace-2', name: 'Back Office', role: 'ADMIN' }] }, activeWorkspace: { id: 'workspace-1', name: 'Field Ops', role: 'MANAGER' }, workspaceResolving: auth.workspaceResolving, loading: false, setActiveWorkspace: vi.fn(), logout: vi.fn() }) }));
 vi.mock('../lib/hooks/use-notifications', () => ({ useUnreadCount: () => ({ unreadCount: 0, setUnreadCount: vi.fn() }), useNotifications: () => ({ notifications: [], loading: false, hasMore: false, error: '', loadMore: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(), fetchNotifications: vi.fn() }) }));
 
 describe('Task 8 shell navigation', () => {
+  it('hides stale workspace identity and privileged navigation while resolving', () => {
+    auth.workspaceResolving = true;
+    render(<Shell><p>Content</p></Shell>);
+    expect(screen.queryByText('Field Ops')).not.toBeInTheDocument();
+    expect(screen.queryByText('Role: MANAGER')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Manager dashboard' })).not.toBeInTheDocument();
+    auth.workspaceResolving = false;
+  });
+
   it('exposes dashboard/My Work links and labeled keyboard-closeable mobile navigation', () => {
     render(<Shell><p>Content</p></Shell>);
     expect(screen.getAllByRole('link', { name: 'Dashboard' })[0]).toHaveAttribute('href', '/workspaces/workspace-1/dashboard');

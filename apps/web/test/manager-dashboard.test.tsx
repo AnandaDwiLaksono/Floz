@@ -7,7 +7,7 @@ import { api, Dashboard, ReportingKpis } from '../lib/api-client';
 
 const auth = vi.hoisted(() => ({ role: 'MANAGER' as 'MANAGER' | 'ADMIN' | 'MEMBER' }));
 vi.mock('next/navigation', () => ({ useParams: () => ({ workspaceId: 'workspace-1' }) }));
-vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { id: 'user-1', workspaces: [{ id: 'workspace-1', role: auth.role, timezone: 'America/New_York' }] } }) }));
+vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { id: 'user-1', workspaces: [{ id: 'workspace-1', role: auth.role, timezone: 'America/New_York' }] }, activeWorkspace: { id: 'workspace-1', role: auth.role, timezone: 'America/New_York' }, workspaceResolving: false }) }));
 vi.mock('../lib/api-client', async (load) => {
   const actual = await load<typeof import('../lib/api-client')>();
   return { ...actual, api: { ...actual.api, workspaces: { ...actual.api.workspaces, get: vi.fn(), dashboardManager: vi.fn(), kpis: vi.fn() } } };

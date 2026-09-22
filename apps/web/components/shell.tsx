@@ -26,7 +26,7 @@ import { notificationRoute } from '../lib/task-route';
 import { BrandLogo } from './brand-logo';
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { user, activeWorkspace, setActiveWorkspace, logout, checkSession, authOutcome, loading } = useAuth();
+  const { user, activeWorkspace, workspaceResolving, setActiveWorkspace, logout, checkSession, authOutcome, loading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
@@ -38,12 +38,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const workspaceTriggerRef = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
   const router = useRouter();
+  const routeWorkspaceId = pathname?.match(/^\/workspaces\/([^/]+)(?:\/|$)/)?.[1];
+  const resolvedWorkspace = workspaceResolving || (routeWorkspaceId && activeWorkspace?.id !== routeWorkspaceId) ? null : activeWorkspace;
 
   // ponytail: Fetch real notifications & count
   const {
     unreadCount,
     setUnreadCount,
-  } = useUnreadCount(activeWorkspace?.id);
+  } = useUnreadCount(resolvedWorkspace?.id);
 
   const {
     notifications,
@@ -54,7 +56,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     markRead,
     markAllRead,
     fetchNotifications,
-  } = useNotifications(activeWorkspace?.id, filterRead, setUnreadCount);
+  } = useNotifications(resolvedWorkspace?.id, filterRead, setUnreadCount);
 
   const handleSelect = useCallback(
     (notification: NotificationResource) => {
@@ -66,7 +68,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       // Navigate to context route or fallback
       const route = notificationRoute(
-        activeWorkspace?.id || '',
+        resolvedWorkspace?.id || '',
         notification.entity_id || '',
         notification.context?.route,
         notification.type,
@@ -74,7 +76,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       );
       router.push(route);
     },
-    [activeWorkspace?.id, markRead, router]
+    [resolvedWorkspace?.id, markRead, router]
   );
 
   // ponytail: handle escape to close notification center and return focus
@@ -179,7 +181,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           >
             <div className="flex items-center space-x-2 truncate">
               <Building className="h-4 w-4 text-blue-600 flex-shrink-0" />
-              <span className="truncate">{activeWorkspace?.name || 'Select Workspace'}</span>
+              <span className="truncate">{resolvedWorkspace?.name || 'Select Workspace'}</span>
             </div>
             <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
           </button>
@@ -195,7 +197,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     setWsDropdownOpen(false);
                   }}
                   className={`flex items-center justify-between w-full px-4 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 ${
-                    ws.id === activeWorkspace?.id ? 'font-bold text-blue-600' : ''
+                    ws.id === resolvedWorkspace?.id ? 'font-bold text-blue-600' : ''
                   }`}
                 >
                   <span className="truncate">{ws.name}</span>
@@ -225,34 +227,34 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         {/* Navigation Links */}
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-          {activeWorkspace && (
+          {resolvedWorkspace && (
             <>
-              <Link href={`/workspaces/${activeWorkspace.id}/dashboard`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/dashboard') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <Link href={`/workspaces/${resolvedWorkspace.id}/dashboard`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/dashboard') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <LayoutDashboard className="h-5 w-5" />
                 <span>Dashboard</span>
               </Link>
-              <Link href={`/workspaces/${activeWorkspace.id}/my-work`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/my-work') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <Link href={`/workspaces/${resolvedWorkspace.id}/my-work`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/my-work') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <Briefcase className="h-5 w-5" />
                 <span>My Work</span>
               </Link>
-              {(activeWorkspace.role === 'MANAGER' || activeWorkspace.role === 'ADMIN') && <Link href={`/workspaces/${activeWorkspace.id}/manager-dashboard`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/manager-dashboard') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}><LayoutDashboard className="h-5 w-5" /><span>Manager dashboard</span></Link>}
-              <Link href={`/workspaces/${activeWorkspace.id}/tasks`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/tasks') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              {(resolvedWorkspace.role === 'MANAGER' || resolvedWorkspace.role === 'ADMIN') && <Link href={`/workspaces/${resolvedWorkspace.id}/manager-dashboard`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/manager-dashboard') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}><LayoutDashboard className="h-5 w-5" /><span>Manager dashboard</span></Link>}
+              <Link href={`/workspaces/${resolvedWorkspace.id}/tasks`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/tasks') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <CheckSquare className="h-5 w-5" />
                 <span>Tasks</span>
               </Link>
-              <Link href={`/workspaces/${activeWorkspace.id}/approvals`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/approvals') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <Link href={`/workspaces/${resolvedWorkspace.id}/approvals`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/approvals') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <ClipboardCheck className="h-5 w-5" />
                 <span>Approvals</span>
               </Link>
-              <Link href={`/workspaces/${activeWorkspace.id}/kanban`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/kanban') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <Link href={`/workspaces/${resolvedWorkspace.id}/kanban`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/kanban') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <Layers className="h-5 w-5" />
                 <span>Kanban</span>
               </Link>
-              <Link href={`/workspaces/${activeWorkspace.id}/calendar`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/calendar') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <Link href={`/workspaces/${resolvedWorkspace.id}/calendar`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/calendar') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <Calendar className="h-5 w-5" />
                 <span>Calendar</span>
               </Link>
-              <Link href={`/workspaces/${activeWorkspace.id}/settings`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/settings') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <Link href={`/workspaces/${resolvedWorkspace.id}/settings`} className={`flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition ${pathname.includes('/settings') ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                 <Settings className="h-5 w-5" />
                 <span>Settings</span>
               </Link>
@@ -296,14 +298,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Menu className="h-6 w-6" />
             </button>
             <h1 className="text-lg font-semibold tracking-tight">
-              {activeWorkspace ? activeWorkspace.name : 'Floz Work Management'}
+              {resolvedWorkspace ? resolvedWorkspace.name : 'Floz Work Management'}
             </h1>
           </div>
 
           <div className="flex items-center space-x-3">
-            {activeWorkspace && (
+            {resolvedWorkspace && (
               <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                Role: {activeWorkspace.role}
+                Role: {resolvedWorkspace.role}
               </span>
             )}
 
@@ -373,17 +375,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
                       setMobileMenuOpen(false);
                     }}
                     className={`block w-full text-left px-3 py-2 text-sm rounded ${
-                      ws.id === activeWorkspace?.id ? 'bg-blue-50 text-blue-600 font-bold' : ''
+                      ws.id === resolvedWorkspace?.id ? 'bg-blue-50 text-blue-600 font-bold' : ''
                     }`}
                   >
                     {ws.name} ({ws.role})
                   </button>
                 ))}
               </div>
-              {activeWorkspace && (
+              {resolvedWorkspace && (
                 <div className="pt-4 border-t space-y-2">
                   <Link
-                    href={`/workspaces/${activeWorkspace.id}/dashboard`}
+                    href={`/workspaces/${resolvedWorkspace.id}/dashboard`}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
                   >
@@ -391,16 +393,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <span>Dashboard</span>
                   </Link>
                   <Link
-                    href={`/workspaces/${activeWorkspace.id}/my-work`}
+                    href={`/workspaces/${resolvedWorkspace.id}/my-work`}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
                   >
                     <Briefcase className="h-5 w-5" />
                     <span>My Work</span>
                   </Link>
-                   {(activeWorkspace.role === 'MANAGER' || activeWorkspace.role === 'ADMIN') && <Link href={`/workspaces/${activeWorkspace.id}/manager-dashboard`} onClick={() => setMobileMenuOpen(false)} className="flex items-center space-x-2 px-3 py-2 font-medium rounded"><LayoutDashboard className="h-5 w-5" /><span>Manager dashboard</span></Link>}
+                   {(resolvedWorkspace.role === 'MANAGER' || resolvedWorkspace.role === 'ADMIN') && <Link href={`/workspaces/${resolvedWorkspace.id}/manager-dashboard`} onClick={() => setMobileMenuOpen(false)} className="flex items-center space-x-2 px-3 py-2 font-medium rounded"><LayoutDashboard className="h-5 w-5" /><span>Manager dashboard</span></Link>}
                    <Link
-                     href={`/workspaces/${activeWorkspace.id}/tasks`}
+                     href={`/workspaces/${resolvedWorkspace.id}/tasks`}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
                   >
@@ -408,7 +410,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <span>Tasks</span>
                   </Link>
                   <Link
-                    href={`/workspaces/${activeWorkspace.id}/approvals`}
+                    href={`/workspaces/${resolvedWorkspace.id}/approvals`}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
                   >
@@ -416,7 +418,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <span>Approvals</span>
                   </Link>
                   <Link
-                    href={`/workspaces/${activeWorkspace.id}/calendar`}
+                    href={`/workspaces/${resolvedWorkspace.id}/calendar`}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
                   >
@@ -424,7 +426,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <span>Calendar</span>
                   </Link>
                   <Link
-                    href={`/workspaces/${activeWorkspace.id}/settings`}
+                    href={`/workspaces/${resolvedWorkspace.id}/settings`}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
                   >
@@ -432,7 +434,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     <span>Settings</span>
                   </Link>
                   <Link
-                    href={`/workspaces/${activeWorkspace.id}/settings`}
+                    href={`/workspaces/${resolvedWorkspace.id}/settings`}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center space-x-2 px-3 py-2 font-medium rounded"
                   >

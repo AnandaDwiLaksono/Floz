@@ -8,8 +8,8 @@ import { api, ApiError, Team, WorkspaceMember } from '../../../../../lib/api-cli
 
 export default function TeamsSettingsPage() {
   const { workspaceId } = useParams() as { workspaceId: string };
-  const { activeWorkspace } = useAuth();
-  const isAdmin = activeWorkspace?.role === 'ADMIN';
+  const { activeWorkspace, workspaceResolving } = useAuth();
+  const isAdmin = !workspaceResolving && activeWorkspace?.id === workspaceId && activeWorkspace.role === 'ADMIN';
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,7 @@ export default function TeamsSettingsPage() {
     } finally { setLoading(false); }
   }, [workspaceId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { if (isAdmin) void loadData(); }, [isAdmin, loadData]);
 
   if (!isAdmin) return <div className="p-6 text-center text-red-600 font-semibold">Access denied. Admin only.</div>;
 

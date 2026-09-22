@@ -27,7 +27,7 @@ export default function ApprovalsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const workspaceId = String(params.workspaceId);
-  const { activeWorkspace, user } = useAuth();
+  const { activeWorkspace, user, workspaceResolving } = useAuth();
 
   const currentView = (searchParams?.get('view') as 'inbox' | 'sent' | 'managed' | 'all') || 'inbox';
   const currentStatus = (searchParams?.get('status') as 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED') || '';
@@ -69,7 +69,7 @@ export default function ApprovalsPage() {
   const decisionModalRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
 
-  const role = activeWorkspace?.role || 'MEMBER';
+  const role = !workspaceResolving && activeWorkspace?.id === workspaceId ? activeWorkspace.role : 'MEMBER';
   const isManager = role === 'MANAGER';
   const isAdmin = role === 'ADMIN';
   const currentUserId = user?.id || '';
@@ -136,8 +136,8 @@ export default function ApprovalsPage() {
   }, [workspaceId, currentView, currentStatus, currentCursor]);
 
   useEffect(() => {
-    fetchApprovals();
-  }, [fetchApprovals]);
+    if (!workspaceResolving && activeWorkspace?.id === workspaceId) fetchApprovals();
+  }, [activeWorkspace?.id, fetchApprovals, workspaceId, workspaceResolving]);
 
   // Fetch workspace members for create modal
   const fetchMembers = useCallback(async () => {
