@@ -109,7 +109,7 @@ export default function TasksPage() {
   const [assigneeList, setAssigneeList] = useState<{ user_id: string; is_primary: boolean }[]>([]);
 
   const currentRole = useMemo(() => {
-    return !workspaceResolving && activeWorkspace?.id === workspaceId ? activeWorkspace.role : 'MEMBER';
+    return !workspaceResolving && activeWorkspace?.id === workspaceId ? activeWorkspace.role : undefined;
   }, [activeWorkspace, workspaceId, workspaceResolving]);
 
   // Load static metadata (workflows, teams, members)
@@ -1056,7 +1056,7 @@ export default function TasksPage() {
                   workspaceId={workspaceId}
                   taskId={selectedTask.id}
                   currentUserId={user?.id || ''}
-                  userRole={activeWorkspace?.role || 'MEMBER'}
+                  userRole={currentRole}
                   workspaceMembers={members}
                 />
               </div>

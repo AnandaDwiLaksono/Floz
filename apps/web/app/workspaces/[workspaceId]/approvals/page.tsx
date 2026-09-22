@@ -168,6 +168,7 @@ export default function ApprovalsPage() {
   );
 
   useEffect(() => {
+    if (workspaceResolving || activeWorkspace?.id !== workspaceId) return;
     if (selectedApprovalRequestId === 'new') {
       setIsCreateOpen(true);
       setDetail(null);
@@ -179,7 +180,7 @@ export default function ApprovalsPage() {
       setIsCreateOpen(false);
       setDetail(null);
     }
-  }, [selectedApprovalRequestId, fetchDetail, fetchMembers]);
+  }, [activeWorkspace?.id, fetchDetail, fetchMembers, selectedApprovalRequestId, workspaceId, workspaceResolving]);
 
   // Focus trap and Escape key listener for dialogs
   useEffect(() => {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { api, CurrentUser, WorkspaceMembershipInfo, ApiError } from './api-client';
 
@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [workspaceResolving, setWorkspaceResolving] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+  const redirectedPathname = useRef<string | null>(null);
 
   const refetchUser = useCallback(async () => {
     try {
@@ -55,14 +56,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authOutcome === 'authenticated' && user) {
       const match = pathname?.match(/^\/workspaces\/([^/]+)(?:\/|$)/);
-      const routeWorkspaceId = match ? decodeURIComponent(match[1]) : null;
+      let routeWorkspaceId: string | null = null;
+      if (match) {
+        try {
+          routeWorkspaceId = decodeURIComponent(match[1]);
+        } catch {
+          routeWorkspaceId = match[1];
+        }
+      }
       setWorkspaceResolving(true);
       if (routeWorkspaceId) {
         setActiveWorkspaceState(null);
         const routeWorkspace = user.workspaces.find((workspace) => workspace.id === routeWorkspaceId);
         if (routeWorkspace) setActiveWorkspaceState(routeWorkspace);
-        else if (user.workspaces[0]) router.replace(`/workspaces/${user.workspaces[0].id}/tasks`);
-        else router.replace('/onboarding');
+        else if (redirectedPathname.current !== pathname) {
+          redirectedPathname.current = pathname ?? null;
+          if (user.workspaces[0]) router.replace(`/workspaces/${user.workspaces[0].id}/tasks`);
+          else router.replace('/onboarding');
+        }
       } else {
         setActiveWorkspaceState((previous) => previous && user.workspaces.some((workspace) => workspace.id === previous.id) ? previous : user.workspaces[0] ?? null);
       }

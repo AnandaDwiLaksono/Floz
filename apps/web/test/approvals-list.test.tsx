@@ -15,11 +15,12 @@ vi.mock('next/navigation', () => ({
   useParams: () => ({ workspaceId: 'workspace-1' }),
 }));
 
-const authState: { role: string } = { role: 'MEMBER' };
+const authState: { role: string; workspaceResolving: boolean; workspaceId: string } = { role: 'MEMBER', workspaceResolving: false, workspaceId: 'workspace-1' };
 vi.mock('../lib/auth-context', () => ({
   useAuth: () => ({
     user: { id: 'user-1', full_name: 'Current User', email: 'user@example.com' },
-    activeWorkspace: { id: 'workspace-1', name: 'Test WS', role: authState.role },
+    activeWorkspace: { id: authState.workspaceId, name: 'Test WS', role: authState.role },
+    workspaceResolving: authState.workspaceResolving,
   }),
 }));
 
@@ -53,10 +54,24 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
     vi.clearAllMocks();
     mockSearchParams = new URLSearchParams();
     authState.role = 'MEMBER';
+    authState.workspaceResolving = false;
+    authState.workspaceId = 'workspace-1';
     vi.spyOn(api.approvals, 'list').mockResolvedValue({
       data: mockApprovals,
       meta: { pagination: { limit: 50, next_cursor: 'cursor-2', has_more: true } },
     });
+    vi.spyOn(api.approvals, 'get');
+    vi.spyOn(api.workspaces, 'members');
+  });
+
+  it('does not fetch approvals, detail, or members before matching route context resolves', async () => {
+    authState.workspaceResolving = true;
+    mockSearchParams = new URLSearchParams('selected_approval_request_id=new');
+    render(<ApprovalsPage />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.approvals.list).not.toHaveBeenCalled();
+    expect(api.approvals.get).not.toHaveBeenCalled();
+    expect(api.workspaces.members).not.toHaveBeenCalled();
   });
 
   it('renders Inbox and Sent tabs for standard MEMBER; hides Managed and All tabs', async () => {

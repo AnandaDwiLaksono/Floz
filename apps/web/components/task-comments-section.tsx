@@ -8,7 +8,7 @@ interface TaskCommentsSectionProps {
   workspaceId: string;
   taskId: string;
   currentUserId: string;
-  userRole: string;
+  userRole?: string;
   workspaceMembers: WorkspaceMember[];
 }
 

@@ -52,6 +52,13 @@ describe('AuthProvider workspace route resolution', () => {
     expect(navigation.replace).toHaveBeenCalledWith('/workspaces/ws-2/tasks');
   });
 
+  it('redirects malformed workspace route encoding without throwing or looping', async () => {
+    navigation.pathname = '/workspaces/%E0%A4/tasks';
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith('/workspaces/ws-2/tasks'));
+    expect(navigation.replace).toHaveBeenCalledTimes(1);
+  });
+
   it('replaces with onboarding when the user has no workspace', async () => {
     vi.mocked(api.auth.me).mockResolvedValue({ data: currentUser([]) });
     render(<AuthProvider><Probe /></AuthProvider>);
