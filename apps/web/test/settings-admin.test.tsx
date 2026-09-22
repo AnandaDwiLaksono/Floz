@@ -5,6 +5,7 @@ import ProfileSettingsPage from '../app/workspaces/[workspaceId]/settings/profil
 import WorkspaceSettingsPage from '../app/workspaces/[workspaceId]/settings/workspace/page';
 import MembersSettingsPage from '../app/workspaces/[workspaceId]/settings/members/page';
 import TeamsSettingsPage from '../app/workspaces/[workspaceId]/settings/teams/page';
+import JoinSettingsPage from '../app/workspaces/[workspaceId]/settings/join/page';
 import { useAuth } from '../lib/auth-context';
 import { api, ApiError } from '../lib/api-client';
 
@@ -210,6 +211,12 @@ describe('Task 6 — Member & Team Administration UI', () => {
       expect(screen.getByText(/Provision an account first/i)).toBeInTheDocument();
     });
     expect(addMember).not.toHaveBeenCalled();
+  });
+
+  it('renders join settings policy, code controls, and requests', async () => {
+    render(<JoinSettingsPage />);
+    await waitFor(() => expect(screen.getByLabelText(/Join policy/i)).toHaveValue('INVITE_ONLY'));
+    expect(screen.getByText(/Pending join requests/i)).toBeInTheDocument();
   });
 
   it('renders teams with active/archived toggle and manager assign', async () => {
