@@ -25,7 +25,7 @@ function formatRelativeTime(dateString: string): string {
   const now = new Date();
   const diffInSeconds = Math.round((date.getTime() - now.getTime()) / 1000);
 
-  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  const rtf = new Intl.RelativeTimeFormat('id', { numeric: 'auto' });
 
   const cutoffs = [
     { unit: 'year', seconds: 31536000 },
@@ -42,7 +42,7 @@ function formatRelativeTime(dateString: string): string {
     }
   }
 
-  return 'just now';
+  return 'baru saja';
 }
 
 export function NotificationItem({ notification, onSelect }: NotificationItemProps) {
@@ -67,22 +67,22 @@ export function NotificationItem({ notification, onSelect }: NotificationItemPro
   return (
     <button
       onClick={() => onSelect(notification)}
-      className={`w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition flex gap-3 ${
-        !notification.is_read ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''
-      }`}
+      className={`flex w-full gap-3 p-3 text-left transition hover:bg-surface-subtle ${
+              !notification.is_read ? 'bg-info/10' : ''
+            }`}
     >
       <div className="mt-1 flex-shrink-0">
-        <Icon className="h-5 w-5 text-gray-500" />
+        <Icon className="h-5 w-5 text-muted-foreground" />
       </div>
       <div className="flex-1 min-w-0">
         <p className={`text-sm truncate ${!notification.is_read ? 'font-bold' : 'font-medium'}`}>
           {notification.title}
-          {!notification.is_read && <span className="sr-only">Unread</span>}
+          {!notification.is_read && <span className="sr-only">Belum dibaca</span>}
         </p>
-        <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mt-0.5">
+        <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
           {notification.body}
         </p>
-        <time dateTime={notification.created_at} className="text-xs text-gray-400 mt-1 block">
+        <time dateTime={notification.created_at} className="mt-1 block text-xs text-muted-foreground">
           {relativeTime}
         </time>
       </div>

@@ -46,64 +46,64 @@ export function NotificationCenter({
   });
 
   return (
-    <div className="w-80 max-h-[480px] flex flex-col bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-xl overflow-hidden">
-      <div className="p-3 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
-        <h2 className="text-sm font-semibold">Notifications</h2>
+    <div id="notification-panel" role="region" aria-label="Notifikasi" className="flex max-h-[min(480px,calc(100dvh-5rem))] w-full flex-col overflow-hidden rounded-lg border border-border bg-surface-raised shadow-xl">
+      <div className="flex items-center justify-between border-b border-border bg-surface-subtle p-3">
+        <div><h2 className="text-sm font-semibold">Notifikasi</h2><p className="text-xs text-muted-foreground">{unreadCount} belum dibaca</p></div>
         <button
           onClick={onMarkAllRead}
           disabled={unreadCount === 0}
-          className="text-xs text-blue-600 hover:text-blue-500 disabled:text-gray-400 disabled:cursor-not-allowed font-medium"
+          className="text-xs text-primary hover:text-primary-hover disabled:text-muted-foreground disabled:cursor-not-allowed font-medium"
         >
-          Mark all as read
+          Tandai semua dibaca
         </button>
       </div>
 
-      <div className="flex border-b border-gray-200 dark:border-gray-800 text-xs">
+      <div className="flex border-b border-border text-xs">
         <button
           onClick={() => setFilterRead(null)}
           className={`flex-1 py-2 text-center font-medium border-b-2 transition ${
             filterRead === null
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          All
+Semua
         </button>
         <button
           onClick={() => setFilterRead(true)}
           className={`flex-1 py-2 text-center font-medium border-b-2 transition ${
             filterRead === true
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          Unread ({unreadCount})
+          Belum dibaca ({unreadCount})
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 min-h-[150px]">
+      <div className="flex-1 overflow-y-auto divide-y divide-border min-h-[150px]">
         {error && (
           <div className="p-4 text-center">
-            <p className="text-xs text-red-500">{error}</p>
+            <p className="text-xs text-danger">{error}</p>
             {onRetry && (
               <button
                 onClick={onRetry}
-                className="mt-2 text-xs text-blue-600 hover:underline font-medium"
+                className="mt-2 text-xs text-primary hover:underline font-medium"
               >
-                Retry
+Coba lagi
               </button>
             )}
           </div>
         )}
 
         {loading && notifications.length === 0 && (
-          <div className="p-3 space-y-3 animate-pulse" aria-label="Loading notifications">
+          <div className="p-3 space-y-3 animate-pulse" aria-label="Memuat notifikasi">
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex gap-3 items-center">
-                <div className="h-5 w-5 rounded-full bg-gray-200 dark:bg-gray-700 flex-shrink-0" />
+                <div className="h-5 w-5 rounded-full bg-muted flex-shrink-0" />
                 <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-2/3 bg-gray-200 dark:bg-gray-700 rounded" />
-                  <div className="h-2.5 w-4/5 bg-gray-100 dark:bg-gray-800 rounded" />
+                  <div className="h-3 w-2/3 bg-muted rounded" />
+                  <div className="h-2.5 w-4/5 bg-surface-subtle rounded" />
                 </div>
               </div>
             ))}
@@ -111,8 +111,8 @@ export function NotificationCenter({
         )}
 
         {!loading && !error && filtered.length === 0 && (
-          <div className="p-8 text-center text-xs text-gray-400">
-            {filterRead === true ? 'No unread notifications' : 'Inbox is empty'}
+          <div className="p-8 text-center text-xs text-muted-foreground">
+            {filterRead === true ? 'Tidak ada notifikasi belum dibaca' : 'Kotak masuk kosong'}
           </div>
         )}
 
@@ -125,14 +125,14 @@ export function NotificationCenter({
         ))}
 
         {hasMore && (
-          <div className="p-2 border-t border-gray-100 dark:border-gray-800 flex justify-center">
+          <div className="p-2 border-t border-border flex justify-center">
             <button
               onClick={onLoadMore}
               disabled={loading}
-              className="text-xs text-blue-600 hover:text-blue-500 disabled:text-gray-400 font-medium py-1 px-3 flex items-center gap-1"
+              className="flex min-h-11 items-center gap-1 px-3 py-1 text-xs font-medium text-primary hover:text-primary-hover disabled:text-muted-foreground"
             >
               {loading && <Loader2 className="h-3 w-3 animate-spin" />}
-              Load more
+              Muat lebih banyak
             </button>
           </div>
         )}
