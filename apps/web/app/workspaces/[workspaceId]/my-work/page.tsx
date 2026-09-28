@@ -7,12 +7,15 @@ import { api, ApiError, MyWorkTask } from '../../../../lib/api-client';
 import { getCalendarRange, getTodayInTimezone, shiftCalendarDate } from '../../../../lib/calendar-time';
 import { useAuth } from '../../../../lib/auth-context';
 import { taskRoute } from '../../../../lib/task-route';
+import { formatStatusName, formatTransitionLabel, formatDateDisplay } from '../../../../lib/i18n-labels';
 
 type TaskSectionProps = {
   title: string;
   tasks: MyWorkTask[];
   empty: string;
   href: string;
+  linkLabel: string;
+  tone?: 'default' | 'danger';
   onOpen: (id: string) => void;
   onQuickStatus: (task: MyWorkTask) => void;
   activeQuickTaskId: string | null;
@@ -28,6 +31,8 @@ function TaskSection({
   tasks,
   empty,
   href,
+  linkLabel,
+  tone = 'default',
   onOpen,
   onQuickStatus,
   activeQuickTaskId,
@@ -38,83 +43,86 @@ function TaskSection({
   onCloseQuickStatus,
 }: TaskSectionProps) {
   return (
-    <section className="rounded-lg border bg-white p-4 shadow-sm dark:bg-gray-900">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="font-semibold">
-          {title} <span className="text-sm text-gray-500">({tasks.length})</span>
-        </h3>
-        <Link className="text-sm text-blue-600 hover:underline" href={href}>
-          View all {title.toLowerCase()}
+    <section className={`overflow-hidden rounded-xl border bg-surface ${tone === 'danger' ? 'border-danger/35' : 'border-border'}`}>
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="truncate text-base font-semibold text-foreground">{title}</h2>
+          <span className={`tabular-nums text-sm font-semibold ${tone === 'danger' && tasks.length ? 'text-danger' : 'text-muted-foreground'}`}>
+            {tasks.length}
+          </span>
+        </div>
+        <Link className="shrink-0 text-sm font-semibold text-primary hover:text-primary-hover" href={href}>
+          {linkLabel}
         </Link>
       </div>
       {tasks.length ? (
-        <ul className="space-y-3">
+        <ul className="divide-y divide-border">
           {tasks.map((task) => {
             const isActive = activeQuickTaskId === task.id;
             return (
-              <li key={task.id} className="rounded border p-3 dark:border-gray-800">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <li key={task.id} className="px-3 py-3 sm:px-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <button
                     type="button"
                     aria-label={task.title}
                     onClick={() => onOpen(task.id)}
-                    className="w-full text-left hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1"
+                    className="min-h-11 min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-subtle"
                   >
-                    <strong>{task.title}</strong>
-                    <span className="block text-xs text-gray-500">
-                      {task.taskKey} · {task.status.name}{task.status.is_active === false && <span className="ml-1 rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">Archived</span>} · {task.priority} · {new Date(task.dueAt).toLocaleString()}
+                    <span className="block truncate text-sm font-semibold text-foreground">{task.title}</span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span className="font-medium text-primary">{task.taskKey}</span>
+                      <span>{formatStatusName(task.status.name)}</span>
+                      {task.status.is_active === false && <span className="font-semibold">Diarsipkan</span>}
+                      <span>{({ LOW: 'Rendah', MEDIUM: 'Sedang', HIGH: 'Tinggi', URGENT: 'Mendesak' } as Record<string, string>)[task.priority] || task.priority}</span>
+                    </span>
+                    <span className={`mt-1.5 block text-xs font-medium ${tone === 'danger' ? 'text-danger' : 'text-foreground'}`}>
+                      {tone === 'danger' ? 'Terlambat · ' : 'Tenggat · '}{new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(task.dueAt))}
                     </span>
                   </button>
                   <button
                     type="button"
-                    aria-label={`Quick status for ${task.taskKey}`}
+                    aria-label={`Ubah status ${task.taskKey}`}
                     onClick={() => onQuickStatus(task)}
-                    className="shrink-0 px-2 py-1 border border-gray-300 dark:border-gray-700 text-xs font-semibold rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                    className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-sm font-semibold text-foreground transition-colors hover:bg-surface-subtle"
                   >
-                    Quick status
+                    Ubah status
                   </button>
                 </div>
                 {isActive && (
-                  <div className="mt-3 border-t pt-2 space-y-2">
+                  <div className="mt-3 space-y-3 border-t border-border px-2 pt-3">
                     {loadingQuickStatus && (
-                      <p role="status" aria-busy="true" className="text-xs text-gray-500">
-                        Loading transitions…
+                      <p role="status" aria-busy="true" className="text-sm text-muted-foreground">
+                        Memuat pilihan status…
                       </p>
                     )}
                     {quickError && (
-                      <div role="alert" className="p-2 border border-orange-500 bg-orange-50 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300 text-xs rounded flex items-center justify-between">
+                      <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
                         <span>{quickError}</span>
-                        <button type="button" onClick={onCloseQuickStatus} className="text-xs font-bold underline">
-                          Close
+                        <button type="button" onClick={onCloseQuickStatus} className="min-h-11 shrink-0 font-semibold text-primary">
+                          Tutup
                         </button>
                       </div>
                     )}
                     {!loadingQuickStatus && !quickError && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-                          Select new status:
-                        </p>
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium text-foreground">Pilih status berikutnya</p>
                         <div className="flex flex-wrap gap-2">
-                          {quickTransitions.map((t) => (
+                          {quickTransitions.map((transition) => (
                             <button
-                              key={t.to_status_id}
+                              key={transition.to_status_id}
                               type="button"
-                              onClick={() => onTransition(t.to_status_id)}
-                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow-sm"
+                              onClick={() => onTransition(transition.to_status_id)}
+                              className="min-h-11 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
                             >
-                              To {t.name}
+                              {formatTransitionLabel(transition.name)}
                             </button>
                           ))}
                           {quickTransitions.length === 0 && (
-                            <span className="text-xs text-gray-500">No status transitions available.</span>
+                            <span className="text-sm text-muted-foreground">Tidak ada perubahan status yang tersedia.</span>
                           )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={onCloseQuickStatus}
-                          className="text-xs text-gray-500 hover:underline pt-1 block"
-                        >
-                          Cancel
+                        <button type="button" onClick={onCloseQuickStatus} className="min-h-11 text-sm font-semibold text-muted-foreground hover:text-foreground">
+                          Batal
                         </button>
                       </div>
                     )}
@@ -125,7 +133,10 @@ function TaskSection({
           })}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500">{empty}</p>
+        <div className="px-5 py-8">
+          <p className="text-sm font-medium text-foreground">{empty}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Tidak ada tindakan yang diperlukan pada bagian ini.</p>
+        </div>
       )}
     </section>
   );
@@ -242,17 +253,30 @@ export default function MyWorkPage() {
     setQuickError(null);
   };
 
-  if (loading) return <p role="status">Loading My Work…</p>;
+  if (loading) return (
+    <div role="status" aria-label="Memuat Pekerjaan Saya" className="space-y-5">
+      <div className="h-16 max-w-md animate-pulse rounded-lg bg-surface-subtle motion-reduce:animate-none" />
+      <div className="h-36 animate-pulse rounded-xl border border-border bg-surface motion-reduce:animate-none" />
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="h-44 animate-pulse rounded-xl border border-border bg-surface motion-reduce:animate-none" />
+        <div className="h-44 animate-pulse rounded-xl border border-border bg-surface motion-reduce:animate-none" />
+      </div>
+      <span className="sr-only">Memuat Pekerjaan Saya…</span>
+    </div>
+  );
   if (error)
     return (
-      <div className="space-y-3">
-        <h2 className="text-2xl font-bold">My Work</h2>
-        <p role="alert" className="text-red-600">
-          {error}
-        </p>
-        <button type="button" onClick={() => void load()} className="rounded border px-3 py-2">
-          Try again
-        </button>
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Pekerjaan Saya</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Tugas yang paling membutuhkan perhatian Anda.</p>
+        </div>
+        <div className="rounded-xl border border-danger/35 bg-surface p-5">
+          <p role="alert" className="text-sm font-medium text-danger">{error}</p>
+          <button type="button" onClick={() => void load()} className="mt-4 min-h-11 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface-subtle">
+            Coba lagi
+          </button>
+        </div>
       </div>
     );
   if (!result || !links) return null;
@@ -270,33 +294,40 @@ export default function MyWorkPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold">My Work</h2>
-        <p className="text-sm text-gray-500">
-          {meta.date} · {meta.timezone}
-        </p>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-3">
+    <div className="space-y-5">
+      <header className="flex flex-col gap-2 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Pekerjaan Saya</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Fokus pada tugas yang perlu ditindaklanjuti lebih dulu.</p>
+        </div>
+        <p className="text-sm tabular-nums text-muted-foreground">{formatDateDisplay(meta.date)} · {meta.timezone}</p>
+      </header>
+
+      <TaskSection
+        title="Terlambat"
+        tasks={data.overdue}
+        empty="Tidak ada tugas yang terlambat."
+        href={links.overdue}
+        linkLabel="Lihat semua tugas terlambat"
+        tone="danger"
+        {...sectionProps}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-2">
         <TaskSection
-          title="Due today"
+          title="Hari ini"
           tasks={data.today}
-          empty="No tasks due today."
+          empty="Tidak ada tugas yang perlu dikerjakan hari ini."
           href={links.today}
+          linkLabel="Lihat semua tugas hari ini"
           {...sectionProps}
         />
         <TaskSection
-          title="Upcoming"
+          title="Mendatang"
           tasks={data.upcoming}
-          empty="No upcoming tasks."
+          empty="Tidak ada tugas mendatang."
           href={links.upcoming}
-          {...sectionProps}
-        />
-        <TaskSection
-          title="Overdue"
-          tasks={data.overdue}
-          empty="No overdue tasks."
-          href={links.overdue}
+          linkLabel="Lihat semua tugas mendatang"
           {...sectionProps}
         />
       </div>

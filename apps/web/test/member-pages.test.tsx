@@ -53,39 +53,40 @@ describe('Task 8 member pages', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-08-31T18:30:00.000Z'));
     vi.mocked(api.workspaces.myWork).mockResolvedValue({ data: { ...emptyWork, today: [task], counts: { today: 1, upcoming: 0, overdue: 0 } }, meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' } });
     render(<MyWorkPage />);
-    expect(screen.getByRole('status')).toHaveTextContent('Loading');
+    expect(screen.getByRole('status')).toHaveTextContent('Memuat Pekerjaan Saya…');
     await act(async () => { await vi.runAllTimersAsync(); });
     expect(api.workspaces.get).toHaveBeenCalledWith('workspace-1');
-    expect(screen.getByRole('heading', { name: 'My Work' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Pekerjaan Saya' })).toBeInTheDocument();
     expect(api.workspaces.myWork).toHaveBeenCalledWith('workspace-1', '2026-09-01');
     fireEvent.click(screen.getByRole('button', { name: /Inspect pump/ }));
     expect(push).toHaveBeenCalledWith('/workspaces/workspace-1/tasks?selected_task_id=task-1');
-    expect(screen.getByRole('link', { name: 'View all due today' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=active&due_from=2026-08-31T17%3A00%3A00.000Z&due_to=2026-09-01T17%3A00%3A00.000Z&sort=due_at');
-    expect(screen.getByRole('link', { name: 'View all upcoming' }).getAttribute('href')).toContain('assignee_id=user-1');
-    expect(screen.getByRole('link', { name: 'View all overdue' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=active&due_to=2026-08-31T17%3A00%3A00.000Z&sort=due_at');
+    expect(screen.getByRole('link', { name: 'Lihat semua tugas hari ini' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=active&due_from=2026-08-31T17%3A00%3A00.000Z&due_to=2026-09-01T17%3A00%3A00.000Z&sort=due_at');
+    expect(screen.getByRole('link', { name: 'Lihat semua tugas mendatang' }).getAttribute('href')).toContain('assignee_id=user-1');
+    expect(screen.getByRole('link', { name: 'Lihat semua tugas terlambat' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=active&due_to=2026-08-31T17%3A00%3A00.000Z&sort=due_at');
   });
 
   it.each([[403, 'You do not have permission to view My Work.'], [500, 'My Work unavailable']])('renders My Work permission/error state for %i', async (status, text) => {
     vi.mocked(api.workspaces.myWork).mockRejectedValue(new ApiError(status, 'ERROR', status === 500 ? text : 'Forbidden'));
     render(<MyWorkPage />);
     expect(await screen.findByRole('alert')).toHaveTextContent(text);
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
     await waitFor(() => expect(api.workspaces.myWork).toHaveBeenCalledTimes(2));
   });
 
   it.each([true, false])('renders canonical My Work status with archived badge only when inactive (%s)', async (is_active) => {
     vi.mocked(api.workspaces.myWork).mockResolvedValue({ data: { ...emptyWork, today: [{ ...task, status: { ...task.status, is_active } }], counts: { today: 1, upcoming: 0, overdue: 0 } }, meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' } });
     render(<MyWorkPage />);
-    expect(await screen.findByText(/Open/)).toBeInTheDocument();
-    expect(screen.queryByText('Archived') !== null).toBe(!is_active);
+    // 'Open' is mapped to 'Belum dimulai' at display level; confirm localized label renders
+    expect(await screen.findByText(/Belum dimulai/)).toBeInTheDocument();
+    expect(screen.queryByText('Diarsipkan') !== null).toBe(!is_active);
   });
 
   it('renders complete My Work empty state', async () => {
     vi.mocked(api.workspaces.myWork).mockResolvedValue({ data: emptyWork, meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' } });
     render(<MyWorkPage />);
-    expect(await screen.findByText('No tasks due today.')).toBeInTheDocument();
-    expect(screen.getByText('No upcoming tasks.')).toBeInTheDocument();
-    expect(screen.getByText('No overdue tasks.')).toBeInTheDocument();
+    expect(await screen.findByText('Tidak ada tugas yang perlu dikerjakan hari ini.')).toBeInTheDocument();
+    expect(screen.getByText('Tidak ada tugas mendatang.')).toBeInTheDocument();
+    expect(screen.getByText('Tidak ada tugas yang terlambat.')).toBeInTheDocument();
   });
 
   it('renders typed member dashboard metrics and reusable active/completed links without raw status keys', async () => {
@@ -150,11 +151,11 @@ describe('Task 8 member pages', () => {
     });
 
     render(<MyWorkPage />);
-    await screen.findByRole('heading', { name: 'My Work' });
+    await screen.findByRole('heading', { name: 'Pekerjaan Saya' });
 
     expect(api.tasks.availableTransitions).not.toHaveBeenCalled();
 
-    const quickStatusBtn1 = screen.getByRole('button', { name: /Quick status for TASK-1/i });
+    const quickStatusBtn1 = screen.getByRole('button', { name: /Ubah status TASK-1/i });
     fireEvent.click(quickStatusBtn1);
 
     await waitFor(() => {
@@ -162,7 +163,7 @@ describe('Task 8 member pages', () => {
       expect(api.tasks.availableTransitions).toHaveBeenCalledWith('workspace-1', 'task-1');
     });
 
-    const inProgressBtn = await screen.findByRole('button', { name: /To In Progress/i });
+    const inProgressBtn = await screen.findByRole('button', { name: /(Mulai dikerjakan|Ke In Progress)/i });
     fireEvent.click(inProgressBtn);
 
     await waitFor(() => {
@@ -197,12 +198,12 @@ describe('Task 8 member pages', () => {
     );
 
     render(<MyWorkPage />);
-    await screen.findByRole('heading', { name: 'My Work' });
+    await screen.findByRole('heading', { name: 'Pekerjaan Saya' });
 
-    const quickStatusBtn = screen.getByRole('button', { name: /Quick status for TASK-1/i });
+    const quickStatusBtn = screen.getByRole('button', { name: /Ubah status TASK-1/i });
     fireEvent.click(quickStatusBtn);
 
-    const inProgressBtn = await screen.findByRole('button', { name: /To In Progress/i });
+    const inProgressBtn = await screen.findByRole('button', { name: /(Mulai dikerjakan|Ke In Progress)/i });
     fireEvent.click(inProgressBtn);
 
     expect(await screen.findByText(/VERSION_CONFLICT/i)).toBeInTheDocument();

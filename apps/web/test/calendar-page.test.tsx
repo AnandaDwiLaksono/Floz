@@ -140,9 +140,9 @@ describe('Task 8 Calendar reschedule flow', () => {
 
     await waitFor(() => expect(api.tasks.get).toHaveBeenCalledWith('workspace-1', 'task-1'));
 
-    expect(await screen.findByRole('heading', { name: /Edit Task Fields/i })).toBeInTheDocument();
-    const startInput = screen.getByLabelText(/Start Date/i) as HTMLInputElement;
-    const dueInput = screen.getByLabelText(/Due Date/i) as HTMLInputElement;
+    expect(await screen.findByRole('heading', { name: /(Edit|Ubah) tugas/i })).toBeInTheDocument();
+    const startInput = screen.getByLabelText(/Mulai/i) as HTMLInputElement;
+    const dueInput = screen.getByLabelText(/Tenggat/i) as HTMLInputElement;
 
     expect(startInput.value).toBe('2026-08-18T09:00');
     expect(dueInput.value).toBe('2026-08-18T10:00');
@@ -162,10 +162,10 @@ describe('Task 8 Calendar reschedule flow', () => {
     render(<TasksPage />);
     await waitFor(() => expect(api.tasks.get).toHaveBeenCalledWith('workspace-1', 'task-1'));
 
-    const dueInput = screen.getByLabelText(/Due Date/i);
+    const dueInput = screen.getByLabelText(/Tenggat/i);
     fireEvent.change(dueInput, { target: { value: '2026-08-19T10:00' } });
 
-    const saveBtn = screen.getByRole('button', { name: /Save Changes/i });
+    const saveBtn = screen.getByRole('button', { name: /Simpan perubahan/i });
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
@@ -178,7 +178,7 @@ describe('Task 8 Calendar reschedule flow', () => {
       );
     });
 
-    const returnBtn = await screen.findByRole('button', { name: /Return to Calendar/i });
+    const returnBtn = await screen.findByRole('button', { name: /Kembali ke kalender/i });
     expect(returnBtn).toBeInTheDocument();
 
     fireEvent.click(returnBtn);
@@ -192,10 +192,10 @@ describe('Task 8 Calendar reschedule flow', () => {
     render(<TasksPage />);
     await waitFor(() => expect(api.tasks.get).toHaveBeenCalledWith('workspace-1', 'task-1'));
 
-    const saveBtn = screen.getByRole('button', { name: /Save Changes/i });
+    const saveBtn = screen.getByRole('button', { name: /Simpan perubahan/i });
     fireEvent.click(saveBtn);
 
-    expect(await screen.findByText(/VERSION_CONFLICT/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Versi tugas berubah/i)).toBeInTheDocument();
   });
 
   it('rejects start_at > due_at schedule input before or at submission', async () => {
@@ -204,16 +204,16 @@ describe('Task 8 Calendar reschedule flow', () => {
     render(<TasksPage />);
     await waitFor(() => expect(api.tasks.get).toHaveBeenCalledWith('workspace-1', 'task-1'));
 
-    const startInput = screen.getByLabelText(/Start Date/i);
-    const dueInput = screen.getByLabelText(/Due Date/i);
+    const startInput = screen.getByLabelText(/Mulai/i);
+    const dueInput = screen.getByLabelText(/Tenggat/i);
 
     fireEvent.change(startInput, { target: { value: '2026-08-20T10:00' } });
     fireEvent.change(dueInput, { target: { value: '2026-08-18T10:00' } });
 
-    const saveBtn = screen.getByRole('button', { name: /Save Changes/i });
+    const saveBtn = screen.getByRole('button', { name: /Simpan perubahan/i });
     fireEvent.click(saveBtn);
 
-    expect(await screen.findByText(/Start date must be before or equal to due date/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Waktu mulai harus sebelum atau sama dengan tenggat/i)).toBeInTheDocument();
     expect(api.tasks.update).not.toHaveBeenCalled();
   });
 });

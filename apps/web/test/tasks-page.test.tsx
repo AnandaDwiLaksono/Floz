@@ -145,6 +145,17 @@ describe('Task 10 Task filter UI completion', () => {
     expect(push).toHaveBeenCalledWith(expect.not.stringContaining('overdue=false'));
   });
 
+  it('defaults the Active tab to the backend active bucket when no bucket is in the URL', async () => {
+    render(<TasksPage />);
+
+    await waitFor(() => {
+      expect(api.tasks.list).toHaveBeenCalledWith(
+        'workspace-1',
+        expect.objectContaining({ bucket: 'active' })
+      );
+    });
+  });
+
   it('forwards canonical filters to api.tasks.list including bucket, due dates, assignee, team, overdue', async () => {
     mockSearchParams = new URLSearchParams(
       'q=pump&status_id=st-1&priority=HIGH&team_id=team-1&assignee_id=user-1&bucket=active&overdue=true&sort=due_at'
@@ -174,7 +185,7 @@ describe('Task 10 Task filter UI completion', () => {
 
     await waitFor(() => expect(api.tasks.list).toHaveBeenCalled());
 
-    const completedTab = screen.getByRole('button', { name: /^Completed$/i });
+    const completedTab = screen.getByRole('button', { name: /^Selesai$/i });
     fireEvent.click(completedTab);
 
     expect(push).toHaveBeenCalledWith(
@@ -182,6 +193,77 @@ describe('Task 10 Task filter UI completion', () => {
     );
     expect(push).toHaveBeenCalledWith(
       expect.not.stringContaining('cursor=')
+    );
+  });
+
+  it('uses Indonesian essential controls and reveals advanced filters on demand', async () => {
+    render(<TasksPage />);
+
+    await screen.findByRole('heading', { name: 'Tugas' });
+    expect(screen.getByRole('button', { name: 'Buat tugas' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Filter lainnya' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Tenggat mulai')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter lainnya' }));
+
+    expect(screen.getByLabelText('Tenggat mulai')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buka tugas Inspect pump' })).toBeInTheDocument();
+  });
+
+  it('presents task detail in Indonesian with a contextual delete action', async () => {
+    vi.mocked(api.tasks.get).mockResolvedValue({ data: mockTask });
+    vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
+    render(<TasksPage />);
+
+    await waitFor(() => expect(api.tasks.list).toHaveBeenCalled());
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Buka tugas Inspect pump' }));
+    });
+
+    expect(await screen.findByRole('dialog', { name: 'Detail tugas' })).toBeInTheDocument();
+    expect(screen.getByText('Tenggat')).toBeInTheDocument();
+    expect(screen.getByText('Penanggung jawab')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hapus tugas Inspect pump' })).toBeInTheDocument();
+  });
+
+  it('allows MANAGER to see delete action and enforces focus-trap in Task Detail', async () => {
+    vi.mocked(api.tasks.get).mockResolvedValue({ data: mockTask });
+    vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
+    render(<TasksPage />);
+
+    await waitFor(() => expect(api.tasks.list).toHaveBeenCalled());
+    const openBtn = await screen.findByRole('button', { name: 'Buka tugas Inspect pump' });
+    await act(async () => {
+      fireEvent.click(openBtn);
+    });
+
+    const dialog = await screen.findByRole('dialog', { name: 'Detail tugas' });
+    expect(dialog).toBeInTheDocument();
+    // MANAGER role is allowed to delete
+    expect(screen.getByRole('button', { name: 'Hapus tugas Inspect pump' })).toBeInTheDocument();
+
+    // Escape dispatched to the dialog element closes it (focus-trap handler)
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Detail tugas' })).not.toBeInTheDocument());
+  });
+
+  it('renders visible header close button (X) and Ubah button in Task Detail', async () => {
+    mockSearchParams = new URLSearchParams('selected_task_id=task-1&return_to=%2Fworkspaces%2Fworkspace-1%2Fcalendar%3Fview%3Dweek');
+    vi.mocked(api.tasks.get).mockResolvedValue({ data: mockTask });
+    vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
+    render(<TasksPage />);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Detail tugas' });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+
+    const closeBtn = screen.getByRole('button', { name: 'Tutup detail tugas' });
+    expect(closeBtn).toBeInTheDocument();
+
+    fireEvent.click(closeBtn);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Detail tugas' })).not.toBeInTheDocument());
+    expect(push).toHaveBeenCalledWith(
+      '/workspaces/workspace-1/tasks?return_to=%2Fworkspaces%2Fworkspace-1%2Fcalendar%3Fview%3Dweek'
     );
   });
 });
