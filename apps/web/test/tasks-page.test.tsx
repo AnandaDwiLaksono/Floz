@@ -247,6 +247,17 @@ describe('Task 10 Task filter UI completion', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Detail tugas' })).not.toBeInTheDocument());
   });
 
+  it('returns to Kanban with its filters when a deep-linked detail closes', async () => {
+    mockSearchParams = new URLSearchParams('selected_task_id=task-1&return_to=%2Fworkspaces%2Fworkspace-1%2Fkanban%3Fteam_id%3Dteam-1%26priority%3DHIGH');
+    vi.mocked(api.tasks.get).mockResolvedValue({ data: mockTask });
+    vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
+    render(<TasksPage />);
+
+    expect(await screen.findByRole('button', { name: 'Kembali ke kanban' })).toBeInTheDocument();
+    fireEvent.keyDown(await screen.findByRole('dialog', { name: 'Detail tugas' }), { key: 'Escape' });
+    expect(push).toHaveBeenCalledWith('/workspaces/workspace-1/kanban?team_id=team-1&priority=HIGH');
+  });
+
   it('renders visible header close button (X) and Ubah button in Task Detail', async () => {
     mockSearchParams = new URLSearchParams('selected_task_id=task-1&return_to=%2Fworkspaces%2Fworkspace-1%2Fcalendar%3Fview%3Dweek');
     vi.mocked(api.tasks.get).mockResolvedValue({ data: mockTask });
@@ -262,8 +273,6 @@ describe('Task 10 Task filter UI completion', () => {
 
     fireEvent.click(closeBtn);
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Detail tugas' })).not.toBeInTheDocument());
-    expect(push).toHaveBeenCalledWith(
-      '/workspaces/workspace-1/tasks?return_to=%2Fworkspaces%2Fworkspace-1%2Fcalendar%3Fview%3Dweek'
-    );
+    expect(push).toHaveBeenCalledWith('/workspaces/workspace-1/calendar?view=week');
   });
 });

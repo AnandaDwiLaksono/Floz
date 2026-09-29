@@ -48,8 +48,9 @@ export default function TasksPage() {
   const calAssigneeId = searchParams.get('cal_assignee_id');
   const returnTo = searchParams.get('return_to');
 
-  const calendarReturnUrl = useMemo(() => {
-    if (returnTo && returnTo.startsWith(`/workspaces/${workspaceId}/calendar`) && !returnTo.includes('//')) {
+  const contextReturnUrl = useMemo(() => {
+    const allowed = [`/workspaces/${workspaceId}/calendar`, `/workspaces/${workspaceId}/kanban`];
+    if (returnTo && allowed.some((path) => returnTo === path || returnTo.startsWith(`${path}?`)) && !returnTo.includes('//')) {
       return returnTo;
     }
     if (!calView && !calDate && !calTeamId && !calAssigneeId) return null;
@@ -197,8 +198,8 @@ export default function TasksPage() {
     params.delete('selected_task_id');
     params.delete('edit_schedule');
     setSelectedTask(null);
-    router.push(`/workspaces/${workspaceId}/tasks${params.size ? `?${params}` : ''}`);
-  }, [router, searchParams, workspaceId]);
+    router.push(contextReturnUrl || `/workspaces/${workspaceId}/tasks${params.size ? `?${params}` : ''}`);
+  }, [router, searchParams, workspaceId, contextReturnUrl]);
 
   // Open Detail & load transitions/history
   const handleOpenDetail = useCallback(async (task: Task) => {
@@ -1004,13 +1005,13 @@ export default function TasksPage() {
 
             <div className="flex justify-between items-center pt-4 border-t mt-6">
               <div>
-                {calendarReturnUrl && (
+                {contextReturnUrl && (
                   <button
                     type="button"
-                    onClick={() => router.push(calendarReturnUrl)}
-                    className="px-4 py-2 bg-surface-subtle text-primary hover:bg-surface rounded-md text-sm font-bold transition"
+                    onClick={() => router.push(contextReturnUrl)}
+                    className="rounded-md bg-surface-subtle px-4 py-2 text-sm font-bold text-primary transition hover:bg-surface"
                   >
-                    Kembali ke kalender
+                    {contextReturnUrl.includes('/kanban') ? 'Kembali ke kanban' : 'Kembali ke kalender'}
                   </button>
                 )}
               </div>
