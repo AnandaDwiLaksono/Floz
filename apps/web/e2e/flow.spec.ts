@@ -5,7 +5,7 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 
 const databaseUrl = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5433/floz';
-const auth = betterAuth({ database: drizzleAdapter(createDatabase(databaseUrl).db as never, { provider: 'pg', schema: { user: users, account: accounts, session: sessions, verification: verifications } }), emailAndPassword: { enabled: true }, advanced: { database: { generateId: 'uuid' } } });
+const auth = betterAuth({ secret: process.env.BETTER_AUTH_SECRET || 'test-secret-at-least-32-characters-long', database: drizzleAdapter(createDatabase(databaseUrl).db as never, { provider: 'pg', schema: { user: users, account: accounts, session: sessions, verification: verifications } }), emailAndPassword: { enabled: true }, advanced: { database: { generateId: 'uuid' } } });
 
 async function resetDb() {
   const { sql } = createDatabase(databaseUrl);
@@ -267,10 +267,10 @@ test.describe('Floz Kanban', () => {
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(new RegExp(`selected_task_id=${id('RPT-1')}`));
     await page.goto(`/workspaces/${workspaceId}/dashboard`);
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ringkasan' })).toBeVisible();
     await expect(page.getByText(/%$/).first()).toBeVisible();
-    await expect(page.getByText(/(?:h|m)$/).last()).toBeVisible();
-    const activeHref = await page.getByRole('link', { name: 'View active tasks' }).getAttribute('href');
+    await expect(page.getByText(/(?:j|m)$/).last()).toBeVisible();
+    const activeHref = await page.getByRole('link', { name: 'Lihat tugas aktif' }).getAttribute('href');
     expect(activeHref).toContain('/tasks?assignee_id=');
 
     await page.context().clearCookies();
@@ -278,46 +278,46 @@ test.describe('Floz Kanban', () => {
     await page.goto(`/workspaces/${workspaceId}/my-work`);
     await expect(page.getByText('Outside team assignee')).toBeVisible();
     await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
-    await expect(page.getByText('MANAGER or ADMIN access required.')).toBeVisible();
+    await expect(page.getByText('Akses hanya untuk Manajer atau Admin.')).toBeVisible();
 
     await page.context().clearCookies();
     await login('report-manager@example.com');
     await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
-    await expect(page.getByRole('heading', { name: 'Manager dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dasbor Manajer' })).toBeVisible();
     await expect(page.getByText('Managed Ops')).toBeVisible();
     await expect(page.getByText('Unmanaged Ops')).not.toBeVisible();
-    await expect(page.getByText('Unassigned workload')).toBeVisible();
+    await expect(page.getByText('Belum ditugaskan')).toBeVisible();
     const from = start.toISOString().slice(0, 10);
-    await page.getByLabel('From').fill(from);
-    await page.getByLabel('To').fill(from);
-    await expect(page.getByRole('heading', { name: 'KPI reporting' })).toBeVisible();
-    const workloadTable = page.getByRole('table', { name: 'Workload by team' });
-    await expect(workloadTable).toContainText('Managed ops');
-    await expect(workloadTable).toContainText('5');
-    const priorityTable = page.getByRole('table', { name: 'Priority breakdown' });
-    await expect(priorityTable).toContainText('Urgent');
-    await expect(priorityTable).toContainText('High');
-    await expect(priorityTable).toContainText('Medium');
-    await expect(priorityTable).toContainText('Low');
+    await page.getByLabel('Dari').fill(from);
+    await page.getByLabel('Sampai').fill(from);
+    await expect(page.getByRole('heading', { name: 'Laporan & KPI' })).toBeVisible();
+    const workloadSection = page.locator('section').filter({ hasText: 'Beban kerja per tim' });
+    await expect(workloadSection).toContainText('Managed ops');
+    await expect(workloadSection).toContainText('5');
+    const prioritySection = page.locator('section').filter({ hasText: 'Tugas berdasarkan prioritas' });
+    await expect(prioritySection).toContainText('Mendesak');
+    await expect(prioritySection).toContainText('Tinggi');
+    await expect(prioritySection).toContainText('Sedang');
+    await expect(prioritySection).toContainText('Rendah');
     await expect(page.getByText('33%')).toBeVisible();
-    await expect(page.getByText('1h 30m')).toBeVisible();
+    await expect(page.getByText('1j 30m')).toBeVisible();
     const report = await page.evaluate(async ({ workspaceId, apiUrl }) => {
       const response = await fetch(`${apiUrl}/api/v1/workspaces/${workspaceId}/reports/kpis?from=2026-09-01T00%3A00%3A00.000Z&to=2026-09-02T00%3A00%3A00.000Z&evaluationAt=1999-01-01T00%3A00%3A00.000Z`, { credentials: 'include' });
       return { status: response.status, body: await response.json() };
     }, { workspaceId, apiUrl: process.env.NEXT_PUBLIC_API_URL! });
     expect(report).toMatchObject({ status: 200, body: { data: { completion_rate: '0.333333', overdue_rate: '0.666667', on_time_completion_rate: '1.000000', average_completion_time_seconds: '5400', workload: 5, denominators: { due: 3, completed: 1, overdue: 2, onTime: 1 }, period: { evaluationAt: '2026-09-03T00:00:00.000Z' } } } });
-    const unassignedHref = await page.getByRole('link', { name: 'View unassigned tasks' }).getAttribute('href');
-    expect(unassignedHref).toContain('/tasks?assignee_id=unassigned');
+    const unassignedHref = await page.getByRole('link', { name: 'Lihat daftar tugas' }).getAttribute('href');
+    expect(unassignedHref).toContain('/tasks?sort=priority');
 
     await page.context().clearCookies();
     await login('report-admin@example.com');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
-    await expect(page.getByRole('heading', { name: 'Manager dashboard' })).toBeVisible();
-    await expect(page.getByRole('table', { name: 'Priority breakdown' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dasbor Manajer' })).toBeVisible();
+    await expect(page.locator('section').filter({ hasText: 'Tugas berdasarkan prioritas' })).toBeVisible();
     await page.locator('body').press('Tab');
-    for (let i = 0; i < 20 && await page.getByLabel('To').evaluate((element) => element !== document.activeElement); i++) await page.keyboard.press('Tab');
-    await expect(page.getByLabel('To')).toBeFocused();
+    for (let i = 0; i < 20 && await page.getByLabel('Sampai').evaluate((element) => element !== document.activeElement); i++) await page.keyboard.press('Tab');
+    await expect(page.getByLabel('Sampai')).toBeFocused();
     const apiResponse = await request.get(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/health`);
     expect(apiResponse.ok()).toBe(true);
   });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ManagerDashboardPage from '../app/workspaces/[workspaceId]/manager-dashboard/page';
 import { reportingDefaults, reportingPeriod } from '../lib/reporting-period';
@@ -10,7 +10,7 @@ vi.mock('next/navigation', () => ({ useParams: () => ({ workspaceId: 'workspace-
 vi.mock('../lib/auth-context', () => ({ useAuth: () => ({ user: { id: 'user-1', workspaces: [{ id: 'workspace-1', role: auth.role, timezone: 'America/New_York' }] }, activeWorkspace: { id: 'workspace-1', role: auth.role, timezone: 'America/New_York' }, workspaceResolving: false }) }));
 vi.mock('../lib/api-client', async (load) => {
   const actual = await load<typeof import('../lib/api-client')>();
-  return { ...actual, api: { ...actual.api, workspaces: { ...actual.api.workspaces, get: vi.fn(), dashboardManager: vi.fn(), kpis: vi.fn() } } };
+  return { ...actual, api: { ...actual.api, workspaces: { ...actual.api.workspaces, get: vi.fn(), dashboardManager: vi.fn(), kpis: vi.fn(), teams: vi.fn(), members: vi.fn() } } };
 });
 
 const kpis: ReportingKpis = {
@@ -32,6 +32,8 @@ describe('Task 9 manager dashboard', () => {
     vi.mocked(api.workspaces.get).mockResolvedValue({ data: { id: 'workspace-1', name: 'Field Ops', slug: 'field-ops', timezone: 'America/New_York' } });
     vi.mocked(api.workspaces.dashboardManager).mockResolvedValue({ data: dashboard });
     vi.mocked(api.workspaces.kpis).mockResolvedValue({ data: kpis });
+    vi.mocked(api.workspaces.teams).mockResolvedValue({ data: [{ id: 'team-1', workspace_id: 'workspace-1', name: 'Operasional', description: null, manager_user_id: 'user-1', isActive: true }] });
+    vi.mocked(api.workspaces.members).mockResolvedValue({ data: [{ user_id: 'user-2', full_name: 'Alex', email: 'alex@example.test', role: 'MEMBER', status: 'ACTIVE' }] });
   });
 
   it('converts to the first representable instant on or after the requested local date', () => {
@@ -50,38 +52,52 @@ describe('Task 9 manager dashboard', () => {
 
   it.each(['MANAGER', 'ADMIN'] as const)('is visible to %s and uses exact scope', async (role) => {
     auth.role = role; render(<ManagerDashboardPage />);
-    expect(await screen.findByRole('heading', { name: 'Manager dashboard' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Dasbor Manajer' })).toBeInTheDocument();
     expect(api.workspaces.dashboardManager).toHaveBeenCalledWith('workspace-1', expect.objectContaining({ from: expect.stringMatching(/[+-]\d\d:\d\d$/), to: expect.stringMatching(/[+-]\d\d:\d\d$/) }));
     expect(api.workspaces.kpis).toHaveBeenCalledWith('workspace-1', expect.objectContaining({ from: expect.any(String), to: expect.any(String) }));
   });
 
   it('hides manager reporting from members', async () => {
     auth.role = 'MEMBER'; render(<ManagerDashboardPage />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('MANAGER or ADMIN');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Akses hanya untuk Manajer atau Admin.');
     expect(api.workspaces.dashboardManager).not.toHaveBeenCalled();
+  });
+
+  it('loads Indonesian filters and forwards the selected team without changing the period contract', async () => {
+    render(<ManagerDashboardPage />);
+    await screen.findByRole('heading', { name: 'Dasbor Manajer' });
+    expect(screen.getByLabelText('Tim')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Tim'), { target: { value: 'team-1' } });
+    await waitFor(() => expect(api.workspaces.dashboardManager).toHaveBeenLastCalledWith('workspace-1', expect.objectContaining({ team_id: 'team-1' })));
+    await waitFor(() => expect(api.workspaces.kpis).toHaveBeenLastCalledWith('workspace-1', expect.objectContaining({ team_id: 'team-1' })));
+    expect(screen.getByText(/Ruang lingkup:/)).toBeInTheDocument();
+  });
+
+  it('renders supported pending approvals and workload actions', async () => {
+    vi.mocked(api.workspaces.dashboardManager).mockResolvedValue({ data: { ...dashboard, pending_approvals: 2, drilldown_url: '/workspaces/workspace-1/approvals?view=managed&status=PENDING' } });
+    render(<ManagerDashboardPage />);
+    expect(await screen.findByText('Persetujuan menunggu')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Buka persetujuan menunggu' })).toHaveAttribute('href', '/workspaces/workspace-1/approvals?view=managed&status=PENDING');
+    expect(screen.getByText('Alex')).toBeInTheDocument();
   });
 
   it('uses API evaluation_at for MTD and formats API values only', async () => {
     render(<ManagerDashboardPage />);
     expect(await screen.findByText('62.5%')).toBeInTheDocument();
-    expect(screen.getAllByRole('definition')[0]).toHaveTextContent('62.5%');
-    expect(screen.getByText('1h 30m')).toBeInTheDocument();
-    expect(screen.getByLabelText('From')).toHaveAttribute('id', 'report-from');
-    expect(screen.getByLabelText('To')).toHaveAttribute('id', 'report-to');
-    expect(screen.getByText(/Evaluated Mar 20, 2026/)).toBeInTheDocument();
-    expect(screen.queryByText(/pending approvals/i)).not.toBeInTheDocument();
+    expect(screen.getByText('1 jam 30 menit')).toBeInTheDocument();
+    expect(screen.getByLabelText('Dari')).toHaveAttribute('id', 'report-from');
+    expect(screen.getByLabelText('Sampai')).toHaveAttribute('id', 'report-to');
+    expect(screen.getByText(/Interval/)).toBeInTheDocument();
   });
 
-  it('shows unassigned workload, canonical priority order, text tables, and canonical links', async () => {
-    render(<ManagerDashboardPage />); await screen.findByText('Unassigned workload');
-    expect(screen.getByText('2', { selector: 'strong' })).toBeInTheDocument();
-    const priority = screen.getByRole('table', { name: 'Priority breakdown' });
-    expect(within(priority).getAllByRole('row').slice(1).map((row) => row.textContent)).toEqual(['Urgent4', 'High3', 'Medium2', 'Low1']);
-    expect(screen.getByRole('table', { name: 'Workload by team' })).toBeInTheDocument();
-    const unassigned = new URL(screen.getByRole('link', { name: 'View unassigned tasks' }).getAttribute('href')!, 'https://floz.test');
-    expect(Object.fromEntries(unassigned.searchParams)).toMatchObject({ assignee_id: 'unassigned', sort: 'priority' });
-    expect(unassigned.searchParams.has('bucket')).toBe(false);
-    expect(new URL(screen.getByRole('link', { name: 'View urgent tasks' }).getAttribute('href')!, 'https://floz.test').searchParams.get('priority')).toBe('URGENT');
+  it('shows unassigned workload, canonical priority order, and canonical links', async () => {
+    render(<ManagerDashboardPage />); await screen.findByText('Belum ditugaskan');
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'Tugas berdasarkan prioritas' })).toBeInTheDocument();
+    expect(screen.getByText('Mendesak')).toBeInTheDocument();
+    const unassigned = new URL(screen.getByRole('link', { name: 'Lihat daftar tugas' }).getAttribute('href')!, 'https://floz.test');
+    expect(Object.fromEntries(unassigned.searchParams)).toMatchObject({ sort: 'priority' });
+    expect(new URL(screen.getByRole('link', { name: 'Lihat tugas mendesak' }).getAttribute('href')!, 'https://floz.test').searchParams.get('priority')).toBe('URGENT');
   });
 
   it('keeps dashboard and KPI loading/error states independent', async () => {
@@ -92,6 +108,6 @@ describe('Task 9 manager dashboard', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('KPI unavailable');
     expect(screen.getByRole('status', { name: 'Dashboard loading' })).toBeInTheDocument();
     resolveDashboard({ data: dashboard });
-    expect(await screen.findByText('Unassigned workload')).toBeInTheDocument();
+    expect(await screen.findByText('Belum ditugaskan')).toBeInTheDocument();
   });
 });

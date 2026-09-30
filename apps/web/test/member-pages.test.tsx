@@ -89,33 +89,49 @@ describe('Task 8 member pages', () => {
     expect(screen.getByText('Tidak ada tugas yang terlambat.')).toBeInTheDocument();
   });
 
-  it('renders typed member dashboard metrics and reusable active/completed links without raw status keys', async () => {
+  it('renders Indonesian attention hierarchy with API metrics and supported task navigation', async () => {
     vi.mocked(api.workspaces.dashboardMember).mockResolvedValue({ data: dashboard });
+    vi.mocked(api.workspaces.myWork).mockResolvedValue({ data: { ...emptyWork, today: [task], upcoming: [task], overdue: [task], counts: { today: 1, upcoming: 1, overdue: 1 } }, meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' } });
     render(<MemberDashboardPage />);
-    expect(screen.getByRole('status')).toHaveTextContent('Loading');
-    await screen.findByRole('heading', { name: 'Dashboard' });
+    expect(screen.getByRole('status')).toHaveTextContent('Memuat ringkasan');
+    await screen.findByRole('heading', { name: 'Ringkasan' });
+    expect(screen.getByText('Tugas aktif')).toBeInTheDocument();
+    expect(screen.getByText('Terlambat')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Perlu perhatian' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Hari ini' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Mendatang' })).toBeInTheDocument();
     expect(screen.getByText('50%')).toBeInTheDocument();
-    expect(screen.getByText('1h 30m')).toBeInTheDocument();
-    expect(screen.queryByText('OPEN')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View active tasks' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=active&sort=due_at');
-    expect(screen.getByRole('link', { name: 'View completed tasks' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=completed&sort=-updated_at');
+    expect(screen.getByText('1 jam 30 menit')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Inspect pump' })[0]);
+    expect(push).toHaveBeenCalledWith('/workspaces/workspace-1/tasks?selected_task_id=task-1');
+    expect(screen.getByRole('link', { name: 'Lihat tugas aktif' })).toHaveAttribute('href', '/workspaces/workspace-1/tasks?assignee_id=user-1&bucket=active&sort=due_at');
+  });
+
+  it('localizes system status category without translating workspace status names', async () => {
+    vi.mocked(api.workspaces.dashboardMember).mockResolvedValue({ data: { ...dashboard, status_breakdown: [{ id: 'status-1', key: 'ACTIVE', count: 2, position: 1 }, { id: 'status-2', key: 'Custom ACTIVE', count: 1, position: 2 }] } });
+    vi.mocked(api.workspaces.myWork).mockResolvedValue({ data: emptyWork, meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' } });
+    render(<MemberDashboardPage />);
+    expect(await screen.findByText('Aktif')).toBeInTheDocument();
+    expect(screen.getByText('Custom ACTIVE')).toBeInTheDocument();
   });
 
   it('renders dashboard empty state and zero/null-safe formatting', async () => {
     vi.mocked(api.workspaces.dashboardMember).mockResolvedValue({ data: { ...dashboard, kpis: { ...dashboard.kpis, workload: 0 }, status_breakdown: [], priority_breakdown: [] } });
+    vi.mocked(api.workspaces.myWork).mockResolvedValue({ data: emptyWork, meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' } });
     render(<MemberDashboardPage />);
-    expect(await screen.findByText('No assigned task data.')).toBeInTheDocument();
+    expect(await screen.findByText('Tidak ada tugas yang memerlukan perhatian.')).toBeInTheDocument();
     expect(formatRatio('0.000000')).toBe('0%');
     expect(formatRatio(null)).toBe('—');
-    expect(formatDuration('0')).toBe('0m');
+    expect(formatDuration('0')).toBe('0 menit');
     expect(formatDuration(null)).toBe('—');
   });
 
-  it.each([[403, 'You do not have permission to view this page.'], [500, 'Dashboard unavailable']])('renders dashboard permission/error state for %i', async (status, text) => {
+  it.each([[403, 'Anda tidak memiliki akses ke ringkasan ini.'], [500, 'Ringkasan belum dapat dimuat.']])('renders dashboard permission/error state for %i', async (status, text) => {
     vi.mocked(api.workspaces.dashboardMember).mockRejectedValue(new ApiError(status, 'ERROR', status === 500 ? text : 'Forbidden'));
+    vi.mocked(api.workspaces.myWork).mockResolvedValue({ data: emptyWork, meta: { date: '2026-09-01', timezone: 'Asia/Jakarta' } });
     render(<MemberDashboardPage />);
     expect(await screen.findByRole('alert')).toHaveTextContent(text);
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
     await waitFor(() => expect(api.workspaces.dashboardMember).toHaveBeenCalledTimes(2));
   });
 

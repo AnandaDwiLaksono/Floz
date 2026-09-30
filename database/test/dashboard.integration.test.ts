@@ -78,6 +78,7 @@ describe('dashboard integration', () => {
   it('projects only active managed teams while retaining distinct assignee IDs and null unassigned bucket', async () => {
     const result = await getManagerDashboard(db, input(managerId));
     expect(result.workload_by_team).toEqual([{ key: 'Active', count: 5 }]);
+    expect(result.kpis.workload).toBe(5);
     expect(result.workload_by_assignee).toEqual(expect.arrayContaining([
       { userId: outsiderId, name: 'Outside', count: 2 },
       { userId: duplicateId, name: 'Outside', count: 1 },

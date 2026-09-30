@@ -420,7 +420,7 @@ export class FlozController {
   }
 
   @Get('me')
-  async me(@Req() req: Request) { const user = await this.current(req); return ok({ ...this.publicUser(user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, role: w.role, membership_status: w.membershipStatus })) }); }
+  async me(@Req() req: Request) { const user = await this.current(req); return ok({ ...this.publicUser(user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, slug: w.slug, timezone: w.timezone, role: w.role, membership_status: w.membershipStatus })) }); }
   @Patch('me')
   async updateMe(@Req() req: Request, @Body() body: UpdateMeDto) {
     const user = await this.current(req);
@@ -429,7 +429,7 @@ export class FlozController {
     if (body.locale !== undefined && !localePattern.test(body.locale)) throw new BadRequestException('VALIDATION_ERROR');
     if (body.avatar_url !== undefined && body.avatar_url !== null && !urlPattern.test(body.avatar_url)) throw new BadRequestException('VALIDATION_ERROR');
     const updated = await this.floz.updateUser(user.id, { name: body.full_name?.trim(), timezone: body.timezone, locale: body.locale, image: body.avatar_url });
-    return ok({ ...this.publicUser(updated ?? user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, role: w.role, membership_status: w.membershipStatus })) });
+    return ok({ ...this.publicUser(updated ?? user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, slug: w.slug, timezone: w.timezone, role: w.role, membership_status: w.membershipStatus })) });
   }
   @Patch('me/password')
   @UseGuards(AuthRateLimitGuard)

@@ -84,6 +84,6 @@ export async function getManagerDashboard(db: DatabaseClient, input: DashboardIn
   const pendingApprovalsRows = await db.execute(sql`SELECT COUNT(DISTINCT approval_steps.id)::int AS count FROM approval_steps WHERE workspace_id = ${input.workspaceId} AND status = 'PENDING' AND ${approvalsPredicate}`);
   const pending_approvals = Number((pendingApprovalsRows[0] as unknown as { count: number }).count);
 
-  const [kpis, projection] = await Promise.all([getKpis(db, { ...input, teamIds: ids }), project(db, input, predicate)]);
+  const [kpis, projection] = await Promise.all([getKpis(db, { ...input, userId: undefined, teamIds: ids }), project(db, input, predicate)]);
   return { kpis, ...projection, pending_approvals };
 }
