@@ -19,5 +19,5 @@ export default function WorkflowStatusDialog({ label, children, onClose }: { lab
     document.addEventListener('keydown', key);
     return () => { document.removeEventListener('keydown', key); trigger?.focus(); };
   }, []);
-  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div aria-hidden="true" className="fixed inset-0 bg-black/50" onClick={onClose} /><div ref={ref} role="dialog" aria-modal="true" aria-label={label} className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-900">{children}</div></div>;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div aria-hidden="true" className="fixed inset-0 bg-overlay" onClick={onClose} /><div ref={ref} role="dialog" aria-modal="true" aria-label={label} className="relative w-full max-w-md rounded-lg border border-border bg-surface shadow-lg p-6">{children}</div></div>;
 }

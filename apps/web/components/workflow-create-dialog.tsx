@@ -66,9 +66,9 @@ export default function WorkflowCreateDialog({ teams, onClose, onCreate }: {
   const [newStatusCategory, setNewStatusCategory] = useState<'TODO' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED'>('TODO');
 
   const addStatus = () => {
-    if (!newStatusName.trim() || !newStatusCode.trim()) { setError('Status name and code are required.'); return; }
+    if (!newStatusName.trim() || !newStatusCode.trim()) { setError('Nama dan kode status wajib diisi.'); return; }
     const normalizedCode = newStatusCode.trim().toUpperCase();
-    if (statuses.some((status) => status.name.toLowerCase() === newStatusName.trim().toLowerCase() || status.code === normalizedCode)) { setError('Status names and codes must be unique.'); return; }
+    if (statuses.some((status) => status.name.toLowerCase() === newStatusName.trim().toLowerCase() || status.code === normalizedCode)) { setError('Nama dan kode status harus unik.'); return; }
     setError(null);
     setStatuses([...statuses, { name: newStatusName.trim(), code: normalizedCode, category: newStatusCategory, is_initial: false }]);
     setNewStatusName('');
@@ -97,10 +97,10 @@ export default function WorkflowCreateDialog({ teams, onClose, onCreate }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!name.trim() || !code.trim()) { setError('Name and code are required.'); return; }
-    if (statuses.length === 0) { setError('At least one status is required.'); return; }
-    if (!statuses.some((s) => s.is_initial)) { setError('Exactly one initial status is required.'); return; }
-    if (!statuses.some((s) => s.category === 'DONE' || s.category === 'CANCELLED')) { setError('At least one terminal status (DONE or CANCELLED) is required.'); return; }
+    if (!name.trim() || !code.trim()) { setError('Nama dan kode wajib diisi.'); return; }
+    if (statuses.length === 0) { setError('Setidaknya satu status diperlukan.'); return; }
+    if (!statuses.some((s) => s.is_initial)) { setError('Tepat satu status awal diperlukan.'); return; }
+    if (!statuses.some((s) => s.category === 'DONE' || s.category === 'CANCELLED')) { setError('Setidaknya satu status akhir (DONE atau CANCELLED) diperlukan.'); return; }
     setSaving(true);
     try {
       await onCreate({
@@ -113,7 +113,7 @@ export default function WorkflowCreateDialog({ teams, onClose, onCreate }: {
       });
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Create failed.');
+      setError(err instanceof ApiError ? err.message : 'Gagal membuat alur kerja.');
     } finally { setSaving(false); }
   };
 
@@ -124,67 +124,67 @@ export default function WorkflowCreateDialog({ teams, onClose, onCreate }: {
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Create Workflow" className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <h3 className="text-lg font-bold">New Workflow</h3>
+          <h3 className="text-lg font-bold">Alur Kerja Baru</h3>
           {error && <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="wf_name" className="mb-1 block text-sm font-medium">Name</label>
+              <label htmlFor="wf_name" className="mb-1 block text-sm font-medium">Nama</label>
               <input id="wf_name" type="text" required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded border px-3 py-2 dark:bg-gray-800" />
             </div>
             <div>
-              <label htmlFor="wf_code" className="mb-1 block text-sm font-medium">Code</label>
+              <label htmlFor="wf_code" className="mb-1 block text-sm font-medium">Kode</label>
               <input id="wf_code" type="text" required value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} className="w-full rounded border px-3 py-2 dark:bg-gray-800 uppercase" />
             </div>
           </div>
 
           <div>
-            <label htmlFor="wf_desc" className="mb-1 block text-sm font-medium">Description</label>
+            <label htmlFor="wf_desc" className="mb-1 block text-sm font-medium">Deskripsi</label>
             <textarea id="wf_desc" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded border px-3 py-2 dark:bg-gray-800 h-16" />
           </div>
 
           <div>
-            <label htmlFor="wf_team" className="mb-1 block text-sm font-medium">Team scope</label>
+            <label htmlFor="wf_team" className="mb-1 block text-sm font-medium">Cakupan tim</label>
             <select id="wf_team" value={teamId} onChange={(e) => setTeamId(e.target.value)} className="w-full rounded border px-3 py-2 dark:bg-gray-800">
-              <option value="">Workspace-wide</option>
+              <option value="">Seluruh ruang kerja</option>
               {activeTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
 
           <div>
-            <h4 className="text-sm font-semibold mb-2">Statuses</h4>
+            <h4 className="text-sm font-semibold mb-2">Status</h4>
             <div className="space-y-1">
               {statuses.map((s, i) => (
                 <div key={i} className="flex items-center gap-2 text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded">
                   <span className="font-medium">{s.name}</span>
                   <span className="text-xs text-gray-500">{s.code}</span>
                   <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700">{s.category}</span>
-                  {s.is_initial && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Initial</span>}
-                  {!s.is_initial && (s.category === 'TODO' || s.category === 'IN_PROGRESS') && <button type="button" onClick={() => setInitial(i)} className="text-xs text-blue-600 hover:underline">Set Initial</button>}
-                  <button type="button" onClick={() => removeStatus(i)} className="text-xs text-red-600 hover:underline ml-auto">Remove</button>
+                  {s.is_initial && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Awal</span>}
+                  {!s.is_initial && (s.category === 'TODO' || s.category === 'IN_PROGRESS') && <button type="button" onClick={() => setInitial(i)} aria-label="Set Initial" className="text-xs text-blue-600 hover:underline">Jadikan Awal</button>}
+                  <button type="button" onClick={() => removeStatus(i)} className="text-xs text-red-600 hover:underline ml-auto">Hapus</button>
                 </div>
               ))}
             </div>
             <div className="flex gap-2 mt-2">
-              <input placeholder="Name" value={newStatusName} onChange={(e) => setNewStatusName(e.target.value)} className="flex-1 rounded border px-2 py-1 text-sm dark:bg-gray-800" />
-              <input placeholder="CODE" value={newStatusCode} onChange={(e) => setNewStatusCode(e.target.value.toUpperCase())} className="w-24 rounded border px-2 py-1 text-sm dark:bg-gray-800 uppercase" />
+              <input placeholder="Nama" value={newStatusName} onChange={(e) => setNewStatusName(e.target.value)} className="flex-1 rounded border px-2 py-1 text-sm dark:bg-gray-800" />
+              <input placeholder="KODE" value={newStatusCode} onChange={(e) => setNewStatusCode(e.target.value.toUpperCase())} className="w-24 rounded border px-2 py-1 text-sm dark:bg-gray-800 uppercase" />
               <select value={newStatusCategory} onChange={(e) => setNewStatusCategory(e.target.value as StatusInput['category'])} className="rounded border px-2 py-1 text-sm dark:bg-gray-800">
                 <option value="TODO">TODO</option>
                 <option value="IN_PROGRESS">IN_PROGRESS</option>
                 <option value="DONE">DONE</option>
                 <option value="CANCELLED">CANCELLED</option>
               </select>
-              <button type="button" onClick={addStatus} className="px-3 py-1 text-sm font-bold bg-gray-200 rounded hover:bg-gray-300 dark:bg-gray-700">Add</button>
+              <button type="button" onClick={addStatus} className="px-3 py-1 text-sm font-bold bg-gray-200 rounded hover:bg-gray-300 dark:bg-gray-700">Tambah</button>
             </div>
           </div>
 
           <div>
-            <h4 className="text-sm font-semibold mb-2">Transitions</h4>
+            <h4 className="text-sm font-semibold mb-2">Transisi</h4>
             <div className="overflow-x-auto">
               <table className="text-xs w-full border-collapse">
                 <thead>
                   <tr>
-                    <th className="p-1 border text-left">From \ To</th>
+                    <th className="p-1 border text-left">Dari \ Ke</th>
                     {statuses.map((s) => <th key={s.code} className="p-1 border">{s.code}</th>)}
                   </tr>
                 </thead>
@@ -214,8 +214,8 @@ export default function WorkflowCreateDialog({ teams, onClose, onCreate }: {
           </div>
 
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-bold bg-blue-600 text-white rounded disabled:opacity-50">{saving ? 'Creating...' : 'Create'}</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded hover:bg-gray-50">Batal</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-bold bg-blue-600 text-white rounded disabled:opacity-50">{saving ? 'Membuat...' : 'Buat'}</button>
           </div>
         </form>
       </div>

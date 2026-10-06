@@ -5,6 +5,10 @@ $previousNextDistDir = $env:FLOZ_NEXT_DIST_DIR
 $redisName = "$name-redis"
 $previousRedisUrl = $env:REDIS_URL
 $previousRedisTls = $env:REDIS_TLS
+$previousPlaywrightApiUrl = $env:PLAYWRIGHT_API_URL
+$previousPlaywrightBaseUrl = $env:PLAYWRIGHT_TEST_BASE_URL
+$previousAllowedOrigins = $env:ALLOWED_ORIGINS
+$previousAllowedOrigin = $env:ALLOWED_ORIGIN
 $apiJob = $null
 $webJob = $null
 $workerJob = $null
@@ -126,11 +130,11 @@ try {
   $env:BETTER_AUTH_SECRET = 'test-secret-at-least-32-characters-long'
   Wait-ForPostgres $name
 
-  pnpm --filter @floz/database migrate
+  npx pnpm --filter @floz/database migrate
   if ($LASTEXITCODE -ne 0) { throw 'Database migration failed' }
-  pnpm --filter @floz/api build
+  npx pnpm --filter @floz/api build
   if ($LASTEXITCODE -ne 0) { throw 'API build failed' }
-  pnpm --filter @floz/worker build
+  npx pnpm --filter @floz/worker build
   if ($LASTEXITCODE -ne 0) { throw 'Worker build failed' }
 
   $root = (Get-Location).Path
@@ -145,18 +149,19 @@ try {
     $env:BETTER_AUTH_URL = "http://127.0.0.1:$apiPort"
     $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:$apiPort"
     $env:ALLOWED_ORIGIN = "http://127.0.0.1:$webPort"
+    $env:ALLOWED_ORIGINS = "http://127.0.0.1:$webPort"
     $env:FLOZ_NEXT_DIST_DIR = $nextDistDir
     $nextDistPath = Join-Path $root "apps/web/$nextDistDir"
     New-Item -ItemType Directory -Path $nextDistPath -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $root 'apps/web/tsconfig.json') -Destination (Join-Path $nextDistPath 'tsconfig.json') -Force
-    pnpm --filter @floz/web build
+    npx pnpm --filter @floz/web build
     if ($LASTEXITCODE -ne 0) { throw 'Web build failed' }
     $apiStdout = Join-Path $logDir "api-$attempt.out.log"
     $apiStderr = Join-Path $logDir "api-$attempt.err.log"
     $webStdout = Join-Path $logDir "web-$attempt.out.log"
     $webStderr = Join-Path $logDir "web-$attempt.err.log"
     $apiJob = Start-Job -ScriptBlock {
-      param($root, $databaseUrl, $redisUrl, $redisTls, $secret, $authUrl, $port, $origin, $stdout, $stderr)
+      param($root, $databaseUrl, $redisUrl, $redisTls, $secret, $authUrl, $port, $origin, $origins, $stdout, $stderr)
       Set-Location $root
       $env:DATABASE_URL = $databaseUrl
       $env:REDIS_URL = $redisUrl
@@ -165,11 +170,12 @@ try {
       $env:BETTER_AUTH_URL = $authUrl
       $env:API_PORT = $port
       $env:ALLOWED_ORIGIN = $origin
+      $env:ALLOWED_ORIGINS = $origins
       $env:NODE_ENV = 'test'
       $env:AUTH_RATE_LIMIT_MAX = '1000'
       $env:FLOZ_TEST_REPORTING_NOW = '2026-09-03T00:00:00.000Z'
       cmd /c "node apps/api/dist/src/main.js > `"$stdout`" 2> `"$stderr`""
-    } -ArgumentList $root, $env:DATABASE_URL, $env:REDIS_URL, $env:REDIS_TLS, $env:BETTER_AUTH_SECRET, $env:BETTER_AUTH_URL, $apiPort, $env:ALLOWED_ORIGIN, $apiStdout, $apiStderr
+    } -ArgumentList $root, $env:DATABASE_URL, $env:REDIS_URL, $env:REDIS_TLS, $env:BETTER_AUTH_SECRET, $env:BETTER_AUTH_URL, $apiPort, $env:ALLOWED_ORIGIN, $env:ALLOWED_ORIGINS, $apiStdout, $apiStderr
     try {
       Wait-ForHttp "http://127.0.0.1:$apiPort/api/v1/health" $apiJob $apiStdout $apiStderr 'API'
       $webJob = Start-Job -ScriptBlock {
@@ -201,7 +207,13 @@ try {
   }
 
   $env:PLAYWRIGHT_TEST_BASE_URL = "http://127.0.0.1:$webPort"
-  pnpm --filter @floz/web exec playwright test
+  $env:PLAYWRIGHT_API_URL = "http://127.0.0.1:$apiPort/api/v1"
+  Write-Host "E2E RUNNER DYNAMIC PORTS:"
+  Write-Host "API_PORT: $apiPort"
+  Write-Host "WEB_PORT: $webPort"
+  Write-Host "POSTGRES_PORT: $dbPort"
+  Write-Host "REDIS_PORT: $redisPort"
+  npx pnpm --filter @floz/web exec playwright test --config playwright.config.ts e2e/flow.spec.ts
   if ($LASTEXITCODE -ne 0) { throw 'Playwright E2E failed' }
 } finally {
   if ($workerJob) { Stop-Job $workerJob -ErrorAction SilentlyContinue; Remove-Job $workerJob -Force -ErrorAction SilentlyContinue }
@@ -212,4 +224,8 @@ try {
   docker rm -f $name $redisName 2>$null | Out-Null
   $env:REDIS_URL = $previousRedisUrl
   $env:REDIS_TLS = $previousRedisTls
+  $env:PLAYWRIGHT_API_URL = $previousPlaywrightApiUrl
+  $env:PLAYWRIGHT_TEST_BASE_URL = $previousPlaywrightBaseUrl
+  $env:ALLOWED_ORIGINS = $previousAllowedOrigins
+  $env:ALLOWED_ORIGIN = $previousAllowedOrigin
 }

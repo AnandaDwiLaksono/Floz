@@ -79,32 +79,32 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
     render(<ApprovalsPage />);
     await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
-    expect(screen.getByRole('tab', { name: /Inbox/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Sent/i })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /Managed/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /All/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Inbox|Kotak Masuk/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Sent|Dikirim/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Managed|Dikelola/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /All|Semua/i })).not.toBeInTheDocument();
   });
 
-  it('renders Managed tab for MANAGER, but not All tab', async () => {
+  it('renders Managed tab for MANAGER; hides All tab', async () => {
     authState.role = 'MANAGER';
     render(<ApprovalsPage />);
     await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
-    expect(screen.getByRole('tab', { name: /Inbox/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Sent/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Managed/i })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /All/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Inbox|Kotak Masuk/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Sent|Dikirim/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Managed|Dikelola/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /All|Semua/i })).not.toBeInTheDocument();
   });
 
-  it('renders All tab for ADMIN, but NOT Managed tab', async () => {
+  it('renders All tab for ADMIN; hides Managed tab', async () => {
     authState.role = 'ADMIN';
     render(<ApprovalsPage />);
     await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
-    expect(screen.getByRole('tab', { name: /Inbox/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Sent/i })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /Managed/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /All/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Inbox|Kotak Masuk/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Sent|Dikirim/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Managed|Dikelola/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /All|Semua/i })).toBeInTheDocument();
   });
 
   it('normalizes unauthorized view parameter to inbox in URL', async () => {
@@ -134,7 +134,7 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
     await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
     // Click Sent tab
-    const sentTab = screen.getByRole('tab', { name: /Sent/i });
+    const sentTab = screen.getByRole('tab', { name: /Sent|Dikirim/i });
     fireEvent.click(sentTab);
 
     expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('view=sent'));
@@ -157,6 +157,7 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
 
     expect(screen.getByText(/Alice Request/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Current User/i).length).toBeGreaterThan(0);
-    expect(screen.getByText('PENDING')).toBeInTheDocument();
+    const badges = screen.getAllByText(/Menunggu|PENDING/i);
+    expect(badges.length).toBeGreaterThan(0);
   });
 });

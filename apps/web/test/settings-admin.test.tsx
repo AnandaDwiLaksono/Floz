@@ -82,20 +82,28 @@ describe('Task 5 — Profile & Workspace Settings UI', () => {
     });
   });
 
-  it('renders Profile page with full_name, read-only email, and change password form', () => {
+  it('renders Profile page with one complete settings navigation', () => {
     render(<ProfileSettingsPage />);
+    const navigation = screen.getByRole('navigation', { name: /Settings sections/i });
+    expect(navigation).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Workspace' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Members' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Teams' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Workflows' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Join' })).toBeInTheDocument();
     expect(screen.getByLabelText(/Email/i)).toHaveValue('admin@floz.com');
     expect(screen.getByLabelText(/Email/i)).toHaveAttribute('readonly');
-    expect(screen.getByLabelText(/Full name/i)).toHaveValue('Admin User');
-    expect(screen.getByLabelText(/Current password/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/New password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Nama lengkap|Full name/i)).toHaveValue('Admin User');
+    expect(screen.getByLabelText(/Current password|Kata sandi saat ini/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/New password|Kata sandi baru/i)).toBeInTheDocument();
   });
 
   it('allows updating profile fields', async () => {
     render(<ProfileSettingsPage />);
-    const nameInput = screen.getByLabelText(/Full name/i);
+    const nameInput = screen.getByLabelText(/Nama lengkap|Full name/i);
     fireEvent.change(nameInput, { target: { value: 'Updated Name' } });
-    fireEvent.click(screen.getByRole('button', { name: /Save Profile/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Save Profile|Simpan profil/i }));
 
     await waitFor(() => {
       expect(api.auth.updateProfile).toHaveBeenCalledWith({
@@ -109,8 +117,8 @@ describe('Task 5 — Profile & Workspace Settings UI', () => {
   it('renders Workspace page for ADMIN with editable name and timezone', async () => {
     render(<WorkspaceSettingsPage />);
     await waitFor(() => {
-      expect(screen.getByLabelText(/Workspace name/i)).toHaveValue('Floz HQ');
-      expect(screen.getByLabelText(/Timezone/i)).toHaveValue('Asia/Jakarta');
+      expect(screen.getByLabelText(/Workspace name|Nama workspace/i)).toHaveValue('Floz HQ');
+      expect(screen.getByLabelText(/Timezone|Zona waktu/i)).toHaveValue('Asia/Jakarta');
     });
   });
 
@@ -120,7 +128,7 @@ describe('Task 5 — Profile & Workspace Settings UI', () => {
       activeWorkspace: { id: 'ws-123', name: 'Floz HQ', role: 'MEMBER' },
     });
     render(<WorkspaceSettingsPage />);
-    expect(screen.getByText(/Access denied/i)).toBeInTheDocument();
+    expect(screen.getByText(/Access denied|Akses ditolak/i)).toBeInTheDocument();
   });
 });
 
@@ -136,35 +144,35 @@ describe('Task 6 — Member & Team Administration UI', () => {
   it('lists members with search filter, role and status selects', async () => {
     render(<MembersSettingsPage />);
     await waitFor(() => {
-      expect(screen.getByText('Admin User')).toBeInTheDocument();
-      expect(screen.getByText('Member User')).toBeInTheDocument();
+      expect(screen.getAllByText('Admin User').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Member User').length).toBeGreaterThan(0);
     });
 
-    const search = screen.getByPlaceholderText(/Search by name or email/i);
+    const search = screen.getByPlaceholderText(/Cari nama atau email|Search by name or email/i);
     fireEvent.change(search, { target: { value: 'Admin' } });
-    expect(screen.getByText('Admin User')).toBeInTheDocument();
-    expect(screen.queryByText('Member User')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Admin User').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Member User')).toHaveLength(0);
   });
 
   it('provisions account and displays temporary password safely in modal only', async () => {
     render(<MembersSettingsPage />);
-    fireEvent.click(screen.getByRole('button', { name: /Provision Account/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Buat akun|Provision Account/i }));
 
     const emailInput = screen.getByLabelText(/Email/i);
-    const nameInput = screen.getByLabelText(/Full name/i);
+    const nameInput = screen.getByLabelText(/Nama lengkap|Full name/i);
     fireEvent.change(emailInput, { target: { value: 'new@floz.com' } });
     fireEvent.change(nameInput, { target: { value: 'New User' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /^Create$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Buat|Create)$/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Account Created')).toBeInTheDocument();
+      expect(screen.getByText(/Akun dibuat|Account Created/i)).toBeInTheDocument();
       expect(screen.getByDisplayValue('temp-secret-pwd-123')).toBeInTheDocument();
-      expect(screen.getByText(/Copy this password now/i)).toBeInTheDocument();
+      expect(screen.getByText(/Salin kata sandi sekarang|Copy this password now/i)).toBeInTheDocument();
     });
 
     // Close modal resets ephemeral password
-    fireEvent.click(screen.getByRole('button', { name: /Close/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Tutup|Close/i }));
     expect(screen.queryByDisplayValue('temp-secret-pwd-123')).not.toBeInTheDocument();
   });
 
@@ -173,12 +181,12 @@ describe('Task 6 — Member & Team Administration UI', () => {
     const lookupUser = api.workspaces.lookupUser as unknown as ReturnType<typeof vi.fn>;
     render(<MembersSettingsPage />);
     await waitFor(() => expect(screen.getByText('pending@floz.com')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Invite Member/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Undang anggota|Invite Member/i }));
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'new-invite@floz.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Invite$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Undang|Invite)$/i }));
     await waitFor(() => expect(create).toHaveBeenCalledWith('ws-123', { email: 'new-invite@floz.com', role: 'MEMBER' }));
     expect(lookupUser).not.toHaveBeenCalled();
-    expect(screen.getByText(/Pending Invitations/i)).toBeInTheDocument();
+    expect(screen.getByText(/Undangan tertunda|Pending Invitations/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Resend pending@floz.com/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Revoke pending@floz.com/i })).toBeInTheDocument();
   });
@@ -188,9 +196,9 @@ describe('Task 6 — Member & Team Administration UI', () => {
     const addMember = api.workspaces.addMember as unknown as ReturnType<typeof vi.fn>;
     lookupUser.mockResolvedValue({ data: { id: 'u-9', email: 'found@floz.com', full_name: 'Found User' } });
     render(<MembersSettingsPage />);
-    fireEvent.click(screen.getByRole('button', { name: /Add Existing Member/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Tambah anggota yang sudah terdaftar|Add Existing Member/i }));
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'found@floz.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Add$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Tambah|Add)$/i }));
 
     await waitFor(() => {
       expect(lookupUser).toHaveBeenCalledWith('ws-123', 'found@floz.com');
@@ -203,9 +211,9 @@ describe('Task 6 — Member & Team Administration UI', () => {
     const addMember = api.workspaces.addMember as unknown as ReturnType<typeof vi.fn>;
     lookupUser.mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'NOT_FOUND'));
     render(<MembersSettingsPage />);
-    fireEvent.click(screen.getByRole('button', { name: /Add Existing Member/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Tambah anggota yang sudah terdaftar|Add Existing Member/i }));
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'ghost@floz.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Add$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Tambah|Add)$/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/Provision an account first/i)).toBeInTheDocument();
@@ -215,8 +223,8 @@ describe('Task 6 — Member & Team Administration UI', () => {
 
   it('renders join settings policy, code controls, and requests', async () => {
     render(<JoinSettingsPage />);
-    await waitFor(() => expect(screen.getByLabelText(/Join policy/i)).toHaveValue('INVITE_ONLY'));
-    expect(screen.getByText(/Pending join requests/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText(/Join policy|Kebijakan bergabung/i)).toHaveValue('INVITE_ONLY'));
+    expect(screen.getByText(/Pending join requests|Permintaan bergabung tertunda/i)).toBeInTheDocument();
   });
 
   it('renders teams with active/archived toggle and manager assign', async () => {
@@ -228,7 +236,7 @@ describe('Task 6 — Member & Team Administration UI', () => {
     });
 
     // Filter to active only
-    fireEvent.click(screen.getByRole('button', { name: /^Active$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Aktif|Active)$/i }));
     expect(screen.getByText('Dev Team')).toBeInTheDocument();
     expect(screen.queryByText('Old Team')).not.toBeInTheDocument();
   });

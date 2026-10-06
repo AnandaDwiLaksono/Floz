@@ -88,7 +88,7 @@ describe('Workflow Settings — Task 9', () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Workflows' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2, name: /Workflows|Alur Kerja/i })).toBeInTheDocument();
       expect(screen.getAllByText('Default Workflow').length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText('Team Workflow').length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText('Old Workflow').length).toBeGreaterThanOrEqual(1);
@@ -98,7 +98,7 @@ describe('Workflow Settings — Task 9', () => {
   it('shows access denied for non-ADMIN', () => {
     mockMember();
     render(<WorkflowSettingsPage />);
-    expect(screen.getByText(/Access denied/i)).toBeInTheDocument();
+    expect(screen.getByText(/Access denied|Akses ditolak/i)).toBeInTheDocument();
     for (const method of Object.values(api.workspaces)) expect(method).not.toHaveBeenCalled();
   });
 
@@ -106,7 +106,7 @@ describe('Workflow Settings — Task 9', () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
     await waitFor(() => {
-      const badges = screen.getAllByText('Default');
+      const badges = screen.getAllByText(/Default|Bawaan/i);
       expect(badges.length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -116,7 +116,7 @@ describe('Workflow Settings — Task 9', () => {
     render(<WorkflowSettingsPage />);
     await waitFor(() => {
       expect(screen.getAllByText('Workspace').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText(/Team: Alpha Team/)).toBeInTheDocument();
+      expect(screen.getByText(/(Team|Tim): Alpha Team/)).toBeInTheDocument();
     });
   });
 
@@ -124,7 +124,7 @@ describe('Workflow Settings — Task 9', () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
     await waitFor(() => {
-      const archivedBadges = screen.getAllByText('Archived');
+      const archivedBadges = screen.getAllByText(/Diarsipkan|Archived/);
       expect(archivedBadges.length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -133,19 +133,19 @@ describe('Workflow Settings — Task 9', () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
     await waitFor(() => expect(screen.getAllByText('Default Workflow').length).toBeGreaterThanOrEqual(1));
-    fireEvent.click(screen.getByRole('button', { name: /New Workflow/i }));
-    expect(screen.getByRole('dialog', { name: /Create Workflow/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /New Workflow|Alur Kerja Baru/i }));
+    expect(screen.getByRole('dialog', { name: /Buat alur kerja|Create Workflow/i })).toBeInTheDocument();
   });
 
   it('submits create workflow', async () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
     await waitFor(() => expect(screen.getAllByText('Default Workflow').length).toBeGreaterThanOrEqual(1));
-    fireEvent.click(screen.getByRole('button', { name: /New Workflow/i }));
+    fireEvent.click(screen.getByRole('button', { name: /New Workflow|Alur Kerja Baru/i }));
 
-    fireEvent.change(screen.getByLabelText(/^Name$/i), { target: { value: 'New WF' } });
-    fireEvent.change(screen.getByLabelText(/^Code$/i), { target: { value: 'NEW_WF' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Create$/i }));
+    fireEvent.change(screen.getByLabelText(/^Nama$|^Name$/i), { target: { value: 'New WF' } });
+    fireEvent.change(screen.getByLabelText(/^Kode$|^Code$/i), { target: { value: 'NEW_WF' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Buat$|^Create$/i }));
 
     await waitFor(() => {
       expect(api.workspaces.createWorkflow).toHaveBeenCalledWith('ws-1', expect.objectContaining({ name: 'New WF', code: 'NEW_WF' }));
@@ -155,19 +155,19 @@ describe('Workflow Settings — Task 9', () => {
   it('loads workflow detail on selection and shows metadata card', async () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
-    await waitFor(() => expect(screen.getByText('Workflow Details')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Detail Alur Kerja|Workflow Details/i)).toBeInTheDocument());
   });
 
   it('edits workflow metadata', async () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
-    await waitFor(() => expect(screen.getByText('Workflow Details')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Detail Alur Kerja|Workflow Details/i)).toBeInTheDocument());
 
-    const editBtns = screen.getAllByRole('button', { name: /^Edit$/i });
+    const editBtns = screen.getAllByRole('button', { name: /^Ubah$|^Edit$/i });
     fireEvent.click(editBtns[0]);
-    const nameInputs = screen.getAllByLabelText(/^Name$/i);
+    const nameInputs = screen.getAllByLabelText(/^Nama$|^Name$/i);
     fireEvent.change(nameInputs[0], { target: { value: 'Renamed' } });
-    const saveBtns = screen.getAllByRole('button', { name: /^Save$/i });
+    const saveBtns = screen.getAllByRole('button', { name: /^Simpan$|^Save$/i });
     fireEvent.click(saveBtns[0]);
 
     await waitFor(() => {
@@ -181,10 +181,10 @@ describe('Workflow Settings — Task 9', () => {
       .mockResolvedValueOnce({ data: { ...wf1, is_default: false } })
       .mockResolvedValueOnce({ data: { ...wf1, name: 'Fresh Default', version: 7 } });
     render(<WorkflowSettingsPage />);
-    await waitFor(() => expect(screen.getByText('Workflow Details')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Detail Alur Kerja|Workflow Details/i)).toBeInTheDocument());
 
     vi.mocked(api.workspaces.setDefaultWorkflow).mockResolvedValue({ data: { ...wf2, team_id: null, name: 'Fresh Default', version: 7 } } as never);
-    fireEvent.click(within(screen.getByRole('region', { name: 'Workflow Details' })).getByRole('button', { name: 'Set Default' }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Workflow Details' })).getByRole('button', { name: /Jadikan Bawaan|Set Default/i }));
     await waitFor(() => expect(screen.getByRole('region', { name: 'Workflow Details' })).toHaveTextContent('v7'));
     expect(screen.getByRole('region', { name: 'Workflow Details' })).toHaveTextContent('Fresh Default');
     expect(screen.getByRole('checkbox', { name: 'Transition from Backlog to In Progress' })).toBeChecked();
@@ -193,25 +193,25 @@ describe('Workflow Settings — Task 9', () => {
   it('workspace default archive button is disabled with explanation', async () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
-    await waitFor(() => expect(screen.getByText('Workflow Details')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Detail Alur Kerja|Workflow Details/i)).toBeInTheDocument());
 
-    const archiveBtns = screen.getAllByRole('button', { name: /Archive/i });
+    const archiveBtns = screen.getAllByRole('button', { name: /Arsipkan|Archive/i });
     const disabledArchive = archiveBtns.find((b) => b.hasAttribute('disabled'));
     expect(disabledArchive).toBeDefined();
-    expect(disabledArchive?.title || '').toContain('Cannot archive');
+    expect(disabledArchive?.title || '').toMatch(/Tidak dapat mengarsipkan|Cannot archive/i);
   });
 
   it('archives non-default workflow with confirmation', async () => {
     mockAdmin();
     (api.workspaces.workflowDetail as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { ...wf2, team_id: null, is_default: false } });
     render(<WorkflowSettingsPage />);
-    await waitFor(() => expect(screen.getByText('Workflow Details')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Detail Alur Kerja|Workflow Details/i)).toBeInTheDocument());
 
-    const metadataArchiveBtn = screen.getAllByRole('button', { name: /^Archive$/i }).find((b) => !b.hasAttribute('disabled') && b.className.includes('bg-gray-200'));
+    const metadataArchiveBtn = screen.getAllByRole('button', { name: /^Arsipkan$|^Archive$/i }).find((b) => !b.hasAttribute('disabled') && b.className.includes('bg-gray-200'));
     if (metadataArchiveBtn) {
       fireEvent.click(metadataArchiveBtn);
-      await waitFor(() => expect(screen.getByRole('dialog', { name: /Confirm Archive/i })).toBeInTheDocument());
-      const confirmBtn = screen.getAllByRole('button', { name: /^Archive$/i }).find((b) => b.className.includes('bg-red-600'));
+      await waitFor(() => expect(screen.getByRole('dialog', { name: /Konfirmasi arsip|Confirm Archive/i })).toBeInTheDocument());
+      const confirmBtn = screen.getAllByRole('button', { name: /^Arsipkan$|^Archive$/i }).find((b) => b.className.includes('bg-red-600'));
       fireEvent.click(confirmBtn!);
       await waitFor(() => expect(api.workspaces.archiveWorkflow).toHaveBeenCalled());
     }
@@ -221,9 +221,9 @@ describe('Workflow Settings — Task 9', () => {
     mockAdmin();
     (api.workspaces.workflowDetail as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: wf3 });
     render(<WorkflowSettingsPage />);
-    await waitFor(() => expect(screen.getByText('Workflow Details')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Detail Alur Kerja|Workflow Details/i)).toBeInTheDocument());
 
-    const restoreBtn = screen.queryByRole('button', { name: /^Restore$/i });
+    const restoreBtn = screen.queryByRole('button', { name: /^Pulihkan$|^Restore$/i });
     if (restoreBtn) {
       fireEvent.click(restoreBtn);
       await waitFor(() => expect(api.workspaces.restoreWorkflow).toHaveBeenCalled());
@@ -234,20 +234,20 @@ describe('Workflow Settings — Task 9', () => {
     mockAdmin();
     (api.workspaces.updateWorkflow as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new ApiError(409, 'VERSION_CONFLICT', 'VERSION_CONFLICT'));
     render(<WorkflowSettingsPage />);
-    await waitFor(() => expect(screen.getByText('Workflow Details')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Detail Alur Kerja|Workflow Details/i)).toBeInTheDocument());
 
     const details = within(screen.getByRole('region', { name: 'Workflow Details' }));
-    fireEvent.click(details.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(details.getByLabelText('Name'), { target: { value: 'Stale edit' } });
-    fireEvent.click(details.getByRole('button', { name: 'Save' }));
-    await screen.findByRole('button', { name: 'Reload Configuration' });
+    fireEvent.click(details.getByRole('button', { name: /Ubah|Edit/i }));
+    fireEvent.change(details.getByLabelText(/Nama|Name/i), { target: { value: 'Stale edit' } });
+    fireEvent.click(details.getByRole('button', { name: /Simpan|Save/i }));
+    await screen.findAllByRole('button', { name: /Muat Ulang Konfigurasi|Reload Configuration/i });
     vi.mocked(api.workspaces.workflowDetail).mockResolvedValue({ data: { ...wf1, name: 'Fresh server name', description: 'Fresh description', version: 9 } } as never);
-    fireEvent.click(screen.getByRole('button', { name: 'Reload Configuration' }));
-    await waitFor(() => expect(details.getByLabelText('Name')).toHaveValue('Fresh server name'));
-    expect(details.getByLabelText('Description')).toHaveValue('Fresh description');
+    fireEvent.click(screen.getAllByRole('button', { name: /Reload Configuration|Muat Ulang Konfigurasi/i })[0]);
+    await waitFor(() => expect(details.getByLabelText(/Nama|Name/i)).toHaveValue('Fresh server name'));
+    expect(details.getByLabelText(/Deskripsi|Description/i)).toHaveValue('Fresh description');
     expect(screen.getByRole('region', { name: 'Workflow Details' })).toHaveTextContent('v9');
     vi.mocked(api.workspaces.updateWorkflow).mockResolvedValue({ data: { ...wf1, name: 'Fresh server name', version: 10 } } as never);
-    fireEvent.click(details.getByRole('button', { name: 'Save' }));
+    fireEvent.click(details.getByRole('button', { name: /Simpan|Save/i }));
     await waitFor(() => expect(api.workspaces.updateWorkflow).toHaveBeenLastCalledWith('ws-1', 'wf-1', { name: 'Fresh server name', description: 'Fresh description', version: 9 }));
     expect(api.workspaces.updateWorkflow).toHaveBeenCalledTimes(2);
   });
@@ -260,13 +260,13 @@ describe('Workflow Settings — Task 9', () => {
     render(<WorkflowSettingsPage />);
     await screen.findByRole('region', { name: 'Workflow Details' });
     if (source === 'status') {
-      fireEvent.click(within(screen.getByRole('region', { name: 'Statuses' })).getByRole('button', { name: 'Set Initial' }));
+      fireEvent.click(within(screen.getByRole('region', { name: 'Statuses' })).getByRole('button', { name: /Jadikan awal|Set Initial/i }));
     } else {
       const matrix = within(screen.getByRole('region', { name: 'Transitions' }));
       fireEvent.click(matrix.getByRole('checkbox', { name: 'Transition from Backlog to Done' }));
-      fireEvent.click(matrix.getByRole('button', { name: 'Save' }));
+      fireEvent.click(matrix.getByRole('button', { name: /Simpan|Save/i }));
     }
-    const reload = await within(screen.getByRole('region', { name: source === 'status' ? 'Statuses' : 'Transitions' })).findByRole('button', { name: 'Reload Configuration' });
+    const reload = (await screen.findAllByRole('button', { name: /Muat Ulang Konfigurasi|Reload Configuration/i }))[0];
     vi.mocked(api.workspaces.workflowDetail).mockResolvedValue({ data: { ...wf1, name: 'Reloaded aggregate', version: 12 } } as never);
     fireEvent.click(reload);
     await waitFor(() => expect(screen.getByRole('region', { name: 'Workflow Details' })).toHaveTextContent('v12'));
@@ -281,14 +281,14 @@ describe('Workflow Settings — Task 9', () => {
     vi.mocked(api.workspaces.updateWorkflow).mockImplementation(() => new Promise((resolve) => { finish = resolve as typeof finish; }));
     render(<WorkflowSettingsPage />);
     const details = within(await screen.findByRole('region', { name: 'Workflow Details' }));
-    fireEvent.click(details.getByRole('button', { name: 'Edit' }));
-    fireEvent.click(details.getByRole('button', { name: 'Save' }));
-    expect(within(screen.getByRole('region', { name: 'Statuses' })).getByRole('button', { name: 'Set Initial' })).toBeDisabled();
-    expect(screen.getByRole('checkbox', { name: 'Transition from Backlog to Done' })).toBeDisabled();
-    fireEvent.click(details.getByRole('button', { name: 'Saving...' }));
+    fireEvent.click(details.getByRole('button', { name: /Ubah|Edit/i }));
+    fireEvent.click(details.getByRole('button', { name: /Simpan|Save/i }));
+    expect(within(screen.getByRole('region', { name: 'Statuses' })).getByRole('button', { name: /Jadikan awal|Set Initial/i })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: /Transisi dari Backlog ke Done|Transition from Backlog to Done/i })).toBeDisabled();
+    fireEvent.click(details.getByRole('button', { name: /Menyimpan...|Saving.../i }));
     expect(api.workspaces.updateWorkflow).toHaveBeenCalledTimes(1);
     await act(async () => finish({ data: { ...wf1, version: 2 } }));
-    expect(within(screen.getByRole('region', { name: 'Statuses' })).getByRole('button', { name: 'Set Initial' })).not.toBeDisabled();
+    expect(within(screen.getByRole('region', { name: 'Statuses' })).getByRole('button', { name: /Jadikan awal|Set Initial/i })).not.toBeDisabled();
   });
 
   it('keeps teams failures visible and prevents creation with missing scope data', async () => {
@@ -296,23 +296,23 @@ describe('Workflow Settings — Task 9', () => {
     vi.mocked(api.workspaces.teams).mockRejectedValue(new Error('offline'));
     render(<WorkflowSettingsPage />);
     await screen.findByRole('region', { name: 'Workflow Details' });
-    expect(screen.getByRole('alert')).toHaveTextContent('Failed to load teams.');
-    expect(screen.getByRole('button', { name: 'New Workflow' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/Gagal memuat tim|Failed to load teams/);
+    expect(screen.getByRole('button', { name: /New Workflow|Alur Kerja Baru/i })).toBeDisabled();
   });
 
   it('traps focus, closes create on Escape and restores the trigger', async () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
     await screen.findByRole('region', { name: 'Workflow Details' });
-    const trigger = screen.getByRole('button', { name: 'New Workflow' });
+    const trigger = screen.getByRole('button', { name: /New Workflow|Alur Kerja Baru/i });
     trigger.focus();
     fireEvent.click(trigger);
     const dialog = within(screen.getByRole('dialog', { name: 'Create Workflow' }));
-    expect(dialog.getByLabelText('Name')).toHaveFocus();
+    expect(dialog.getByLabelText(/Nama|Name/i)).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
-    expect(dialog.getByRole('button', { name: 'Create' })).toHaveFocus();
+    expect(dialog.getByRole('button', { name: /Buat|Create/i })).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab' });
-    expect(dialog.getByLabelText('Name')).toHaveFocus();
+    expect(dialog.getByLabelText(/Nama|Name/i)).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
@@ -323,10 +323,10 @@ describe('Workflow Settings — Task 9', () => {
     render(<WorkflowSettingsPage />);
     await waitFor(() => expect(screen.getAllByText('Default Workflow').length).toBeGreaterThanOrEqual(1));
 
-    fireEvent.click(screen.getByRole('button', { name: /^Active$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Active|Aktif)$/i }));
     expect(screen.queryByText('Old Workflow')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Archived$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Archived|Diarsipkan)$/i }));
     expect(screen.getByText('Old Workflow')).toBeInTheDocument();
   });
 });

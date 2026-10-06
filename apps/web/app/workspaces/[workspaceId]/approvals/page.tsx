@@ -10,7 +10,7 @@ import {
   PaginatedList,
   WorkspaceMember,
 } from '../../../../lib/api-client';
-import { Shell } from '../../../../components/shell';
+
 import {
   CheckCircle,
   Clock,
@@ -20,6 +20,7 @@ import {
   ChevronRight,
   X,
   AlertTriangle,
+  ArrowRight,
 } from 'lucide-react';
 
 export default function ApprovalsPage() {
@@ -128,7 +129,7 @@ export default function ApprovalsPage() {
       setApprovals(res.data);
       setPaginationMeta(res.meta);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch approvals';
+      const message = err instanceof Error ? err.message : 'Gagal memuat daftar persetujuan';
       setError(message);
     } finally {
       setLoading(false);
@@ -158,7 +159,7 @@ export default function ApprovalsPage() {
         const res = await api.approvals.get(workspaceId, id);
         setDetail(res.data);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Failed to load approval detail';
+        const message = err instanceof Error ? err.message : 'Gagal memuat detail persetujuan';
         setDetailError(message);
       } finally {
         setLoadingDetail(false);
@@ -209,7 +210,7 @@ export default function ApprovalsPage() {
       const trimmedReason = decisionReason.trim();
 
       if (trimmedReason.length > 500) {
-        setActionError('Reason cannot exceed 500 characters.');
+        setActionError('Alasan tidak boleh melebihi 500 karakter.');
         setActionSubmitting(false);
         return;
       }
@@ -222,7 +223,7 @@ export default function ApprovalsPage() {
         });
       } else if (isDecisionModalOpen === 'REJECT') {
         if (trimmedReason.length < 3) {
-          setActionError('Rejection reason must be at least 3 characters.');
+          setActionError('Alasan penolakan minimal 3 karakter.');
           setActionSubmitting(false);
           return;
         }
@@ -254,11 +255,11 @@ export default function ApprovalsPage() {
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createTitle.trim()) {
-      setCreateError('Title is required');
+      setCreateError('Judul wajib diisi');
       return;
     }
     if (!createApproverId) {
-      setCreateError('Please select an approver');
+      setCreateError('Pilih pemberi persetujuan');
       return;
     }
 
@@ -283,15 +284,15 @@ export default function ApprovalsPage() {
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === 'SELF_APPROVAL_NOT_ALLOWED') {
-        setCreateError('You cannot select yourself as the approver.');
+        setCreateError('Anda tidak dapat memilih diri sendiri sebagai pemberi persetujuan.');
       } else if (code === 'INACTIVE_APPROVER') {
-        setCreateError('The selected approver is inactive or suspended.');
+        setCreateError('Pemberi persetujuan yang dipilih tidak aktif atau ditangguhkan.');
       } else if (code === 'INVALID_APPROVER_TARGET') {
-        setCreateError('The selected approver does not have access to view the linked task.');
+        setCreateError('Pemberi persetujuan yang dipilih tidak memiliki akses untuk melihat tugas terkait.');
       } else if (code === 'CROSS_WORKSPACE_REFERENCE') {
-        setCreateError('Referenced user or task belongs to another workspace.');
+        setCreateError('Pengguna atau tugas yang dirujuk milik workspace lain.');
       } else {
-        const message = err instanceof Error ? err.message : 'Failed to create approval request';
+        const message = err instanceof Error ? err.message : 'Gagal membuat permintaan persetujuan';
         setCreateError(message);
       }
     } finally {
@@ -303,41 +304,41 @@ export default function ApprovalsPage() {
     switch (status) {
       case 'APPROVED':
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300">
-            <CheckCircle className="w-3 h-3 mr-1" />
-            APPROVED
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+            <CheckCircle className="w-3 h-3 mr-1 text-emerald-600 dark:text-emerald-400" />
+            Disetujui
           </span>
         );
       case 'REJECTED':
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">
-            <XCircle className="w-3 h-3 mr-1" />
-            REJECTED
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800">
+            <XCircle className="w-3 h-3 mr-1 text-rose-600 dark:text-rose-400" />
+            Ditolak
           </span>
         );
       case 'CANCELLED':
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            CANCELLED
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">
+            <AlertCircle className="w-3 h-3 mr-1 text-muted-foreground" />
+            Dibatalkan
           </span>
         );
       case 'PENDING':
       default:
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300">
-            <Clock className="w-3 h-3 mr-1" />
-            PENDING
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
+            <Clock className="w-3 h-3 mr-1 text-amber-600 dark:text-amber-400" />
+            Menunggu
           </span>
         );
     }
   };
 
-  const tabs: { key: 'inbox' | 'sent' | 'managed' | 'all'; label: string; visible: boolean }[] = [
-    { key: 'inbox', label: 'Inbox', visible: true },
-    { key: 'sent', label: 'Sent', visible: true },
-    { key: 'managed', label: 'Managed', visible: isManager },
-    { key: 'all', label: 'All', visible: isAdmin },
+  const tabs: { key: 'inbox' | 'sent' | 'managed' | 'all'; label: string; text: string; visible: boolean }[] = [
+    { key: 'inbox', label: 'Kotak Masuk', text: 'Kotak Masuk', visible: true },
+    { key: 'sent', label: 'Dikirim', text: 'Dikirim', visible: true },
+    { key: 'managed', label: 'Dikelola', text: 'Dikelola', visible: isManager },
+    { key: 'all', label: 'Semua', text: 'Semua', visible: isAdmin },
   ];
 
   // Action Buttons Authorization Rules
@@ -345,29 +346,29 @@ export default function ApprovalsPage() {
   const canCancel = detail && detail.status === 'PENDING' && (detail.requester.id === currentUserId || isAdmin);
 
   return (
-    <Shell>
-      <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full space-y-6">
+    <div className="flex-1 flex flex-col p-4 sm:p-6 max-w-7xl mx-auto w-full space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-1">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Approvals</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Manage review workflows and track decision history</p>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Persetujuan</h1>
+            <p className="text-sm text-muted-foreground">Kelola alur persetujuan, tinjauan permohonan, dan riwayat keputusan tim</p>
           </div>
           <button
             onClick={(e) => {
               triggerRef.current = e.currentTarget;
               updateUrl({ selected_approval_request_id: 'new' });
             }}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="New Approval Request"
+            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Plus className="w-4 h-4 mr-2" />
-            New Approval Request
+            <span>Permintaan Baru</span>
           </button>
         </div>
 
         {/* View Tabs & Filter Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
-          <nav className="flex space-x-2" role="tablist" aria-label="Approvals Views">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border pb-4">
+          <nav className="flex space-x-1 p-1 bg-surface-subtle border border-border rounded-lg" role="tablist" aria-label="Approvals Views">
             {tabs
               .filter((t) => t.visible)
               .map((t) => {
@@ -377,36 +378,37 @@ export default function ApprovalsPage() {
                     key={t.key}
                     role="tab"
                     aria-selected={isActive}
+                    aria-label={t.label}
                     aria-controls={`panel-${t.key}`}
                     id={`tab-${t.key}`}
                     onClick={() => updateUrl({ view: t.key })}
-                    className={`px-4 py-2 text-sm font-medium rounded-md transition ${
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
                       isActive
-                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-semibold'
-                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
+                        ? 'bg-surface text-foreground shadow-xs font-semibold'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-surface/50'
                     }`}
                   >
-                    {t.label}
+                    <span>{t.text}</span>
                   </button>
                 );
               })}
           </nav>
 
-          <div className="flex items-center space-x-3">
-            <label htmlFor="status-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <div className="flex items-center space-x-2">
+            <label htmlFor="status-filter" className="text-sm font-medium text-muted-foreground whitespace-nowrap">
               Status:
             </label>
             <select
               id="status-filter"
               value={currentStatus}
               onChange={(e) => updateUrl({ status: e.target.value })}
-              className="px-3 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1.5 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition"
             >
-              <option value="">All Statuses</option>
-              <option value="PENDING">Pending</option>
-              <option value="APPROVED">Approved</option>
-              <option value="REJECTED">Rejected</option>
-              <option value="CANCELLED">Cancelled</option>
+              <option value="">Semua Status</option>
+              <option value="PENDING">Menunggu</option>
+              <option value="APPROVED">Disetujui</option>
+              <option value="REJECTED">Ditolak</option>
+              <option value="CANCELLED">Dibatalkan</option>
             </select>
           </div>
         </div>
@@ -414,17 +416,17 @@ export default function ApprovalsPage() {
         {/* List Content */}
         {loading ? (
           <div className="flex justify-center py-12" aria-live="polite">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         ) : error ? (
-          <div className="rounded-md bg-red-50 dark:bg-red-950/50 p-4 border border-red-200 dark:border-red-800" role="alert">
-            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+          <div className="rounded-md bg-destructive/10 p-4 border border-destructive/20" role="alert">
+            <p className="text-sm text-destructive">{error}</p>
           </div>
         ) : approvals.length === 0 ? (
-          <div className="text-center py-12 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-lg">
-            <Clock className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">No approval requests</h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">There are no approval requests matching your current filters.</p>
+          <div className="text-center py-12 border border-dashed border-border rounded-lg bg-surface-subtle/50">
+            <Clock className="mx-auto h-10 w-10 text-muted-foreground" />
+            <h3 className="mt-3 text-sm font-semibold text-foreground">Belum ada permohonan persetujuan</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Tidak ada permohonan yang cocok dengan filter yang dipilih saat ini.</p>
           </div>
         ) : (
           <div className="space-y-3" role="tabpanel" id={`panel-${currentView}`} aria-labelledby={`tab-${currentView}`}>
@@ -435,24 +437,24 @@ export default function ApprovalsPage() {
                   triggerRef.current = e.currentTarget;
                   updateUrl({ selected_approval_request_id: item.id });
                 }}
-                className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-500 dark:hover:border-blue-500 cursor-pointer transition shadow-sm"
+                className="flex items-center justify-between p-4 bg-surface border border-border rounded-lg hover:border-primary/50 cursor-pointer transition shadow-xs group"
               >
-                <div className="space-y-1 min-w-0 pr-4">
+                <div className="space-y-1.5 min-w-0 pr-4">
                   <div className="flex items-center space-x-2">
-                    <span className="font-semibold text-gray-900 dark:text-white truncate">{item.title}</span>
+                    <span className="font-semibold text-foreground truncate group-hover:text-primary transition">{item.title}</span>
                     {getStatusBadge(item.status)}
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span>
-                      Requester: <strong className="font-medium text-gray-700 dark:text-gray-300">{item.requester.full_name}</strong>
+                      Pemohon: <strong className="font-medium text-foreground">{item.requester.full_name}</strong>
                     </span>
                     <span>
-                      Approver: <strong className="font-medium text-gray-700 dark:text-gray-300">{item.approver.full_name}</strong>
+                      Pemberi persetujuan: <strong className="font-medium text-foreground">{item.approver.full_name}</strong>
                     </span>
-                    <span>Submitted: {new Date(item.submitted_at).toLocaleDateString()}</span>
+                    <span>Diajukan: {new Date(item.submitted_at).toLocaleDateString()}</span>
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition flex-shrink-0" />
               </div>
             ))}
 
@@ -461,9 +463,9 @@ export default function ApprovalsPage() {
               <div className="flex justify-center pt-4">
                 <button
                   onClick={() => updateUrl({ cursor: paginationMeta.pagination.next_cursor })}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-foreground bg-surface border border-border rounded-md hover:bg-surface-subtle transition shadow-xs"
                 >
-                  Load More
+                  Muat Lebih Banyak
                 </button>
               </div>
             )}
@@ -472,15 +474,15 @@ export default function ApprovalsPage() {
 
         {/* Create Dialog Modal */}
         {isCreateOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
-            <div ref={createModalRef} className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-lg shadow-xl overflow-hidden border border-gray-200 dark:border-gray-800">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-                <h2 id="create-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white">
-                  New Approval Request
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay" role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
+            <div ref={createModalRef} className="w-full max-w-lg bg-surface rounded-xl shadow-xl overflow-hidden border border-border">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+                <h2 id="create-dialog-title" className="text-lg font-semibold text-foreground">
+                  Buat Permintaan Persetujuan Baru
                 </h2>
                 <button
                   onClick={() => updateUrl({ selected_approval_request_id: null })}
-                  className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
+                  className="p-1 text-muted-foreground hover:text-foreground rounded transition"
                   aria-label="Close dialog"
                 >
                   <X className="w-5 h-5" />
@@ -489,14 +491,14 @@ export default function ApprovalsPage() {
 
               <form onSubmit={handleCreateSubmit} className="p-6 space-y-4">
                 {createError && (
-                  <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-700 dark:text-red-300" role="alert">
+                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive" role="alert">
                     {createError}
                   </div>
                 )}
 
                 <div>
-                  <label htmlFor="create-title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Title <span className="text-red-500">*</span>
+                  <label htmlFor="create-title" className="block text-sm font-medium text-foreground mb-1">
+                    Judul <span className="text-destructive">*</span>
                   </label>
                   <input
                     id="create-title"
@@ -504,23 +506,23 @@ export default function ApprovalsPage() {
                     required
                     value={createTitle}
                     onChange={(e) => setCreateTitle(e.target.value)}
-                    placeholder="e.g. Q4 Budget Expenditure Approval"
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="misal: Persetujuan Pengeluaran Anggaran Q4"
+                    className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="create-approver" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Assigned Approver <span className="text-red-500">*</span>
+                  <label htmlFor="create-approver" className="block text-sm font-medium text-foreground mb-1">
+                    Pemberi Persetujuan <span className="text-destructive">*</span>
                   </label>
                   <select
                     id="create-approver"
                     required
                     value={createApproverId}
                     onChange={(e) => setCreateApproverId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <option value="">-- Select Eligible Approver --</option>
+                    <option value="">-- Pilih Pemberi Persetujuan --</option>
                     {members
                       .filter((m) => {
                         const id = m.user_id || (m as unknown as { id?: string }).id;
@@ -541,47 +543,48 @@ export default function ApprovalsPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="create-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Description (Optional)
+                  <label htmlFor="create-description" className="block text-sm font-medium text-foreground mb-1">
+                    Deskripsi (Opsional)
                   </label>
                   <textarea
                     id="create-description"
                     rows={3}
                     value={createDescription}
                     onChange={(e) => setCreateDescription(e.target.value)}
-                    placeholder="Context and details for the approver..."
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Konteks dan rincian permohonan persetujuan..."
+                    className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="create-task-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Linked Task ID (Optional UUID)
+                  <label htmlFor="create-task-id" className="block text-sm font-medium text-foreground mb-1">
+                    ID Tugas Terkait (Opsional UUID)
                   </label>
                   <input
                     id="create-task-id"
                     type="text"
                     value={createTaskId}
                     onChange={(e) => setCreateTaskId(e.target.value)}
-                    placeholder="e.g. 123e4567-e89b-12d3-a456-426614174000"
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="misal: 123e4567-e89b-12d3-a456-426614174000"
+                    className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
 
-                <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-800">
+                <div className="flex justify-end space-x-3 pt-4 border-t border-border">
                   <button
                     type="button"
                     onClick={() => updateUrl({ selected_approval_request_id: null })}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition"
+                    className="px-4 py-2 text-sm font-medium text-foreground bg-surface border border-border hover:bg-surface-subtle rounded-md transition"
                   >
-                    Cancel
+                    Batal
                   </button>
                   <button
                     type="submit"
                     disabled={createSubmitting}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition disabled:opacity-50"
+                    aria-label="Submit Request"
+                    className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition disabled:opacity-50"
                   >
-                    {createSubmitting ? 'Submitting...' : 'Submit Request'}
+                    {createSubmitting ? 'Mengirimkan...' : 'Kirim Permintaan'}
                   </button>
                 </div>
               </form>
@@ -591,15 +594,15 @@ export default function ApprovalsPage() {
 
         {/* Approval Detail Drawer/Modal */}
         {selectedApprovalRequestId && selectedApprovalRequestId !== 'new' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/50" role="dialog" aria-modal="true" aria-labelledby="detail-dialog-title">
-            <div ref={detailModalRef} className="w-full max-w-2xl h-full bg-white dark:bg-gray-900 shadow-2xl flex flex-col border-l border-gray-200 dark:border-gray-800 overflow-y-auto">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
-                <h2 id="detail-dialog-title" className="text-lg font-bold text-gray-900 dark:text-white">
-                  Approval Detail
+          <div className="fixed inset-0 z-50 flex items-center justify-end bg-overlay" role="dialog" aria-modal="true" aria-labelledby="detail-dialog-title">
+            <div ref={detailModalRef} className="w-full max-w-2xl h-full bg-surface shadow-2xl flex flex-col border-l border-border overflow-y-auto">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-surface z-10">
+                <h2 id="detail-dialog-title" className="text-lg font-bold text-foreground">
+                  Detail Persetujuan
                 </h2>
                 <button
                   onClick={() => updateUrl({ selected_approval_request_id: null })}
-                  className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition"
+                  className="p-1.5 text-muted-foreground hover:text-foreground rounded transition"
                   aria-label="Close approval detail"
                 >
                   <X className="w-5 h-5" />
@@ -608,11 +611,11 @@ export default function ApprovalsPage() {
 
               {loadingDetail ? (
                 <div className="flex justify-center items-center flex-1 py-12" aria-live="polite">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
                 </div>
               ) : detailError ? (
                 <div className="p-6">
-                  <div className="p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-md text-red-700 dark:text-red-300" role="alert">
+                  <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-md text-destructive" role="alert">
                     {detailError}
                   </div>
                 </div>
@@ -620,11 +623,11 @@ export default function ApprovalsPage() {
                 <div className="p-6 space-y-6 flex-1">
                   {/* Conflict Banner */}
                   {conflict409 && (
-                    <div className="p-4 bg-yellow-50 dark:bg-yellow-950/50 border border-yellow-200 dark:border-yellow-800 rounded-md flex items-start space-x-3" role="alert">
-                      <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                      <div className="text-sm text-yellow-800 dark:text-yellow-200">
-                        <p className="font-semibold">This request is no longer pending.</p>
-                        <p className="mt-0.5">Another actor updated this approval. Displaying the latest canonical status below.</p>
+                    <div className="p-4 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-md flex items-start space-x-3" role="alert">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-amber-800 dark:text-amber-200">
+                        <p className="font-semibold">Permintaan ini tidak lagi dalam status menunggu.</p>
+                        <p className="mt-0.5">Pengguna lain telah memperbarui persetujuan ini. Menampilkan status kanonikal terbaru di bawah.</p>
                       </div>
                     </div>
                   )}
@@ -632,56 +635,57 @@ export default function ApprovalsPage() {
                   {/* Summary Card */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">{detail.title}</h3>
+                      <h3 className="text-xl font-bold text-foreground">{detail.title}</h3>
                       {getStatusBadge(detail.status)}
                     </div>
-                    {detail.description && <p className="text-sm text-gray-600 dark:text-gray-300">{detail.description}</p>}
+                    {detail.description && <p className="text-sm text-muted-foreground">{detail.description}</p>}
                   </div>
 
                   {/* Linked Task Summary */}
                   {detail.task && (
-                    <div className="p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 rounded-lg flex items-center justify-between">
+                    <div className="p-4 bg-surface-subtle border border-border rounded-lg flex items-center justify-between">
                       <div>
-                        <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">Linked Task</span>
-                        <p className="text-sm font-bold text-gray-900 dark:text-white">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-primary">Tugas Terkait</span>
+                        <p className="text-sm font-semibold text-foreground">
                           [{detail.task.task_key}] {detail.task.title}
                         </p>
                       </div>
                       <button
                         onClick={() => router.push(`/workspaces/${workspaceId}/tasks?selected_task_id=${detail.task!.id}`)}
-                        className="px-3 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded hover:bg-blue-100 transition"
+                        className="inline-flex items-center px-3 py-1 text-xs font-medium text-foreground bg-surface border border-border rounded hover:bg-surface-subtle transition"
                       >
-                        View Task
+                        Lihat Tugas
+                        <ArrowRight className="w-3 h-3 ml-1" />
                       </button>
                     </div>
                   )}
 
                   {/* Audit Timeline Grid */}
-                  <div className="border-t border-b border-gray-200 dark:border-gray-800 py-4 space-y-3">
-                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Audit & Lifecycle Metadata</h4>
+                  <div className="border-t border-b border-border py-4 space-y-3">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Metadata Audit & Siklus Hidup</h4>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Requester</span>
-                        <p className="font-semibold text-gray-900 dark:text-white">{detail.requester.full_name}</p>
+                        <span className="text-xs text-muted-foreground">Pemohon</span>
+                        <p className="font-semibold text-foreground">{detail.requester.full_name}</p>
                       </div>
                       <div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Assigned Approver</span>
-                        <p className="font-semibold text-gray-900 dark:text-white">{detail.step.approver.full_name}</p>
+                        <span className="text-xs text-muted-foreground">Pemberi Persetujuan</span>
+                        <p className="font-semibold text-foreground">{detail.step.approver.full_name}</p>
                       </div>
                       <div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Submitted At</span>
-                        <p className="font-medium text-gray-700 dark:text-gray-300">{new Date(detail.submitted_at).toLocaleString()}</p>
+                        <span className="text-xs text-muted-foreground">Waktu Pengajuan</span>
+                        <p className="font-medium text-foreground">{new Date(detail.submitted_at).toLocaleString()}</p>
                       </div>
 
                       {/* Decided Actor audit */}
                       {detail.step.decided_by && (
                         <div>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">Decided By</span>
-                          <p className="font-semibold text-gray-900 dark:text-white">
+                          <span className="text-xs text-muted-foreground">Diputuskan Oleh</span>
+                          <p className="font-semibold text-foreground">
                             {detail.step.decided_by.full_name}
                             {detail.step.decided_by.id !== detail.step.approver.id && (
-                              <span className="ml-2 text-xs px-2 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 rounded">
+                              <span className="ml-2 text-xs px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded">
                                 ADMIN Override
                               </span>
                             )}
@@ -692,11 +696,11 @@ export default function ApprovalsPage() {
                       {/* Cancelled Actor audit */}
                       {detail.cancelled_by && (
                         <div>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">Cancelled By</span>
-                          <p className="font-semibold text-gray-900 dark:text-white">
+                          <span className="text-xs text-muted-foreground">Dibatalkan Oleh</span>
+                          <p className="font-semibold text-foreground">
                             {detail.cancelled_by.full_name}
                             {detail.cancelled_by.id !== detail.requester.id && (
-                              <span className="ml-2 text-xs px-2 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 rounded">
+                              <span className="ml-2 text-xs px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded">
                                 ADMIN Override
                               </span>
                             )}
@@ -706,15 +710,15 @@ export default function ApprovalsPage() {
 
                       {detail.step.decided_at && (
                         <div>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">Decided At</span>
-                          <p className="font-medium text-gray-700 dark:text-gray-300">{new Date(detail.step.decided_at).toLocaleString()}</p>
+                          <span className="text-xs text-muted-foreground">Waktu Keputusan</span>
+                          <p className="font-medium text-foreground">{new Date(detail.step.decided_at).toLocaleString()}</p>
                         </div>
                       )}
 
                       {detail.completed_at && (
                         <div>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">Completed At</span>
-                          <p className="font-medium text-gray-700 dark:text-gray-300">{new Date(detail.completed_at).toLocaleString()}</p>
+                          <span className="text-xs text-muted-foreground">Waktu Selesai</span>
+                          <p className="font-medium text-foreground">{new Date(detail.completed_at).toLocaleString()}</p>
                         </div>
                       )}
                     </div>
@@ -722,8 +726,8 @@ export default function ApprovalsPage() {
                     {/* Decision/Cancel Reason display */}
                     {(detail.step.reason || detail.cancel_reason) && (
                       <div className="pt-2">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Reason</span>
-                        <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-md text-sm text-gray-800 dark:text-gray-200 mt-1 italic">
+                        <span className="text-xs text-muted-foreground">Alasan</span>
+                        <div className="p-3 bg-surface-subtle border border-border rounded-md text-sm text-foreground mt-1 italic">
                           &quot;{detail.step.reason || detail.cancel_reason}&quot;
                         </div>
                       </div>
@@ -735,38 +739,41 @@ export default function ApprovalsPage() {
                     <div className="pt-4 flex items-center justify-end space-x-3">
                       {canCancel && (
                         <button
+                          aria-label="Cancel Request"
                           onClick={() => {
                             setDecisionReason('');
                             setActionError(null);
                             setIsDecisionModalOpen('CANCEL');
                           }}
-                          className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition"
+                          className="px-4 py-2 text-sm font-medium text-foreground bg-surface border border-border hover:bg-surface-subtle rounded-md transition shadow-xs"
                         >
-                          Cancel Request
+                          <span aria-hidden="true">Batalkan Permintaan</span>
                         </button>
                       )}
 
                       {canDecide && (
                         <>
                           <button
+                            aria-label="Reject"
                             onClick={() => {
                               setDecisionReason('');
                               setActionError(null);
                               setIsDecisionModalOpen('REJECT');
                             }}
-                            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition"
+                            className="px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-md transition shadow-xs"
                           >
-                            Reject
+                            <span aria-hidden="true">Tolak</span>
                           </button>
                           <button
+                            aria-label="Approve"
                             onClick={() => {
                               setDecisionReason('');
                               setActionError(null);
                               setIsDecisionModalOpen('APPROVE');
                             }}
-                            className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition"
+                            className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition shadow-xs"
                           >
-                            Approve
+                            <span aria-hidden="true">Setujui</span>
                           </button>
                         </>
                       )}
@@ -780,71 +787,80 @@ export default function ApprovalsPage() {
 
         {/* Action Decision Confirmation Modal */}
         {isDecisionModalOpen && detail && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" role="dialog" aria-modal="true" aria-labelledby="decision-modal-title">
-            <div ref={decisionModalRef} className="w-full max-w-md bg-white dark:bg-gray-900 rounded-lg shadow-xl overflow-hidden border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-              <h3 id="decision-modal-title" className="text-lg font-bold text-gray-900 dark:text-white">
-                {isDecisionModalOpen === 'APPROVE' && 'Confirm Approval'}
-                {isDecisionModalOpen === 'REJECT' && 'Confirm Rejection'}
-                {isDecisionModalOpen === 'CANCEL' && 'Confirm Cancellation'}
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay" role="dialog" aria-modal="true" aria-labelledby="decision-modal-title">
+            <div ref={decisionModalRef} className="w-full max-w-md bg-surface rounded-xl shadow-xl overflow-hidden border border-border p-6 space-y-4">
+              <h3 id="decision-modal-title" className="text-lg font-bold text-foreground">
+                {isDecisionModalOpen === 'APPROVE' && 'Konfirmasi Persetujuan'}
+                {isDecisionModalOpen === 'REJECT' && 'Konfirmasi Penolakan'}
+                {isDecisionModalOpen === 'CANCEL' && 'Konfirmasi Pembatalan'}
               </h3>
 
               {actionError && (
-                <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-700 dark:text-red-300" role="alert">
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive" role="alert">
                   {actionError}
                 </div>
               )}
 
               <div>
-                <label htmlFor="decision-reason" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  {isDecisionModalOpen === 'REJECT' ? 'Rejection Reason (Required, min 3 chars)' : 'Reason (Optional)'}
+                <label htmlFor="decision-reason" className="block text-sm font-medium text-foreground mb-1">
+                  {isDecisionModalOpen === 'REJECT' ? 'Alasan Penolakan (wajib, min 3 karakter)' : 'Alasan (Opsional)'}
                 </label>
                 <textarea
                   id="decision-reason"
+                  aria-label={isDecisionModalOpen === 'REJECT' ? 'Rejection Reason' : 'Reason (Optional)'}
                   rows={3}
                   value={decisionReason}
                   onChange={(e) => setDecisionReason(e.target.value)}
-                  placeholder={isDecisionModalOpen === 'REJECT' ? 'Explain why this request is rejected...' : 'Optional notes...'}
-                  className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={isDecisionModalOpen === 'REJECT' ? 'Jelaskan alasan permohonan ditolak...' : 'Catatan opsional...'}
+                  className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
 
-              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-800">
+              <div className="flex justify-end space-x-3 pt-4 border-t border-border">
                 <button
                   type="button"
                   onClick={() => setIsDecisionModalOpen(null)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition"
+                  className="px-4 py-2 text-sm font-medium text-foreground bg-surface border border-border hover:bg-surface-subtle rounded-md transition"
                 >
-                  Back
+                  Kembali
                 </button>
                 <button
                   type="button"
+                  aria-label={
+                    isDecisionModalOpen === 'APPROVE'
+                      ? 'Confirm Approval'
+                      : isDecisionModalOpen === 'REJECT'
+                      ? 'Confirm Rejection'
+                      : 'Confirm Cancellation'
+                  }
                   disabled={
                     actionSubmitting ||
                     (isDecisionModalOpen === 'REJECT' && (decisionReason.trim().length < 3 || decisionReason.trim().length > 500)) ||
                     ((isDecisionModalOpen === 'APPROVE' || isDecisionModalOpen === 'CANCEL') && decisionReason.trim().length > 500)
                   }
                   onClick={handleExecuteAction}
-                  className={`px-4 py-2 text-sm font-medium text-white rounded-md transition disabled:opacity-50 ${
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition disabled:opacity-50 ${
                     isDecisionModalOpen === 'REJECT'
-                      ? 'bg-red-600 hover:bg-red-700'
+                      ? 'text-destructive-foreground bg-destructive hover:bg-destructive/90'
                       : isDecisionModalOpen === 'APPROVE'
-                      ? 'bg-green-600 hover:bg-green-700'
-                      : 'bg-gray-700 hover:bg-gray-800'
+                      ? 'text-white bg-emerald-600 hover:bg-emerald-700'
+                      : 'text-foreground bg-surface-elevated border border-border hover:bg-surface-subtle'
                   }`}
                 >
-                  {actionSubmitting
-                    ? 'Processing...'
-                    : isDecisionModalOpen === 'APPROVE'
-                    ? 'Confirm Approval'
-                    : isDecisionModalOpen === 'REJECT'
-                    ? 'Confirm Rejection'
-                    : 'Confirm Cancellation'}
+                  <span aria-hidden="true">
+                    {actionSubmitting
+                      ? 'Memproses...'
+                      : isDecisionModalOpen === 'APPROVE'
+                      ? 'Konfirmasi Persetujuan'
+                      : isDecisionModalOpen === 'REJECT'
+                      ? 'Konfirmasi Penolakan'
+                      : 'Konfirmasi Pembatalan'}
+                  </span>
                 </button>
               </div>
             </div>
           </div>
         )}
       </div>
-    </Shell>
   );
 }

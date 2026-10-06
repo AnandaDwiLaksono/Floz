@@ -121,10 +121,10 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
     render(<ApprovalsPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i })).toBeInTheDocument();
     });
 
-    const dialog = screen.getByRole('dialog', { name: /Approval Detail/i });
+    const dialog = screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i });
     expect(within(dialog).getByText('Deploy to Prod')).toBeInTheDocument();
     expect(within(dialog).getByText('Please approve deployment to production')).toBeInTheDocument();
     expect(within(dialog).getByText('Requester Alice')).toBeInTheDocument();
@@ -136,7 +136,7 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
     render(<ApprovalsPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i })).toBeInTheDocument();
     });
 
     const closeBtn = screen.getByRole('button', { name: /Close approval detail/i });
@@ -152,7 +152,7 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
     render(<ApprovalsPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i })).toBeInTheDocument();
     });
 
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -169,13 +169,13 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
     render(<ApprovalsPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /New Approval Request/i })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: /New Approval Request|Buat Permintaan Persetujuan Baru/i })).toBeInTheDocument();
     });
 
-    const titleInput = screen.getByLabelText(/Title/i);
+    const titleInput = screen.getByLabelText(/Title|Judul/i);
     fireEvent.change(titleInput, { target: { value: 'New Review Request' } });
 
-    const approverSelect = screen.getByLabelText(/Approver/i);
+    const approverSelect = screen.getByLabelText(/Approver|Pemberi Persetujuan/i);
     fireEvent.change(approverSelect, { target: { value: 'user-3' } });
 
     const submitBtn = screen.getByRole('button', { name: /Submit Request/i });
@@ -254,7 +254,7 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
       const dialogs = screen.getAllByRole('dialog');
       const detailDialog = dialogs.find(d => d.getAttribute('aria-labelledby') === 'detail-dialog-title');
       expect(detailDialog).toBeDefined();
-      expect(within(detailDialog!).getByText(/This request is no longer pending/i)).toBeInTheDocument();
+      expect(within(detailDialog!).getByText(/Permintaan ini tidak lagi dalam status menunggu/i)).toBeInTheDocument();
     });
   });
 
@@ -292,7 +292,7 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
       render(<ApprovalsPage />);
 
       await waitFor(() => {
-        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i })).toBeInTheDocument();
       });
 
       expect(screen.getByRole('button', { name: /Cancel Request/i })).toBeInTheDocument();
@@ -308,12 +308,12 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
       render(<ApprovalsPage />);
 
       await waitFor(() => {
-        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i })).toBeInTheDocument();
       });
 
-      expect(screen.getByRole('button', { name: /^Approve$/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^Reject$/i })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Cancel Request/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^(Approve|Setujui)$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^(Reject|Tolak)$/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Cancel Request|Batalkan Permintaan/i })).not.toBeInTheDocument();
     });
 
     it("ADMIN on another user's request: Approve visible, Reject visible, Cancel visible", async () => {
@@ -324,12 +324,12 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
       render(<ApprovalsPage />);
 
       await waitFor(() => {
-        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i })).toBeInTheDocument();
       });
 
-      expect(screen.getByRole('button', { name: /^Approve$/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^Reject$/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Cancel Request/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^(Approve|Setujui)$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^(Reject|Tolak)$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Cancel Request|Batalkan Permintaan/i })).toBeInTheDocument();
     });
 
     it('ADMIN on own request: Cancel visible, Approve hidden, Reject hidden (self-approval prohibited)', async () => {
@@ -340,7 +340,7 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
       render(<ApprovalsPage />);
 
       await waitFor(() => {
-        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i })).toBeInTheDocument();
       });
 
       expect(screen.getByRole('button', { name: /Cancel Request/i })).toBeInTheDocument();
@@ -356,7 +356,7 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
       render(<ApprovalsPage />);
 
       await waitFor(() => {
-        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i })).toBeInTheDocument();
       });
 
       expect(screen.queryByRole('button', { name: /^Approve$/i })).not.toBeInTheDocument();
@@ -375,7 +375,7 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
       render(<ApprovalsPage />);
 
       await waitFor(() => {
-        expect(screen.getByRole('dialog', { name: /Approval Detail/i })).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: /Approval Detail|Detail Persetujuan/i })).toBeInTheDocument();
       });
 
       expect(screen.queryByRole('button', { name: /^Approve$/i })).not.toBeInTheDocument();

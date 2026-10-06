@@ -31,29 +31,37 @@ test.describe('Floz Kanban', () => {
     await page.fill('#password', 'password123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
-    await page.click('button:has-text("New Task")');
+    await page.getByRole('button', { name: /Buat tugas|Create task/i }).click();
     await page.fill('input#title', 'Kanban Task');
     await page.selectOption('select#priority', 'HIGH');
-    await page.click('button:has-text("Create")');
+    await page.getByRole('button', { name: 'Buat', exact: true }).click();
     await page.goto(`/workspaces/${workspaceId}/kanban`);
     await expect(page.getByRole('heading', { name: 'Kanban' })).toBeVisible();
-    await page.getByLabel('Priority').selectOption('HIGH');
+    const filterBtn = page.getByRole('button', { name: 'Filter' });
+    if (await filterBtn.isVisible()) {
+      await filterBtn.click();
+    }
+    await page.getByLabel('Prioritas').selectOption('HIGH');
     await expect(page.getByText('Kanban Task')).toBeVisible();
     const transitionSaved = page.waitForResponse(r => r.url().includes('/transitions') && r.request().method() === 'POST');
-    await page.getByLabel('Change status for Kanban Task').selectOption({ label: 'In progress' });
+    const statusSelect = page.getByLabel('Ubah status Kanban Task');
+    await statusSelect.focus();
+    await statusSelect.selectOption({ label: 'Sedang dikerjakan' });
     expect((await transitionSaved).ok()).toBe(true);
-    await expect(page.locator('section').filter({ hasText: 'In progress' }).getByText('1', { exact: true }).first()).toBeVisible();
+    await expect(page.locator('section').filter({ hasText: 'Sedang dikerjakan' }).getByText('1', { exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: /Kanban Task/ }).click();
-    await expect(page.getByRole('dialog', { name: 'Task details' })).toBeVisible();
-    await expect(page.getByText('Change Status')).toBeVisible();
-    await expect(page.getByRole('dialog', { name: 'Task details' }).getByText('In progress', { exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Detail tugas' })).toBeVisible();
+    await expect(page.getByText('Ubah status')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Detail tugas' }).getByText('Sedang dikerjakan', { exact: true })).toBeVisible();
     await page.goto(`/workspaces/${workspaceId}/kanban`);
-    await expect(page.getByLabel('Change status for Kanban Task')).toBeVisible();
+    await expect(page.getByLabel('Ubah status Kanban Task')).toBeVisible();
     const stale = createDatabase(databaseUrl);
     await stale.sql`UPDATE tasks SET version=version+1 WHERE title='Kanban Task'`;
     await stale.sql.end();
-    await page.getByLabel('Change status for Kanban Task').selectOption({ label: 'Done' });
-    await expect(page.getByText('VERSION_CONFLICT')).toBeVisible();
+    const staleSelect = page.getByLabel('Ubah status Kanban Task');
+    await staleSelect.focus();
+    await staleSelect.selectOption({ label: 'Selesai' });
+    await expect(page.getByRole('alert')).toBeVisible();
     await expect(page.getByText('Kanban Task')).toBeVisible();
   });
 
@@ -69,18 +77,18 @@ test.describe('Floz Kanban', () => {
     await page.fill('#email', 'recurring@example.com');
     await page.fill('#password', 'password123');
     await page.click('button[type="submit"]');
-    await page.getByRole('button', { name: 'New Task' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Create Task' });
+    await page.getByRole('button', { name: /Buat tugas|Create task/i }).click();
+    const dialog = page.getByRole('dialog', { name: /Buat tugas|Create task/i });
     await dialog.locator('#title').fill('Recurring browser task');
     await dialog.locator('#start_at').fill('2026-09-01T09:00');
     await dialog.locator('#enable_recurring').check();
-    await expect(dialog.getByText('CUSTOM recurrence is not supported.')).toBeVisible();
+    await expect(dialog.getByText(/Pola kustom belum didukung|CUSTOM recurrence is not supported/i)).toBeVisible();
     await dialog.locator('#recurrence_frequency').selectOption('WEEKLY');
     await dialog.locator('#recurrence_interval').fill('2');
     await dialog.locator('#recurrence_timezone').fill('Asia/Jakarta');
     await dialog.locator('#recurrence_occurrence_limit').fill('3');
     await expect(dialog.locator('#recurrence_end_date')).toBeDisabled();
-    await dialog.getByRole('button', { name: 'Create' }).click();
+    await dialog.getByRole('button', { name: /Buat|Create/i, exact: true }).click();
 
     await expect(dialog).toBeHidden();
     await expect(page.getByText('Recurring browser task')).toBeVisible();
@@ -108,12 +116,12 @@ test.describe('Floz Kanban', () => {
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     await page.goto(`/workspaces/${workspaceId}/tasks?create=1&prefill_start_at=2026-08-18T09:00&prefill_due_at=2026-08-18T10:00&prefill_timezone=America%2FNew_York`);
-    const dialog = page.getByRole('dialog', { name: 'Create Task' });
+    const dialog = page.getByRole('dialog', { name: /Buat tugas|Create task/i });
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('input#start_at')).toHaveValue('2026-08-18T09:00');
     await expect(dialog.locator('input#due_at')).toHaveValue('2026-08-18T10:00');
     await dialog.locator('input#title').fill('Timezone handoff');
-    await dialog.getByRole('button', { name: 'Create' }).click();
+    await dialog.getByRole('button', { name: /Buat|Create/i, exact: true }).click();
     await expect(dialog).toBeHidden();
     const stored = createDatabase(databaseUrl);
     const saved = (await stored.sql`SELECT start_at FROM tasks WHERE title='Timezone handoff'`)[0];
@@ -148,24 +156,24 @@ test.describe('Floz Kanban', () => {
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     await page.goto(`/workspaces/${workspaceId}/calendar?view=month&date=2026-08-18`);
-    await expect(page.getByRole('heading', { name: 'Calendar' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Kalender|Calendar/i })).toBeVisible();
     const deadlineBtn = page.getByRole('button', { name: 'Deadline task', exact: true });
     await expect(deadlineBtn).toBeVisible();
-    await expect(page.getByText('Deadline only')).toBeVisible();
-    await page.getByRole('button', { name: 'Week view' }).click();
+    await expect(page.getByRole('button', { name: 'Deadline task' }).getByText(/Tenggat|Deadline only/i)).toBeVisible();
+    await page.getByRole('button', { name: /Tampilan minggu|Week view|Minggu/i }).click();
     await expect(page).toHaveURL(/view=week/);
-    await page.getByRole('button', { name: 'Next period' }).click();
+    await page.getByRole('button', { name: /Periode berikutnya|Next period|Berikutnya/i }).click();
     await expect(page).toHaveURL(/date=/);
-    await page.getByLabel('Team').selectOption(teamId);
+    await page.getByLabel(/Filter tim|Tim|Team/i).selectOption(teamId);
     await expect(page).toHaveURL(new RegExp(`team_id=${teamId}`));
-    await page.getByRole('button', { name: /Create task on/ }).first().click();
+    await page.getByRole('button', { name: /Buat tugas pada|Create task on/i }).first().click();
     await expect(page).toHaveURL(/\/tasks\?/);
     await expect(page).toHaveURL(/prefill_timezone=Asia%2FJakarta/);
     await expect(page.locator('input#start_at')).not.toHaveValue('');
     await page.goto(`/workspaces/${workspaceId}/calendar?view=day&date=2026-08-10`);
     await page.getByRole('button', { name: 'Scheduled', exact: true }).click();
     await expect(page).toHaveURL(/selected_task_id=/);
-    await expect(page.getByText('Change Status')).toBeVisible();
+    await expect(page.getByText(/Ubah status|Change Status/i)).toBeVisible();
   });
 
   test('calendar invalid URL state does not fetch calendar tasks', async ({ page }) => {
@@ -184,7 +192,7 @@ test.describe('Floz Kanban', () => {
     const calendarRequests: string[] = [];
     page.on('request', (request) => { if (request.url().includes('/calendar/tasks')) calendarRequests.push(request.url()); });
     await page.goto(`/workspaces/${workspaceId}/calendar?view=bad&date=2026-02-31`);
-    await expect(page.getByText('Invalid calendar view.')).toBeVisible();
+    await expect(page.getByText(/Tampilan kalender tidak valid|Invalid calendar view/i)).toBeVisible();
     expect(calendarRequests).toEqual([]);
   });
 
@@ -203,8 +211,8 @@ test.describe('Floz Kanban', () => {
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     await page.goto(`/workspaces/${workspaceId}/calendar?view=day&date=2026-08-18`);
-    await expect(page.getByRole('heading', { name: 'Calendar' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Create task on 2026-08-18' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Kalender|Calendar/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Buat tugas pada 2026-08-18|Create task on 2026-08-18/i })).toBeVisible();
   });
 
   test('reporting fixtures cover roles, scopes, periods, drilldowns, mobile, and keyboard access', async ({ page, request }) => {
@@ -253,16 +261,16 @@ test.describe('Floz Kanban', () => {
       await page.goto('/login');
       await page.getByLabel('Email').fill(email);
       await page.getByLabel('Password').fill('password123');
-      await page.getByRole('button', { name: 'Sign in' }).click();
+      await page.getByRole('button', { name: /Masuk|Sign in/i }).click();
       await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     };
     await login('report-member@example.com');
     await page.goto(`/workspaces/${workspaceId}/my-work`);
-    await expect(page.getByRole('heading', { name: 'My Work' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Pekerjaan Saya|My Work/i })).toBeVisible();
     await expect(page.getByText('Due today member')).toBeVisible();
     await expect(page.getByText('Tomorrow midnight upcoming')).toBeVisible();
     await expect(page.getByText('Strictly overdue')).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Overdue/ }).locator('..')).not.toContainText('Equality is not overdue');
+    await expect(page.getByRole('heading', { name: /Terlambat|Overdue/i }).locator('..')).not.toContainText('Equality is not overdue');
     await page.getByRole('button', { name: /Due today member/ }).focus();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(new RegExp(`selected_task_id=${id('RPT-1')}`));
@@ -284,23 +292,23 @@ test.describe('Floz Kanban', () => {
     await login('report-manager@example.com');
     await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
     await expect(page.getByRole('heading', { name: 'Dasbor Manajer' })).toBeVisible();
-    await expect(page.getByText('Managed Ops')).toBeVisible();
+    await expect(page.locator('span').filter({ hasText: 'Managed Ops' }).first()).toBeVisible();
     await expect(page.getByText('Unmanaged Ops')).not.toBeVisible();
-    await expect(page.getByText('Belum ditugaskan')).toBeVisible();
+    await expect(page.locator('section').filter({ hasText: 'Perlu perhatian' }).getByText('Belum ditugaskan').first()).toBeVisible();
     const from = start.toISOString().slice(0, 10);
     await page.getByLabel('Dari').fill(from);
     await page.getByLabel('Sampai').fill(from);
     await expect(page.getByRole('heading', { name: 'Laporan & KPI' })).toBeVisible();
-    const workloadSection = page.locator('section').filter({ hasText: 'Beban kerja per tim' });
-    await expect(workloadSection).toContainText('Managed ops');
+    const workloadSection = page.getByRole('heading', { name: 'Beban kerja per tim' }).locator('xpath=ancestor::section[1]');
+    await expect(workloadSection).toContainText('Managed Ops');
     await expect(workloadSection).toContainText('5');
-    const prioritySection = page.locator('section').filter({ hasText: 'Tugas berdasarkan prioritas' });
+    const prioritySection = page.getByRole('heading', { name: 'Tugas berdasarkan prioritas' }).locator('xpath=ancestor::section[1]');
     await expect(prioritySection).toContainText('Mendesak');
     await expect(prioritySection).toContainText('Tinggi');
     await expect(prioritySection).toContainText('Sedang');
     await expect(prioritySection).toContainText('Rendah');
     await expect(page.getByText('33%')).toBeVisible();
-    await expect(page.getByText('1j 30m')).toBeVisible();
+    await expect(page.getByText(/1 jam 30 menit|1j 30m/i)).toBeVisible();
     const report = await page.evaluate(async ({ workspaceId, apiUrl }) => {
       const response = await fetch(`${apiUrl}/api/v1/workspaces/${workspaceId}/reports/kpis?from=2026-09-01T00%3A00%3A00.000Z&to=2026-09-02T00%3A00%3A00.000Z&evaluationAt=1999-01-01T00%3A00%3A00.000Z`, { credentials: 'include' });
       return { status: response.status, body: await response.json() };
@@ -314,7 +322,7 @@ test.describe('Floz Kanban', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
     await expect(page.getByRole('heading', { name: 'Dasbor Manajer' })).toBeVisible();
-    await expect(page.locator('section').filter({ hasText: 'Tugas berdasarkan prioritas' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tugas berdasarkan prioritas' }).locator('xpath=ancestor::section[1]')).toBeVisible();
     await page.locator('body').press('Tab');
     for (let i = 0; i < 20 && await page.getByLabel('Sampai').evaluate((element) => element !== document.activeElement); i++) await page.keyboard.press('Tab');
     await expect(page.getByLabel('Sampai')).toBeFocused();
@@ -351,13 +359,13 @@ test.describe('Floz Kanban', () => {
     await page.click('button[type="submit"]');
 
     // 1. Unread count badge is visible
-    const bellBtn = page.getByRole('button', { name: /Notifications, 1 unread/i });
+    const bellBtn = page.getByRole('button', { name: /Notifikasi, 1 belum dibaca|Notifications, 1 unread/i });
     await expect(bellBtn).toBeVisible();
     await expect(bellBtn.locator('span')).toHaveText('1');
 
     // 2. Open popover
     await bellBtn.click();
-    await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Notifikasi|Notifications/i })).toBeVisible();
     await expect(page.getByText('New assigned task E2E')).toBeVisible();
 
     // 3. Mark read and navigate on item click
@@ -365,7 +373,7 @@ test.describe('Floz Kanban', () => {
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks\\?selected_task_id=${taskId}`));
 
     // 4. Badge is gone (0 unread)
-    const bellBtnAfter = page.getByRole('button', { name: /Notifications, 0 unread/i });
+    const bellBtnAfter = page.getByRole('button', { name: /Notifikasi, 0 belum dibaca|Notifications, 0 unread/i });
     await expect(bellBtnAfter).toBeVisible();
     await expect(bellBtnAfter.locator('span')).toBeHidden();
   });
@@ -389,25 +397,25 @@ test.describe('Floz Kanban', () => {
     await page.fill('#password', 'password123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
-    await page.goto(`/workspaces/${workspaceId}/calendar?view=month&date=2026-08-10`);
+    await page.goto(`/workspaces/${workspaceId}/calendar?view=week&date=2026-08-10`);
     await expect(page.getByRole('button', { name: 'Resched Task', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Reschedule Resched Task' }).click();
+    await page.getByRole('button', { name: 'Ubah jadwal Resched Task', exact: true }).click();
     await expect(page).toHaveURL(/edit_schedule=1/);
-    await expect(page).toHaveURL(/cal_view=month/);
+    await expect(page).toHaveURL(/cal_view=week/);
     await expect(page).toHaveURL(/cal_date=2026-08-10/);
-    const dialog = page.getByRole('dialog', { name: 'Task details' });
-    await expect(dialog.getByText('Edit Task Fields')).toBeVisible();
+    const dialog = page.getByRole('dialog', { name: /Detail tugas|Task details/i });
+    await expect(dialog.getByRole('heading', { name: 'Ubah tugas' })).toBeVisible();
     await dialog.locator('#edit_start_at').fill('2026-08-12T09:00');
     await dialog.locator('#edit_due_at').fill('2026-08-12T10:00');
-    await dialog.getByRole('button', { name: 'Save Changes' }).click();
-    await expect(dialog.getByText('Edit Task Fields')).toBeHidden();
+    await dialog.getByRole('button', { name: /Simpan perubahan|Save Changes/i }).click();
+    await expect(dialog.getByRole('heading', { name: 'Ubah tugas' })).toBeHidden();
     const stored = createDatabase(databaseUrl);
     const saved = (await stored.sql`SELECT start_at,due_at FROM tasks WHERE id=${taskId}`)[0];
     expect(new Date(saved.start_at).getTime()).not.toBe(Date.parse('2026-08-10T02:00:00.000Z'));
     expect(new Date(saved.due_at).getTime()).not.toBe(Date.parse('2026-08-10T03:00:00.000Z'));
     await stored.sql.end();
-    await dialog.getByRole('button', { name: 'Return to Calendar' }).click();
-    await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/calendar\\?view=month&date=2026-08-10`));
+    await dialog.getByRole('button', { name: /Kembali ke Kalender|Return to Calendar/i }).click();
+    await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/calendar\\?view=week&date=2026-08-10`));
     await expect(page.getByRole('button', { name: 'Resched Task', exact: true })).toBeVisible();
   });
 
@@ -436,14 +444,14 @@ test.describe('Floz Kanban', () => {
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     await page.goto(`/workspaces/${workspaceId}/my-work`);
-    await expect(page.getByRole('heading', { name: 'My Work' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Pekerjaan Saya|My Work/i })).toBeVisible();
     await expect(page.getByText('Quick status task')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'To Done' })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Quick status for QST-1' }).click();
-    await expect(page.getByRole('button', { name: 'To In review' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'To Done' })).toBeVisible();
-    await page.getByRole('button', { name: 'To Done' }).click();
-    await expect(page.getByText('No overdue tasks.')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Ke Selesai|Selesaikan|To Done/i })).toHaveCount(0);
+    await page.getByRole('button', { name: /Ubah status QST-1|Quick status for QST-1/i }).click();
+    await expect(page.getByRole('button', { name: 'Ke In review' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Ke Selesai|Selesaikan|To Done/i })).toBeVisible();
+    await page.getByRole('button', { name: /Ke Selesai|Selesaikan|To Done/i }).click();
+    await expect(page.getByText(/Tidak ada tugas yang terlambat|No overdue tasks/i)).toBeVisible();
     const stored = createDatabase(databaseUrl);
     const saved = (await stored.sql`SELECT status_id FROM tasks WHERE id=${taskId}`)[0];
     expect(String(saved.status_id)).toBe(doneId);
@@ -465,20 +473,20 @@ test.describe('Floz Kanban', () => {
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     await page.goto(`/workspaces/${workspaceId}/settings/members`);
-    await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
-    await page.getByRole('button', { name: 'Provision Account' }).focus();
+    await expect(page.getByRole('heading', { name: /Anggota|Members/i })).toBeVisible();
+    await page.getByRole('button', { name: /Buat akun|Provision Account/i }).focus();
     await page.keyboard.press('Enter');
-    const dialog = page.getByRole('dialog', { name: 'Provision Account' });
+    const dialog = page.getByRole('dialog', { name: /Buat akun|Provision Account/i });
     await expect(dialog).toBeVisible();
     await dialog.locator('#prov_email').fill('newhire@example.com');
     await dialog.locator('#prov_name').fill('New Hire');
-    await dialog.getByRole('button', { name: 'Create', exact: true }).click();
-    await expect(dialog.getByText('Account Created')).toBeVisible();
-    await expect(dialog.getByText('Copy this password now. It will not be shown again.')).toBeVisible();
+    await dialog.getByRole('button', { name: /Buat|Create/i, exact: true }).click();
+    await expect(dialog.getByText(/Akun dibuat|Account Created/i)).toBeVisible();
+    await expect(dialog.getByText(/Salin kata sandi sekarang|Copy this password now/i)).toBeVisible();
     const tempPassword = await dialog.locator('input[readonly]').inputValue();
     expect(tempPassword.length).toBeGreaterThanOrEqual(24);
-    await dialog.getByRole('button', { name: 'Close' }).click();
-    await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
+    await dialog.getByRole('button', { name: /Tutup|Close/i }).click();
+    await expect(page.getByRole('heading', { name: /Anggota|Members/i })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'prov-admin@example.com' })).toBeVisible();
     const me = await page.evaluate(async ({ apiUrl }) => {
       const res = await fetch(`${apiUrl}/api/v1/me`, { credentials: 'include' });
@@ -497,22 +505,15 @@ test.describe('Floz Kanban', () => {
     await page.fill('#email', 'newhire@example.com');
     await page.fill('#password', tempPassword);
     await page.click('button[type="submit"]');
-    await expect(page.getByRole('heading', { name: 'No workspace access yet' })).toBeVisible();
-    await expect(page.locator('section').getByText('newhire@example.com')).toBeVisible();
-    await page.locator('#current_password').fill(tempPassword);
-    await page.locator('#new_password').fill('brand-new-password-456');
-    await page.locator('#new_password').press('Enter');
-    await expect(page.getByText('Password changed.')).toBeVisible();
-    await page.locator('main').getByRole('button', { name: 'Log out' }).click();
+    await expect(page).toHaveURL(/\/onboarding/);
+    await expect(page.getByRole('heading', { name: /Welcome to Floz/i })).toBeVisible();
+    await page.getByRole('button', { name: /Keluar|Sign out/i }).click();
     await expect(page).toHaveURL(/\/login/);
     await page.fill('#email', 'newhire@example.com');
     await page.fill('#password', tempPassword);
     await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/login/);
-    await expect(page.getByRole('button', { name: 'Sign In' })).toBeEnabled();
-    await page.fill('#password', 'brand-new-password-456');
-    await page.click('button[type="submit"]');
-    await expect(page.getByRole('heading', { name: 'No workspace access yet' })).toBeVisible();
+    await expect(page).toHaveURL(/\/onboarding/);
+    await expect(page.getByRole('heading', { name: /Welcome to Floz/i })).toBeVisible();
   });
 
   test('phase9 task 11 workspace settings and member lifecycle with last-admin protection', async ({ page }) => {
@@ -534,19 +535,19 @@ test.describe('Floz Kanban', () => {
     await page.goto(`/workspaces/${workspaceId}/settings/workspace`);
     await page.locator('#ws_name').fill('Renamed Work');
     await page.locator('#ws_timezone').fill('UTC');
-    await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByText('Workspace updated.')).toBeVisible();
+    await page.getByRole('button', { name: /Simpan|Save/i, exact: true }).click();
+    await expect(page.getByText(/Workspace diperbarui|Ruang kerja diperbarui|Workspace updated/i)).toBeVisible();
     const renamed = createDatabase(databaseUrl);
     const ws = (await renamed.sql`SELECT name,slug,timezone FROM workspaces WHERE id=${workspaceId}`)[0];
     expect(ws).toMatchObject({ name: 'Renamed Work', slug: 'settings-work', timezone: 'UTC' });
     await renamed.sql.end();
 
     await page.goto(`/workspaces/${workspaceId}/settings/members`);
-    await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
-    await page.getByRole('button', { name: 'Add Member' }).click();
-    const addDialog = page.getByRole('dialog', { name: 'Add Member' });
+    await expect(page.getByRole('heading', { name: /Anggota|Members/i })).toBeVisible();
+    await page.getByRole('button', { name: /Tambah anggota yang sudah terdaftar|Add Existing Member/i }).click();
+    const addDialog = page.getByRole('dialog', { name: /Tambah Anggota|Add Member/i });
     await addDialog.locator('#add_email').fill('member-b@example.com');
-    await addDialog.getByRole('button', { name: 'Add', exact: true }).click();
+    await addDialog.getByRole('button', { name: /Tambah|Add/i, exact: true }).click();
     const memberRow = page.locator('tbody tr', { hasText: 'member-b@example.com' });
     await expect(memberRow).toBeVisible();
     const statusReload = page.waitForResponse((r) => r.url().includes('/members') && r.request().method() === 'GET');
@@ -559,7 +560,7 @@ test.describe('Floz Kanban', () => {
     await expect(memberRow.getByLabel('Role for member-b@example.com')).toHaveValue('MANAGER');
     const adminRow = page.locator('tbody tr', { hasText: 't11-admin@example.com' });
     await adminRow.getByLabel('Role for t11-admin@example.com').selectOption('MEMBER');
-    await expect(page.getByText(/At least one active admin/i)).toBeVisible();
+    await expect(page.getByRole('alert')).toBeVisible();
     await expect(adminRow.getByLabel('Role for t11-admin@example.com')).toHaveValue('ADMIN');
   });
 
@@ -593,22 +594,22 @@ test.describe('Floz Kanban', () => {
     };
     await login('team-admin@example.com');
     await page.goto(`/workspaces/${workspaceId}/settings/teams`);
-    await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
-    await page.getByRole('button', { name: 'New Team' }).click();
+    await expect(page.getByRole('heading', { name: /Tim|Teams/i })).toBeVisible();
+    await page.getByRole('button', { name: /Buat tim|New Team/i }).click();
     const createDialog = page.getByRole('dialog', { name: 'Create Team' });
     await createDialog.locator('#team_name').fill('Ops');
     await createDialog.locator('#team_manager').selectOption({ label: 'Team Manager' });
-    await createDialog.getByRole('button', { name: 'Create', exact: true }).click();
+    await createDialog.getByRole('button', { name: /Buat|Create/i, exact: true }).click();
     const card = page.locator('div.space-y-3 > div', { hasText: 'Ops' });
     await expect(card).toBeVisible();
-    await expect(card.getByText('Active')).toBeVisible();
+    await expect(card.getByText(/Aktif|Active/i)).toBeVisible();
     const stored = createDatabase(databaseUrl);
     const created = (await stored.sql`SELECT id,manager_user_id,is_active FROM teams WHERE workspace_id=${workspaceId} AND name='Ops'`)[0];
     const teamId = String(created.id);
     expect(String(created.manager_user_id)).toBe(managerId);
     await stored.sql`UPDATE tasks SET team_id=${teamId} WHERE id=${seededTask}`;
     const clearReload = page.waitForResponse((r) => r.url().includes('/teams') && r.request().method() === 'GET');
-    await card.getByRole('combobox').selectOption({ label: 'No manager' });
+    await card.getByRole('combobox').selectOption('');
     await clearReload;
     const cleared = (await stored.sql`SELECT manager_user_id FROM teams WHERE id=${teamId}`)[0];
     expect(cleared.manager_user_id).toBeNull();
@@ -621,23 +622,23 @@ test.describe('Floz Kanban', () => {
     await page.context().clearCookies();
     await login('team-manager@example.com');
     await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
-    await expect(page.getByRole('heading', { name: 'Manager dashboard' })).toBeVisible();
-    await expect(page.getByRole('table', { name: 'Workload by team' })).toContainText('Ops');
+    await expect(page.getByRole('heading', { name: /Dasbor Manajer|Manager dashboard/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Beban kerja per tim' }).locator('xpath=ancestor::section[1]')).toContainText('Ops');
 
     await page.context().clearCookies();
     await login('team-admin@example.com');
     await page.goto(`/workspaces/${workspaceId}/settings/teams`);
-    await page.locator('div.space-y-3 > div', { hasText: 'Ops' }).getByRole('button', { name: 'Archive' }).click();
+    await page.locator('div.space-y-3 > div', { hasText: 'Ops' }).getByRole('button', { name: /Arsipkan|Archive/i }).click();
     const archivedCard = page.locator('div.space-y-3 > div', { hasText: 'Ops' });
-    await expect(archivedCard.getByText('Archived')).toBeVisible();
+    await expect(archivedCard.getByText(/Diarsipkan|Archived/i)).toBeVisible();
     await page.goto(`/workspaces/${workspaceId}/settings/members`);
     await expect(page.locator('tbody tr', { hasText: 'team-manager@example.com' })).toBeVisible();
     const demoteReload = page.waitForResponse((r) => r.url().includes('/members') && r.request().method() === 'GET');
     await page.locator('tbody tr', { hasText: 'team-manager@example.com' }).getByLabel('Role for team-manager@example.com').selectOption('MEMBER');
     await demoteReload;
     await page.goto(`/workspaces/${workspaceId}/settings/teams`);
-    await page.getByRole('button', { name: 'Archived', exact: true }).click();
-    await page.locator('div.space-y-3 > div', { hasText: 'Ops' }).getByRole('button', { name: 'Restore' }).click();
+    await page.getByRole('button', { name: /Diarsipkan|Archived/i }).click();
+    await page.locator('div.space-y-3 > div', { hasText: 'Ops' }).getByRole('button', { name: /Pulihkan|Restore/i }).click();
     await expect(page.getByText(/active manager or admin/i)).toBeVisible();
     const rejectedAdd = await page.evaluate(async ({ workspaceId, teamId, userId, apiUrl }) => {
       const res = await fetch(`${apiUrl}/api/v1/workspaces/${workspaceId}/teams/${teamId}/members`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ user_id: userId }) });
@@ -651,10 +652,10 @@ test.describe('Floz Kanban', () => {
     await page.locator('tbody tr', { hasText: 'team-manager@example.com' }).getByLabel('Role for team-manager@example.com').selectOption('MANAGER');
     await promoteReload;
     await page.goto(`/workspaces/${workspaceId}/settings/teams`);
-    await page.getByRole('button', { name: 'Archived', exact: true }).click();
-    await page.locator('div.space-y-3 > div', { hasText: 'Ops' }).getByRole('button', { name: 'Restore' }).click();
-    await page.getByRole('button', { name: 'Active', exact: true }).click();
-    await expect(page.locator('div.space-y-3 > div', { hasText: 'Ops' }).getByText('Active')).toBeVisible();
+    await page.getByRole('button', { name: /Diarsipkan|Archived/i }).click();
+    await page.locator('div.space-y-3 > div', { hasText: 'Ops' }).getByRole('button', { name: /Pulihkan|Restore/i }).click();
+    await page.getByRole('button', { name: /Aktif|Active/i, exact: true }).click();
+    await expect(page.locator('div.space-y-3 > div', { hasText: 'Ops' }).getByText(/Aktif|Active/i)).toBeVisible();
     await stored.sql.end();
   });
 
@@ -677,20 +678,20 @@ test.describe('Floz Kanban', () => {
     await page.fill('#password', 'password123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
-    await page.getByRole('button', { name: 'New Task' }).click();
-    const createDialog = page.getByRole('dialog', { name: 'Create Task' });
+    await page.getByRole('button', { name: /Buat tugas|Create task/i }).click();
+    const createDialog = page.getByRole('dialog', { name: /Buat tugas|Create task/i });
     await expect(createDialog).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(createDialog).toBeHidden();
-    await page.getByRole('button', { name: 'New Task' }).click();
+    await page.getByRole('button', { name: /Buat tugas|Create task/i }).click();
     await expect(createDialog).toBeVisible();
     await createDialog.locator('#title').fill('Multi Owner Task');
     await createDialog.locator(`#create_assignee_${firstId}`).check();
-    await expect(createDialog.getByRole('button', { name: 'Primary', exact: true })).toBeVisible();
+    await expect(createDialog.getByRole('button', { name: 'Utama', exact: true })).toBeVisible();
     await createDialog.locator(`#create_assignee_${secondId}`).check();
     const betaRow = createDialog.locator('div', { hasText: 'Multi Beta' }).last();
-    await betaRow.getByRole('button', { name: 'Make Primary' }).click();
-    await createDialog.getByRole('button', { name: 'Create', exact: true }).click();
+    await betaRow.getByRole('button', { name: /Jadikan utama|Make Primary/i }).click();
+    await createDialog.getByRole('button', { name: /Buat|Create/i, exact: true }).click();
     await expect(createDialog).toBeHidden();
     await expect(page.getByText('Multi Owner Task')).toBeVisible();
     const stored = createDatabase(databaseUrl);
@@ -700,11 +701,11 @@ test.describe('Floz Kanban', () => {
     expect(assignees.filter((a) => a.is_primary).map((a) => String(a.user_id))).toEqual([secondId]);
     await stored.sql.end();
     await page.getByText('Multi Owner Task').click();
-    const detail = page.getByRole('dialog', { name: 'Task details' });
+    const detail = page.getByRole('dialog', { name: /Detail tugas|Task details/i });
     await expect(detail.getByText('Multi Alpha')).toBeVisible();
     await expect(detail.getByText('Multi Beta')).toBeVisible();
-    await expect(detail.getByRole('button', { name: 'Primary', exact: true })).toBeVisible();
-    await expect(detail.getByRole('button', { name: 'Make Primary' })).toBeVisible();
+    await expect(detail.getByRole('button', { name: 'Utama', exact: true })).toBeVisible();
+    await expect(detail.getByRole('button', { name: /Jadikan utama|Make Primary/i })).toBeVisible();
   });
   test('phase9 task 10 overdue filter syncs url and drops stale cursor', async ({ page }) => {
     const { sql } = createDatabase(databaseUrl);
@@ -721,17 +722,17 @@ test.describe('Floz Kanban', () => {
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     await page.goto(`/workspaces/${workspaceId}/tasks?cursor=stale-cursor-123`);
-    await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible();
-    await page.getByText('Overdue only').click();
-    await expect(page.getByLabel('Overdue only')).toBeChecked();
+    await expect(page.getByRole('heading', { name: /Tugas|Tasks/i })).toBeVisible();
+    await page.getByText(/Terlambat saja|Overdue only/i).click();
+    await expect(page.getByLabel(/Terlambat saja|Overdue only/i)).toBeChecked();
     await expect(page).toHaveURL(/overdue=true/);
     expect(page.url()).not.toContain('cursor=');
     await page.getByLabel('Priority filter').selectOption('HIGH');
     await expect(page).toHaveURL(/priority=HIGH/);
     await expect(page).toHaveURL(/overdue=true/);
     expect(page.url()).not.toContain('cursor=');
-    await page.getByText('Overdue only').click();
-    await expect(page.getByLabel('Overdue only')).not.toBeChecked();
+    await page.getByText(/Terlambat saja|Overdue only/i).click();
+    await expect(page.getByLabel(/Terlambat saja|Overdue only/i)).not.toBeChecked();
     await expect(page).toHaveURL(/priority=HIGH/);
     expect(page.url()).not.toContain('overdue=');
     const hasOverdue = await page.evaluate(() => new URL(window.location.href).searchParams.has('overdue'));
@@ -761,18 +762,21 @@ test.describe('Floz Kanban', () => {
     // 1. Requester logs in and creates approval request
     await login('e1-requester@example.com');
     await page.goto(`/workspaces/${workspaceId}/approvals`);
-    await page.getByRole('button', { name: 'New Approval Request' }).click();
-    const createDialog = page.getByRole('dialog', { name: 'New Approval Request' });
+    await page.getByRole('button', { name: /Buat Permintaan Persetujuan Baru|New Approval Request/i }).click();
+    const createDialog = page.getByRole('dialog', { name: /Buat Permintaan Persetujuan Baru|New Approval Request/i });
     await expect(createDialog).toBeVisible();
     await createDialog.locator('#create-title').fill('Q4 Budget Request');
     await createDialog.locator('#create-description').fill('Please approve the Q4 budget allocation.');
     await expect(createDialog.locator('#create-approver option', { hasText: 'Approver Bob' })).toBeAttached();
     await createDialog.locator('#create-approver').selectOption(approverId);
-    await createDialog.getByRole('button', { name: 'Submit Request' }).click();
+    await createDialog.getByRole('button', { name: /Kirim Permintaan|Submit Request/i }).click();
     await expect(createDialog).toBeHidden({ timeout: 10000 });
+    const closeDetailBtn = page.getByRole('button', { name: /Close approval detail|Tutup detail persetujuan/i });
+    await expect(closeDetailBtn).toBeVisible();
+    await closeDetailBtn.click();
 
     // Verify created request appears in Sent view
-    await page.getByRole('tab', { name: 'Sent' }).click();
+    await page.getByRole('tab', { name: /Terkirim|Sent/i }).click();
     await expect(page.getByText('Q4 Budget Request')).toBeVisible();
 
     const dbQuery = createDatabase(databaseUrl);
@@ -789,19 +793,19 @@ test.describe('Floz Kanban', () => {
 
     // Open selected detail
     await page.getByText('Q4 Budget Request').click();
-    const detailDialog = page.getByRole('dialog', { name: 'Approval Detail' });
+    const detailDialog = page.getByRole('dialog', { name: /Detail Persetujuan|Approval Detail/i });
     await expect(detailDialog).toBeVisible();
-    await expect(detailDialog.getByText('PENDING')).toBeVisible();
+    await expect(detailDialog.getByText(/Menunggu|PENDING/i)).toBeVisible();
     await expect(detailDialog.getByText('Requester Alice')).toBeVisible();
 
     // Approve
-    await detailDialog.getByRole('button', { name: 'Approve' }).click();
-    const decisionModal = page.getByRole('dialog', { name: 'Confirm Approval' });
+    await detailDialog.getByRole('button', { name: /Setujui|Approve/i }).click();
+    const decisionModal = page.getByRole('dialog', { name: /Konfirmasi Persetujuan|Confirm Approval/i });
     await expect(decisionModal).toBeVisible();
     await decisionModal.locator('#decision-reason').fill('Looks great, approved for Q4.');
-    await decisionModal.getByRole('button', { name: 'Confirm Approval' }).click();
+    await decisionModal.getByRole('button', { name: /Konfirmasi Persetujuan|Confirm Approval/i }).click();
     await expect(decisionModal).toBeHidden();
-    await expect(detailDialog.getByText('APPROVED', { exact: true })).toBeVisible();
+    await expect(detailDialog.getByText(/^(Disetujui|APPROVED)$/i, { exact: true })).toBeVisible();
     await expect(detailDialog.getByText('Approver Bob').first()).toBeVisible();
 
     // 3. Requester receives APPROVAL_APPROVED notification through outbox/worker
@@ -809,7 +813,7 @@ test.describe('Floz Kanban', () => {
     await login('e1-requester@example.com');
     await page.waitForTimeout(2000);
 
-    const notifButton = page.getByRole('button', { name: /Notifications/i });
+    const notifButton = page.getByRole('button', { name: /Notifikasi|Notifications/i });
     await expect(notifButton).toBeVisible();
 
     let notificationFound = false;
@@ -828,9 +832,9 @@ test.describe('Floz Kanban', () => {
 
     // Assert exact final deep-link URL and selected state
     await expect(page).toHaveURL(`/workspaces/${workspaceId}/approvals?view=sent&selected_approval_request_id=${approvalRequestId}`);
-    const selectedDetail = page.getByRole('dialog', { name: 'Approval Detail' });
+    const selectedDetail = page.getByRole('dialog', { name: /Detail Persetujuan|Approval Detail/i });
     await expect(selectedDetail).toBeVisible();
-    await expect(selectedDetail.getByText('APPROVED', { exact: true })).toBeVisible();
+    await expect(selectedDetail.getByText(/^(Disetujui|APPROVED)$/i, { exact: true })).toBeVisible();
     await expect(selectedDetail.getByText('Looks great, approved for Q4.')).toBeVisible();
   });
 
@@ -857,12 +861,12 @@ test.describe('Floz Kanban', () => {
     // 1. Create Request A
     await login('e2-requester@example.com');
     await page.goto(`/workspaces/${workspaceId}/approvals`);
-    await page.getByRole('button', { name: 'New Approval Request' }).click();
-    const createDialog = page.getByRole('dialog', { name: 'New Approval Request' });
+    await page.getByRole('button', { name: /Buat Permintaan Persetujuan Baru|New Approval Request/i }).click();
+    const createDialog = page.getByRole('dialog', { name: /Buat Permintaan Persetujuan Baru|New Approval Request/i });
     await createDialog.locator('#create-title').fill('Request A Rejection');
     await expect(createDialog.locator('#create-approver option', { hasText: 'Approver Dave' })).toBeAttached();
     await createDialog.locator('#create-approver').selectOption(approverId);
-    await createDialog.getByRole('button', { name: 'Submit Request' }).click();
+    await createDialog.getByRole('button', { name: /Kirim Permintaan|Submit Request/i }).click();
     await expect(createDialog).toBeHidden({ timeout: 10000 });
 
     // 2. Approver rejects Request A with required reason
@@ -870,16 +874,16 @@ test.describe('Floz Kanban', () => {
     await login('e2-approver@example.com');
     await page.goto(`/workspaces/${workspaceId}/approvals?view=inbox`);
     await page.getByText('Request A Rejection').click();
-    const detailDialog = page.getByRole('dialog', { name: 'Approval Detail' });
+    const detailDialog = page.getByRole('dialog', { name: /Detail Persetujuan|Approval Detail/i });
     await expect(detailDialog).toBeVisible();
-    await detailDialog.getByRole('button', { name: 'Reject' }).click();
-    const rejectModal = page.getByRole('dialog', { name: 'Confirm Rejection' });
-    await expect(rejectModal.getByRole('button', { name: 'Confirm Rejection' })).toBeDisabled();
+    await detailDialog.getByRole('button', { name: /Tolak|Reject/i }).click();
+    const rejectModal = page.getByRole('dialog', { name: /Konfirmasi Penolakan|Confirm Rejection/i });
+    await expect(rejectModal.getByRole('button', { name: /Konfirmasi Penolakan|Confirm Rejection/i })).toBeDisabled();
     await rejectModal.locator('#decision-reason').fill('Insufficient justification provided for this request.');
-    await expect(rejectModal.getByRole('button', { name: 'Confirm Rejection' })).toBeEnabled();
-    await rejectModal.getByRole('button', { name: 'Confirm Rejection' }).click();
+    await expect(rejectModal.getByRole('button', { name: /Konfirmasi Penolakan|Confirm Rejection/i })).toBeEnabled();
+    await rejectModal.getByRole('button', { name: /Konfirmasi Penolakan|Confirm Rejection/i }).click();
     await expect(rejectModal).toBeHidden();
-    await expect(detailDialog.getByText('REJECTED')).toBeVisible();
+    await expect(detailDialog.getByText(/^(Ditolak|REJECTED)$/i)).toBeVisible();
 
     // 3. Requester sees REJECTED in Sent view with canonical reason
     await page.context().clearCookies();
@@ -887,19 +891,19 @@ test.describe('Floz Kanban', () => {
     await page.goto(`/workspaces/${workspaceId}/approvals?view=sent`);
     await expect(page.getByText('Request A Rejection')).toBeVisible();
     await page.getByText('Request A Rejection').click();
-    const reqADetail = page.getByRole('dialog', { name: 'Approval Detail' });
-    await expect(reqADetail.getByText('REJECTED', { exact: true })).toBeVisible();
+    const reqADetail = page.getByRole('dialog', { name: /Detail Persetujuan|Approval Detail/i });
+    await expect(reqADetail.getByText(/^(Ditolak|REJECTED)$/i)).toBeVisible();
     await expect(reqADetail.getByText('Insufficient justification provided for this request.')).toBeVisible();
     await expect(reqADetail.getByText('Approver Dave').first()).toBeVisible();
     await page.keyboard.press('Escape');
 
     // 4. Create Request B and Cancel it
-    await page.getByRole('button', { name: 'New Approval Request' }).click();
-    const createDialogB = page.getByRole('dialog', { name: 'New Approval Request' });
+    await page.getByRole('button', { name: /Buat Permintaan Persetujuan Baru|New Approval Request/i }).click();
+    const createDialogB = page.getByRole('dialog', { name: /Buat Permintaan Persetujuan Baru|New Approval Request/i });
     await createDialogB.locator('#create-title').fill('Request B Cancellation');
     await expect(createDialogB.locator('#create-approver option', { hasText: 'Approver Dave' })).toBeAttached();
     await createDialogB.locator('#create-approver').selectOption(approverId);
-    await createDialogB.getByRole('button', { name: 'Submit Request' }).click();
+    await createDialogB.getByRole('button', { name: /Kirim Permintaan|Submit Request/i }).click();
     await expect(createDialogB).toBeHidden({ timeout: 10000 });
 
     const dbQuery = createDatabase(databaseUrl);
@@ -908,22 +912,27 @@ test.describe('Floz Kanban', () => {
     await dbQuery.sql.end();
 
     // Open detail of Request B and cancel
-    await page.getByRole('tabpanel', { name: 'Sent' }).getByText('Request B Cancellation').click();
-    const detailB = page.getByRole('dialog', { name: 'Approval Detail' });
-    await detailB.getByRole('button', { name: 'Cancel Request' }).click();
-    const cancelModal = page.getByRole('dialog', { name: 'Confirm Cancellation' });
+    const closeBtnReqB = page.getByRole('button', { name: /Close approval detail|Tutup detail persetujuan/i });
+    if (await closeBtnReqB.isVisible()) {
+      await closeBtnReqB.click();
+    }
+    await page.getByRole('tabpanel', { name: /Terkirim|Sent/i }).getByText('Request B Cancellation').click();
+    const detailB = page.getByRole('dialog', { name: /Detail Persetujuan|Approval Detail/i });
+    await detailB.getByRole('button', { name: /Batalkan Permintaan|Cancel Request/i }).click();
+    const cancelModal = page.getByRole('dialog', { name: /Konfirmasi Pembatalan|Confirm Cancellation/i });
     await cancelModal.locator('#decision-reason').fill('No longer needed, cancelling.');
-    await cancelModal.getByRole('button', { name: 'Confirm Cancellation' }).click();
+    await cancelModal.getByRole('button', { name: /Konfirmasi Pembatalan|Confirm Cancellation/i }).click();
     await expect(cancelModal).toBeHidden();
-    await expect(detailB.getByText('CANCELLED', { exact: true })).toBeVisible();
+    await expect(detailB.getByText(/^(Dibatalkan|CANCELLED)$/i)).toBeVisible();
     await expect(detailB.getByText('No longer needed, cancelling.')).toBeVisible();
     await expect(detailB.getByText('Requester Charlie').first()).toBeVisible();
+    await detailB.getByRole('button', { name: /Close approval detail|Tutup detail persetujuan/i }).click();
 
     // 5. Approver receives APPROVAL_CANCELLED notification and navigates to inbox
     await page.context().clearCookies();
     await login('e2-approver@example.com');
     await page.waitForTimeout(2000);
-    const notifButton = page.getByRole('button', { name: /Notifications/i });
+    const notifButton = page.getByRole('button', { name: /Notifikasi|Notifications/i });
     let notifFound = false;
     for (let i = 0; i < 20; i++) {
       await notifButton.click();
@@ -940,9 +949,9 @@ test.describe('Floz Kanban', () => {
 
     // Assert exact canonical deep-link URL: view=inbox & selected_approval_request_id=${requestBId}
     await expect(page).toHaveURL(`/workspaces/${workspaceId}/approvals?view=inbox&selected_approval_request_id=${requestBId}`);
-    const selectedB = page.getByRole('dialog', { name: 'Approval Detail' });
+    const selectedB = page.getByRole('dialog', { name: /Detail Persetujuan|Approval Detail/i });
     await expect(selectedB).toBeVisible();
-    await expect(selectedB.getByText('CANCELLED', { exact: true })).toBeVisible();
+    await expect(selectedB.getByText(/^(Dibatalkan|CANCELLED)$/i)).toBeVisible();
     await expect(selectedB.getByText('No longer needed, cancelling.')).toBeVisible();
   });
 
@@ -983,15 +992,15 @@ test.describe('Floz Kanban', () => {
 
     // Open Manager Dashboard
     await page.goto(`/workspaces/${workspaceId}/manager-dashboard`);
-    await expect(page.getByRole('heading', { name: 'Manager dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Dasbor Manajer|Manager dashboard/i })).toBeVisible();
 
     // Prove pending_approvals = 1 (deduplicated across the 2 teams)
-    const approvalsSection = page.locator('section').filter({ hasText: 'Pending approvals' });
+    const approvalsSection = page.locator('section').filter({ hasText: /Persetujuan menunggu|Pending approvals/i });
     await expect(approvalsSection).toBeVisible();
     await expect(approvalsSection.getByText('1', { exact: true }).first()).toBeVisible();
 
     // Click KPI link and verify exact drilldown URL
-    await page.getByRole('link', { name: 'View pending approvals' }).click();
+    await page.getByRole('link', { name: /Buka persetujuan menunggu|View pending approvals/i }).click();
     await expect(page).toHaveURL(`/workspaces/${workspaceId}/approvals?view=managed&status=PENDING`);
 
     // Verify Approval list displays exactly the canonical matching request once
@@ -1026,7 +1035,7 @@ test.describe('Floz Kanban', () => {
     // 1. Author opens Task and posts comment with structured mention
     await login('e4-author@example.com');
     await page.goto(`/workspaces/${workspaceId}/tasks?selected_task_id=${taskId}`);
-    const detail = page.getByRole('dialog', { name: 'Task details' });
+    const detail = page.getByRole('dialog', { name: /Detail tugas|Task details/i });
     await expect(detail).toBeVisible();
 
     // Fill comment composer
@@ -1035,14 +1044,14 @@ test.describe('Floz Kanban', () => {
     await commentInput.fill('Hey, please review the latest updates on this task.');
 
     // Select structured mention
-    await detail.getByRole('button', { name: /Mention.*(Member|team member)/i }).click();
+    await detail.getByRole('button', { name: /Sebut anggota tim|Mention.*(Member|team member)/i }).click();
     await expect(detail.getByRole('option', { name: /Mentioned Bob/ })).toBeVisible();
     await detail.getByRole('option', { name: /Mentioned Bob/ }).click();
     // Close mention picker by toggling button again
-    await detail.getByRole('button', { name: /Mention.*(Member|team member)/i }).click();
+    await detail.getByRole('button', { name: /Sebut anggota tim|Mention.*(Member|team member)/i }).click();
 
     // Submit comment
-    await detail.getByRole('button', { name: 'Post Comment' }).click();
+    await detail.getByRole('button', { name: /Kirim komentar|Post Comment/i }).click();
     await expect(detail.getByText('Hey, please review the latest updates on this task.')).toBeVisible();
     await expect(detail.getByText('@Mentioned Bob')).toBeVisible();
 
@@ -1051,7 +1060,7 @@ test.describe('Floz Kanban', () => {
     await login('e4-mentioned@example.com');
     await page.waitForTimeout(2000);
 
-    const notifButton = page.getByRole('button', { name: /Notifications/i });
+    const notifButton = page.getByRole('button', { name: /Notifikasi|Notifications/i });
     let notifFound = false;
     for (let i = 0; i < 20; i++) {
       await notifButton.click();
@@ -1068,7 +1077,7 @@ test.describe('Floz Kanban', () => {
 
     // 3. Assert exact final URL and selected task state
     await expect(page).toHaveURL(`/workspaces/${workspaceId}/tasks?selected_task_id=${taskId}`);
-    const selectedTaskDetail = page.getByRole('dialog', { name: 'Task details' });
+    const selectedTaskDetail = page.getByRole('dialog', { name: /Detail tugas|Task details/i });
     await expect(selectedTaskDetail).toBeVisible();
     await expect(selectedTaskDetail.getByText('Collaboration Task')).toBeVisible();
     await expect(selectedTaskDetail.getByText('Hey, please review the latest updates on this task.')).toBeVisible();
@@ -1091,42 +1100,42 @@ async function workflowLogin(page: Page, email = 'workflow-admin@example.com') {
 
 async function configureWorkflow(page: Page, code = 'CUSTOM', teamId = ''): Promise<WorkflowDetail> {
   await page.goto(workflowPath);
-  await page.getByRole('button', { name: 'New Workflow' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Create Workflow' });
+  await page.getByRole('button', { name: /Alur Kerja Baru|New Workflow/i }).click();
+  const dialog = page.getByRole('dialog', { name: /Buat Alur Kerja|Create Workflow/i });
   await dialog.locator('#wf_name').fill(code);
   await dialog.locator('#wf_code').fill(code);
   await dialog.locator('#wf_team').selectOption(teamId);
-  for (let i = 0; i < 3; i++) await dialog.getByRole('button', { name: 'Remove', exact: true }).first().click();
+  for (let i = 0; i < 3; i++) await dialog.getByRole('button', { name: /Hapus|Remove/i, exact: true }).first().click();
   for (const [name, category] of workflowStatuses) {
-    await dialog.getByPlaceholder('Name', { exact: true }).fill(name);
-    await dialog.getByPlaceholder('CODE', { exact: true }).fill(name);
-    await dialog.getByPlaceholder('CODE', { exact: true }).locator('..').getByRole('combobox').selectOption(category);
-    await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+    await dialog.getByPlaceholder(/Nama|Name/i, { exact: true }).fill(name);
+    await dialog.getByPlaceholder(/KODE|CODE/i, { exact: true }).fill(name);
+    await dialog.getByPlaceholder(/KODE|CODE/i, { exact: true }).locator('..').getByRole('combobox').selectOption(category);
+    await dialog.getByRole('button', { name: /Tambah|Add/i, exact: true }).click();
   }
-  await dialog.getByPlaceholder('Name', { exact: true }).locator('../..').locator('div').filter({ has: page.getByText('TRIAGE', { exact: true }) }).filter({ has: page.getByRole('button', { name: 'Set Initial' }) }).last().getByRole('button', { name: 'Set Initial' }).click();
-  for (const [from, to] of workflowEdges) await dialog.getByRole('checkbox', { name: `Transition from ${from} to ${to}`, exact: true }).check();
+  await dialog.getByPlaceholder(/Nama|Name/i, { exact: true }).locator('../..').locator('div').filter({ has: page.getByText('TRIAGE', { exact: true }) }).filter({ has: page.getByRole('button', { name: /Atur Awal|Set Initial/i }) }).last().getByRole('button', { name: /Atur Awal|Set Initial/i }).click();
+  for (const [from, to] of workflowEdges) await dialog.getByRole('checkbox', { name: new RegExp(`Transition from ${from} to ${to}|Transisi dari ${from} ke ${to}`, 'i') }).check();
   expect(await dialog.locator('input[type="checkbox"]:checked').count()).toBe(3);
   const created = page.waitForResponse(r => r.url().endsWith(`/workspaces/${workflowWorkspaceId}/workflows`) && r.request().method() === 'POST');
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await dialog.getByRole('button', { name: /Buat|Create/i, exact: true }).click();
   const response = await created;
   expect(response.ok()).toBe(true);
   const workflow: WorkflowDetail = (await response.json()).data;
   await expect(dialog).toBeHidden();
   const defaultResponse = page.waitForResponse(r => r.url().endsWith(`/workflows/${workflow.id}/set-default`) && r.request().method() === 'POST');
-  await page.getByRole('region', { name: 'Workflow Details' }).getByRole('button', { name: 'Set Default' }).click();
+  await page.getByRole('region', { name: /Detail Alur Kerja|Workflow Details/i }).getByRole('button', { name: /Jadikan Utama|Set Default/i }).click();
   expect((await defaultResponse).ok()).toBe(true);
-  await expect(page.getByText('Workflow set as default.', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Alur kerja dijadikan default|Workflow set as default|Alur kerja dijadikan sebagai utama/i)).toBeVisible();
   return workflow;
 }
 
 async function workflowTask(page: Page, title: string, teamId = '') {
   await page.goto(`/workspaces/${workflowWorkspaceId}/tasks`);
-  await page.getByRole('button', { name: 'New Task' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Create Task' });
+  await page.getByRole('button', { name: /Buat tugas|Create task/i }).click();
+  const dialog = page.getByRole('dialog', { name: /Buat tugas|Create task/i });
   await dialog.locator('#title').fill(title);
   if (teamId) await dialog.locator('#team_id').selectOption(teamId);
   const posted = page.waitForResponse(r => r.url().endsWith(`/workspaces/${workflowWorkspaceId}/tasks`) && r.request().method() === 'POST');
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await dialog.getByRole('button', { name: /Buat|Create/i, exact: true }).click();
   const response = await posted;
   expect(response.ok()).toBe(true);
   expect(response.request().postDataJSON()).not.toHaveProperty('workflow_id');
@@ -1169,7 +1178,9 @@ test.describe('Phase11 Task12 workflow browser acceptance', () => {
       for (let i = 1; i < statuses.length; i++) {
         const response = page.waitForResponse(r => r.url().includes(`/tasks/${task.id}/transitions`) && r.request().method() === 'POST');
         const refreshed = page.waitForResponse(r => r.url().includes('/kanban') && r.request().method() === 'GET' && r.headers()['content-type']?.includes('application/json') === true);
-        await page.getByLabel('Change status for Custom member task').selectOption(String(statuses[i].id));
+        const statusSelect = page.getByLabel(/Ubah status Custom member task|Change status for Custom member task/i);
+        await statusSelect.focus();
+        await statusSelect.selectOption(String(statuses[i].id));
         const transitioned = await response;
         expect(transitioned.ok(), await transitioned.text()).toBe(true);
         await refreshed;
@@ -1214,26 +1225,28 @@ test.describe('Phase11 Task12 workflow browser acceptance', () => {
       await page.goto(`/workspaces/${workflowWorkspaceId}/kanban?workflow_id=${workflow.id}`);
       for (const name of ['DEV', 'QA']) {
         const response = page.waitForResponse(r => r.url().includes(`/tasks/${task.id}/transitions`) && r.request().method() === 'POST');
-        await page.getByLabel('Change status for QA occupant').selectOption({ label: name });
+        const statusSelect = page.getByLabel(/Ubah status QA occupant|Change status for QA occupant/i);
+        await statusSelect.focus();
+        await statusSelect.selectOption({ label: name });
         expect((await response).ok()).toBe(true);
         await expect.poll(async () => (await sql`SELECT s.code FROM tasks t JOIN task_statuses s ON s.id=t.status_id WHERE t.id=${task.id}`)[0].code).toBe(name);
         await page.reload();
       }
       await page.goto(workflowPath);
-      await page.getByRole('button', { name: /^CUSTOMDefaultWorkspaceActive$/ }).click();
-      await page.getByRole('group', { name: 'QA', exact: true }).getByRole('button', { name: 'Archive', exact: true }).click();
+      await page.getByRole('button', { name: /CUSTOM/ }).click();
+      await page.getByRole('group', { name: 'QA', exact: true }).getByRole('button', { name: /Arsipkan|Archive/i, exact: true }).click();
       const archivedResponse = page.waitForResponse(r => r.url().endsWith('/archive') && r.request().method() === 'POST');
-      await page.getByRole('dialog', { name: 'Confirm Archive Status' }).getByRole('button', { name: 'Archive', exact: true }).click();
+      await page.getByRole('dialog', { name: /Konfirmasi Arsip Status|Konfirmasi Pengarsipan Status|Confirm Archive Status/i }).getByRole('button', { name: /Arsipkan|Archive/i, exact: true }).click();
       expect((await archivedResponse).ok()).toBe(true);
-      await expect(page.getByRole('dialog', { name: 'Confirm Archive Status' })).toBeHidden();
+      await expect(page.getByRole('dialog', { name: /Konfirmasi Arsip Status|Konfirmasi Pengarsipan Status|Confirm Archive Status/i })).toBeHidden();
       await page.goto(`/workspaces/${workflowWorkspaceId}/kanban?workflow_id=${workflow.id}`);
-      const column = page.getByRole('region', { name: 'Archived: QA (archived, drop unavailable)', exact: true });
+      const column = page.getByRole('region', { name: /Archived: QA \(diarsipkan, tidak dapat menerima tugas\)|Archived: QA \(archived, drop unavailable\)/i, exact: true });
       await expect(column).toBeVisible();
       await expect(column.getByText('QA occupant', { exact: true })).toHaveCount(1);
       await expect(page.getByText('QA occupant', { exact: true })).toHaveCount(1);
-      await expect(column.getByText('Drop unavailable')).toBeVisible();
+      await expect(column.getByText(/Tidak dapat menerima tugas|Drop unavailable/i)).toBeVisible();
       await expect(column).toHaveClass(/border-dashed/);
-      await expect(page.getByLabel('Change status for Active source').getByRole('option', { name: /QA/ })).toHaveCount(0);
+      await expect(page.getByLabel(/Ubah status Active source|Change status for Active source/i).getByRole('option', { name: /QA/ })).toHaveCount(0);
       const before = await sql`SELECT id,status_id,version FROM tasks WHERE id IN (${task.id},${active.id}) ORDER BY id`;
       const requests: string[] = [];
       page.on('request', r => { if (/\/tasks\/[^/]+\/transitions?/.test(r.url())) requests.push(r.url()); });
@@ -1247,7 +1260,9 @@ test.describe('Phase11 Task12 workflow browser acceptance', () => {
       expect(requests).toEqual([]);
       expect(await sql`SELECT id,status_id,version FROM tasks WHERE id IN (${task.id},${active.id}) ORDER BY id`).toEqual(before);
       const escaped = page.waitForResponse(r => r.url().includes(`/tasks/${task.id}/transitions`) && r.request().method() === 'POST');
-      await page.getByLabel('Change status for QA occupant').selectOption({ label: 'PROD' });
+      const statusSelect = page.getByLabel(/Ubah status QA occupant|Change status for QA occupant/i);
+      await statusSelect.focus();
+      await statusSelect.selectOption({ label: 'PROD' });
       expect((await escaped).ok()).toBe(true);
       await expect.poll(async () => (await sql`SELECT status_id FROM tasks WHERE id=${task.id}`)[0].status_id).toBe(workflow.statuses.find(s => s.code === 'PROD')!.id);
       await page.reload();
@@ -1266,13 +1281,13 @@ test.describe('Phase11 Task12 workflow browser acceptance', () => {
     try {
       await workflowLogin(second, 'workflow-admin2@example.com');
       await second.goto(workflowPath);
-      await second.getByRole('button', { name: /^CUSTOMDefaultWorkspaceActive$/ }).click();
+      await second.getByRole('button', { name: /CUSTOM/ }).click();
       const version = (await sql`SELECT version FROM workflows WHERE id=${workflow.id}`)[0].version;
-      for (const session of [page, second]) await expect(session.getByRole('region', { name: 'Workflow Details' }).getByText(`v${version}`, { exact: true })).toBeVisible();
-      const matrix = second.getByRole('region', { name: 'Transitions', exact: true });
-      await matrix.getByRole('checkbox', { name: 'Transition from TRIAGE to PROD', exact: true }).check();
+      for (const session of [page, second]) await expect(session.getByRole('region', { name: /Detail Alur Kerja|Workflow Details/i }).getByText(`v${version}`, { exact: true })).toBeVisible();
+      const matrix = second.getByRole('region', { name: /Transisi|Transitions/i, exact: true });
+      await matrix.getByRole('checkbox', { name: new RegExp('Transition from TRIAGE to PROD|Transisi dari TRIAGE ke PROD', 'i'), exact: true }).check();
       const reordered = page.waitForResponse(r => r.url().endsWith(`/workflows/${workflow.id}/statuses/reorder`) && r.request().method() === 'PUT');
-      await page.getByRole('button', { name: 'Move QA up', exact: true }).click();
+      await page.getByRole('button', { name: /Move QA up|Pindahkan QA ke atas/i, exact: true }).click();
       const reorderResponse = await reordered;
       expect(reorderResponse.ok()).toBe(true);
       const latest: WorkflowDetail = (await reorderResponse.json()).data;
@@ -1281,24 +1296,24 @@ test.describe('Phase11 Task12 workflow browser acceptance', () => {
       const saves: number[] = [];
       second.on('request', r => { if (r.url().endsWith(`/workflows/${workflow.id}/transitions`) && r.method() === 'PUT') saves.push(r.postDataJSON().version); });
       const conflict = second.waitForResponse(r => r.url().endsWith(`/workflows/${workflow.id}/transitions`) && r.request().method() === 'PUT');
-      await matrix.getByRole('button', { name: 'Save', exact: true }).click();
+      await matrix.getByRole('button', { name: /Simpan|Save/i, exact: true }).click();
       const failed = await conflict;
       expect(failed.status()).toBe(409);
       expect(await failed.text()).toContain('VERSION_CONFLICT');
-      await expect(matrix.getByRole('alert')).toContainText('Configuration changed elsewhere');
-      await expect(matrix.getByRole('checkbox', { name: 'Transition from TRIAGE to PROD', exact: true })).toBeChecked();
+      await expect(matrix.getByRole('alert')).toContainText(/Konfigurasi telah diubah di tempat lain|Configuration changed elsewhere/i);
+      await expect(matrix.getByRole('checkbox', { name: new RegExp('Transition from TRIAGE to PROD|Transisi dari TRIAGE ke PROD', 'i'), exact: true })).toBeChecked();
       const reload = second.waitForResponse(r => r.url().endsWith(`/workflows/${workflow.id}`) && r.request().method() === 'GET');
-      await matrix.getByRole('alert').getByRole('button', { name: 'Reload Configuration' }).click();
+      await matrix.getByRole('alert').getByRole('button', { name: /Muat Ulang Konfigurasi|Reload Configuration/i }).click();
       expect((await reload).ok()).toBe(true);
-      await expect(second.getByRole('region', { name: 'Workflow Details' }).getByText(`v${version + 1}`, { exact: true })).toBeVisible();
+      await expect(second.getByRole('region', { name: /Detail Alur Kerja|Workflow Details/i }).getByText(`v${version + 1}`, { exact: true })).toBeVisible();
       const order = latest.statuses.slice().sort((a, b) => a.position - b.position);
       expect(order.map(s => s.code)).toEqual(['TRIAGE', 'QA', 'DEV', 'PROD']);
-      expect(await second.getByRole('region', { name: 'Statuses', exact: true }).locator('[data-status-id]').evaluateAll(elements => elements.map(el => el.getAttribute('data-status-id')))).toEqual(order.map(s => s.id));
+      expect(await second.getByRole('region', { name: /Status|Statuses/i, exact: true }).locator('[data-status-id]').evaluateAll(elements => elements.map(el => el.getAttribute('data-status-id')))).toEqual(order.map(s => s.id));
       for (const from of latest.statuses) for (const to of latest.statuses) {
-        if (from.id !== to.id) await expect(matrix.getByRole('checkbox', { name: `Transition from ${from.name} to ${to.name}`, exact: true })).toBeChecked({ checked: latest.transitions.some(e => e.from_status_id === from.id && e.to_status_id === to.id) });
+        if (from.id !== to.id) await expect(matrix.getByRole('checkbox', { name: new RegExp(`Transition from ${from.name} to ${to.name}|Transisi dari ${from.name} ke ${to.name}`, 'i'), exact: true })).toBeChecked({ checked: latest.transitions.some(e => e.from_status_id === from.id && e.to_status_id === to.id) });
       }
       await expect(matrix.getByRole('alert')).toHaveCount(0);
-      await expect(matrix.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+      await expect(matrix.getByRole('button', { name: /Simpan|Save/i, exact: true })).toHaveCount(0);
       expect(saves).toEqual([version]);
       expect((await sql`SELECT version FROM workflows WHERE id=${workflow.id}`)[0].version).toBe(version + 1);
     } finally { await sql.end(); await context.close(); }

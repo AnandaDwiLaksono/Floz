@@ -3,6 +3,20 @@
 import React from 'react';
 import { WorkflowStatus } from '../lib/api-client';
 
+function getCategoryLabel(category: string) {
+  const cat = (category || '').toUpperCase();
+  if (cat === 'TODO' || cat === 'OPEN') return 'Belum dimulai';
+  if (cat === 'IN_PROGRESS' || cat === 'ACTIVE') return 'Sedang dikerjakan';
+  if (cat === 'DONE') return 'Selesai';
+  if (cat === 'CANCELLED') return 'Dibatalkan';
+  return category;
+}
+
+function isInitialEligible(category: string) {
+  const cat = (category || '').toUpperCase();
+  return cat === 'TODO' || cat === 'OPEN' || cat === 'IN_PROGRESS' || cat === 'ACTIVE';
+}
+
 export default function WorkflowStatusCard({ status, index, count, locked, onMove, onEdit, onInitial, onArchive, onRestore, ...drag }: {
   status: WorkflowStatus;
   index: number;
@@ -18,12 +32,12 @@ export default function WorkflowStatusCard({ status, index, count, locked, onMov
   return (
     <div role="group" aria-label={s.name} data-status-id={s.id} draggable={s.is_active && !locked} {...drag} className="flex flex-wrap items-center gap-2 rounded bg-gray-50 p-2 text-sm dark:bg-gray-800">
       <span className="font-medium">{s.name}</span>
-      <span className="text-xs text-gray-500">{s.code}</span>
-      <span>Position {s.position}</span>
-      <span className="rounded bg-gray-200 px-1.5 dark:bg-gray-700">{s.category}</span>
-      {s.is_initial && <span>Initial</span>}
-      {s.is_terminal && <span>Terminal</span>}
-      {!s.is_active && <span>Archived</span>}
+      <span className="text-xs text-muted-foreground">{s.code}</span>
+      <span className="text-xs text-gray-500">Posisi {s.position}</span>
+      <span className="rounded bg-gray-200 px-1.5 dark:bg-gray-700">{getCategoryLabel(s.category)}</span>
+      {s.is_initial && <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">Awal</span>}
+      {s.is_terminal && <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">Akhir</span>}
+      {!s.is_active && <span className="text-xs text-gray-500">Diarsipkan</span>}
       <div className="ml-auto flex items-center gap-2">
         {s.is_active ? <>
           <button data-reorder="true" aria-label={`Reorder ${s.name}`} aria-disabled={locked} onKeyDown={(e) => {
@@ -31,11 +45,11 @@ export default function WorkflowStatusCard({ status, index, count, locked, onMov
           }}>⠿</button>
           <button data-reorder="true" aria-label={`Move ${s.name} up`} aria-disabled={locked || index === 0} onClick={() => { if (!locked && index > 0) onMove(-1); }}>↑</button>
           <button data-reorder="true" aria-label={`Move ${s.name} down`} aria-disabled={locked || index === count - 1} onClick={() => { if (!locked && index < count - 1) onMove(1); }}>↓</button>
-          {!s.is_initial && !s.is_terminal && (s.category === 'TODO' || s.category === 'IN_PROGRESS') && <button disabled={locked} onClick={onInitial}>Set Initial</button>}
-          <button disabled={locked} onClick={onEdit}>Edit</button>
-          <button disabled={locked || s.is_initial} aria-describedby={s.is_initial ? `archive-blocked-${s.id}` : undefined} onClick={onArchive}>Archive</button>
-          {s.is_initial && <span id={`archive-blocked-${s.id}`} className="text-xs text-gray-500">Cannot archive the initial status. Choose another initial status first.</span>}
-        </> : <button disabled={locked} onClick={onRestore}>Restore</button>}
+          {!s.is_initial && !s.is_terminal && isInitialEligible(s.category) && <button disabled={locked} onClick={onInitial} aria-label="Set Initial">Jadikan awal</button>}
+          <button disabled={locked} onClick={onEdit} aria-label="Edit">Ubah</button>
+          <button disabled={locked || s.is_initial} aria-describedby={s.is_initial ? `archive-blocked-${s.id}` : undefined} onClick={onArchive} aria-label="Archive">Arsipkan</button>
+          {s.is_initial && <span id={`archive-blocked-${s.id}`} className="text-xs text-gray-500">Status awal tidak dapat diarsipkan. Pilih status awal lain terlebih dahulu.</span>}
+        </> : <button disabled={locked} onClick={onRestore} aria-label="Restore">Pulihkan</button>}
       </div>
     </div>
   );
