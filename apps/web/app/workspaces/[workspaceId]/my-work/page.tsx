@@ -217,7 +217,7 @@ export default function MyWorkPage() {
           ? 'VERSION_CONFLICT'
           : err instanceof Error
           ? err.message
-          : 'Failed to load transitions'
+          : 'Gagal memuat transisi status'
       );
     } finally {
       setLoadingQuickStatus(false);

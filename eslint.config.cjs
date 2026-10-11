@@ -1,6 +1,7 @@
 const tsParser = require('@typescript-eslint/parser');
 const tsPlugin = require('@typescript-eslint/eslint-plugin');
 const nextPlugin = require('@next/eslint-plugin-next');
+const path = require('node:path');
 
 module.exports = [
   {
@@ -29,7 +30,7 @@ module.exports = [
     },
     settings: {
       next: {
-        rootDir: ['apps/web/']
+        rootDir: [path.resolve(__dirname, 'apps/web')]
       }
     },
     rules: {

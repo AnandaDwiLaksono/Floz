@@ -260,7 +260,7 @@ test.describe('Floz Kanban', () => {
     const login = async (email: string) => {
       await page.goto('/login');
       await page.getByLabel('Email').fill(email);
-      await page.getByLabel('Password').fill('password123');
+      await page.getByLabel('Kata sandi').fill('password123');
       await page.getByRole('button', { name: /Masuk|Sign in/i }).click();
       await expect(page).toHaveURL(new RegExp(`/workspaces/${workspaceId}/tasks`));
     };
@@ -506,14 +506,14 @@ test.describe('Floz Kanban', () => {
     await page.fill('#password', tempPassword);
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\/onboarding/);
-    await expect(page.getByRole('heading', { name: /Welcome to Floz/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Selamat datang di Floz|Welcome to Floz/i })).toBeVisible();
     await page.getByRole('button', { name: /Keluar|Sign out/i }).click();
     await expect(page).toHaveURL(/\/login/);
     await page.fill('#email', 'newhire@example.com');
     await page.fill('#password', tempPassword);
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\/onboarding/);
-    await expect(page.getByRole('heading', { name: /Welcome to Floz/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Selamat datang di Floz|Welcome to Floz/i })).toBeVisible();
   });
 
   test('phase9 task 11 workspace settings and member lifecycle with last-admin protection', async ({ page }) => {
@@ -776,7 +776,7 @@ test.describe('Floz Kanban', () => {
     await closeDetailBtn.click();
 
     // Verify created request appears in Sent view
-    await page.getByRole('tab', { name: /Terkirim|Sent/i }).click();
+    await page.getByRole('tab', { name: /Dikirim|Terkirim|Sent/i }).click();
     await expect(page.getByText('Q4 Budget Request')).toBeVisible();
 
     const dbQuery = createDatabase(databaseUrl);
@@ -916,7 +916,7 @@ test.describe('Floz Kanban', () => {
     if (await closeBtnReqB.isVisible()) {
       await closeBtnReqB.click();
     }
-    await page.getByRole('tabpanel', { name: /Terkirim|Sent/i }).getByText('Request B Cancellation').click();
+    await page.getByRole('tabpanel', { name: /Dikirim|Terkirim|Sent/i }).getByText('Request B Cancellation').click();
     const detailB = page.getByRole('dialog', { name: /Detail Persetujuan|Approval Detail/i });
     await detailB.getByRole('button', { name: /Batalkan Permintaan|Cancel Request/i }).click();
     const cancelModal = page.getByRole('dialog', { name: /Konfirmasi Pembatalan|Confirm Cancellation/i });
@@ -1093,8 +1093,8 @@ const workflowEdges = [['TRIAGE', 'DEV'], ['DEV', 'QA'], ['QA', 'PROD']];
 async function workflowLogin(page: Page, email = 'workflow-admin@example.com') {
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('password123');
-  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.getByLabel('Kata sandi').fill('password123');
+  await page.getByRole('button', { name: 'Masuk' }).click();
   await expect(page).toHaveURL(`/workspaces/${workflowWorkspaceId}/tasks`);
 }
 

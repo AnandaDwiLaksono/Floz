@@ -79,10 +79,10 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
     render(<ApprovalsPage />);
     await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
-    expect(screen.getByRole('tab', { name: /Inbox|Kotak Masuk/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Sent|Dikirim/i })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /Managed|Dikelola/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /All|Semua/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Kotak Masuk$/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Dikirim$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^Dikelola$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^Semua$/i })).not.toBeInTheDocument();
   });
 
   it('renders Managed tab for MANAGER; hides All tab', async () => {
@@ -90,10 +90,10 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
     render(<ApprovalsPage />);
     await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
-    expect(screen.getByRole('tab', { name: /Inbox|Kotak Masuk/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Sent|Dikirim/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Managed|Dikelola/i })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /All|Semua/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Kotak Masuk$/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Dikirim$/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Dikelola$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^Semua$/i })).not.toBeInTheDocument();
   });
 
   it('renders All tab for ADMIN; hides Managed tab', async () => {
@@ -101,10 +101,10 @@ describe('Phase 10 Task 7 — Approvals List, Navigation, Tabs & Filters', () =>
     render(<ApprovalsPage />);
     await waitFor(() => expect(screen.getByText('Budget Request Q4')).toBeInTheDocument());
 
-    expect(screen.getByRole('tab', { name: /Inbox|Kotak Masuk/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Sent|Dikirim/i })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /Managed|Dikelola/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /All|Semua/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Kotak Masuk$/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Dikirim$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^Dikelola$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Semua$/i })).toBeInTheDocument();
   });
 
   it('normalizes unauthorized view parameter to inbox in URL', async () => {

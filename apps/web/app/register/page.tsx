@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { Mail } from 'lucide-react';
 import { api, ApiError } from '../../lib/api-client';
 import { BrandLogo } from '../../components/brand-logo';
 
@@ -16,7 +17,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || !fullName) {
-      setError('Full name, email, and password are required.');
+      setError('Nama lengkap, email, dan kata sandi wajib diisi.');
       return;
     }
     setSubmitting(true);
@@ -25,7 +26,7 @@ export default function RegisterPage() {
       await api.auth.register({ email, password, full_name: fullName });
       setRegistered(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Registration failed.');
+      setError(err instanceof ApiError ? err.message : 'Pendaftaran gagal.');
     } finally {
       setSubmitting(false);
     }
@@ -33,18 +34,21 @@ export default function RegisterPage() {
 
   if (registered) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10 dark:bg-gray-950">
-        <div className="w-full max-w-md space-y-6 rounded-xl border border-gray-200 bg-white p-6 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300">
-            ✉️
+      <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+        <div className="w-full max-w-md space-y-6 rounded-xl border border-border bg-surface p-6 sm:p-8 text-center shadow-xs">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Mail className="h-6 w-6" aria-hidden="true" />
           </div>
-          <h1 className="text-2xl font-bold">Check your email</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            We sent a verification link to <strong>{email}</strong>. Please check your email to activate your account.
+          <h1 className="text-2xl font-bold text-foreground">Periksa email Anda</h1>
+          <p className="text-sm text-muted-foreground">
+            Kami telah mengirimkan tautan verifikasi ke <strong>{email}</strong>. Silakan periksa email Anda untuk mengaktifkan akun.
           </p>
-          <div className="pt-4">
-            <Link href="/login" className="inline-block rounded bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">
-              Back to Sign In
+          <div className="pt-2">
+            <Link
+              href="/login"
+              className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Kembali ke Masuk
             </Link>
           </div>
         </div>
@@ -53,57 +57,60 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10 dark:bg-gray-950">
-      <div className="w-full max-w-md space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <div className="w-full max-w-md space-y-6 rounded-xl border border-border bg-surface p-6 sm:p-8 shadow-xs">
         <header className="space-y-2 text-center">
           <div className="mx-auto w-36"><BrandLogo /></div>
-          <h1 className="text-2xl font-bold">Create your Floz Account</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-300">Get started with self-service task management</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Daftar Akun Floz</h1>
+          <p className="text-sm text-muted-foreground">Mulai kelola tugas dan kolaborasi tim secara mandiri</p>
         </header>
 
         {error ? (
-          <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
             {error}
           </div>
         ) : null}
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="full_name" className="mb-1 block text-sm font-medium">Full Name</label>
+            <label htmlFor="full_name" className="mb-1 block text-sm font-semibold text-foreground">Nama lengkap</label>
             <input
               id="full_name"
               type="text"
               required
+              disabled={submitting}
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
-              placeholder="Andi"
+              className="block min-h-11 w-full rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              placeholder="Andi Pratama"
             />
           </div>
 
           <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium">Email address</label>
+            <label htmlFor="email" className="mb-1 block text-sm font-semibold text-foreground">Email</label>
             <input
               id="email"
               type="email"
               required
+              disabled={submitting}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
-              placeholder="andi@example.com"
+              className="block min-h-11 w-full rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              placeholder="andi@perusahaan.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium">Password</label>
+            <label htmlFor="password" className="mb-1 block text-sm font-semibold text-foreground">Kata sandi</label>
             <input
               id="password"
               type="password"
               required
               minLength={8}
+              disabled={submitting}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+              className="block min-h-11 w-full rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               placeholder="••••••••"
             />
           </div>
@@ -111,18 +118,18 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+            className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           >
-            {submitting ? 'Creating account...' : 'Create Account'}
+            {submitting ? 'Sedang mendaftar...' : 'Daftar Akun'}
           </button>
         </form>
 
-        <footer className="text-center text-sm text-gray-600 dark:text-gray-400">
-          Already have an account?{' '}
-          <Link href="/login" className="font-semibold text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-400">
-            Sign in
+        <p className="text-center text-sm text-muted-foreground">
+          Sudah memiliki akun?{' '}
+          <Link href="/login" className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Masuk
           </Link>
-        </footer>
+        </p>
       </div>
     </main>
   );

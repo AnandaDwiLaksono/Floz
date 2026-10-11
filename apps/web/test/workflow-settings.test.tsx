@@ -111,12 +111,12 @@ describe('Workflow Settings — Task 9', () => {
     });
   });
 
-  it('shows Workspace badge and Team badge', async () => {
+  it('shows localized scope badges', async () => {
     mockAdmin();
     render(<WorkflowSettingsPage />);
     await waitFor(() => {
-      expect(screen.getAllByText('Workspace').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText(/(Team|Tim): Alpha Team/)).toBeInTheDocument();
+      expect(screen.getAllByText('Ruang Kerja').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Tim: Alpha Team')).toBeInTheDocument();
     });
   });
 

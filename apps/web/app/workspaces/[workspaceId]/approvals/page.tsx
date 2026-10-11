@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   ArrowRight,
 } from 'lucide-react';
+import { formatDateTimeDisplay } from '../../../../lib/i18n-labels';
 
 export default function ApprovalsPage() {
   const params = useParams();
@@ -675,7 +676,7 @@ export default function ApprovalsPage() {
                       </div>
                       <div>
                         <span className="text-xs text-muted-foreground">Waktu Pengajuan</span>
-                        <p className="font-medium text-foreground">{new Date(detail.submitted_at).toLocaleString()}</p>
+                        <p className="font-medium text-foreground">{formatDateTimeDisplay(detail.submitted_at)}</p>
                       </div>
 
                       {/* Decided Actor audit */}
@@ -686,7 +687,7 @@ export default function ApprovalsPage() {
                             {detail.step.decided_by.full_name}
                             {detail.step.decided_by.id !== detail.step.approver.id && (
                               <span className="ml-2 text-xs px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded">
-                                ADMIN Override
+                                Pengambilalihan Admin
                               </span>
                             )}
                           </p>
@@ -701,7 +702,7 @@ export default function ApprovalsPage() {
                             {detail.cancelled_by.full_name}
                             {detail.cancelled_by.id !== detail.requester.id && (
                               <span className="ml-2 text-xs px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded">
-                                ADMIN Override
+                                Pengambilalihan Admin
                               </span>
                             )}
                           </p>
@@ -711,14 +712,14 @@ export default function ApprovalsPage() {
                       {detail.step.decided_at && (
                         <div>
                           <span className="text-xs text-muted-foreground">Waktu Keputusan</span>
-                          <p className="font-medium text-foreground">{new Date(detail.step.decided_at).toLocaleString()}</p>
+                          <p className="font-medium text-foreground">{formatDateTimeDisplay(detail.step.decided_at)}</p>
                         </div>
                       )}
 
                       {detail.completed_at && (
                         <div>
                           <span className="text-xs text-muted-foreground">Waktu Selesai</span>
-                          <p className="font-medium text-foreground">{new Date(detail.completed_at).toLocaleString()}</p>
+                          <p className="font-medium text-foreground">{formatDateTimeDisplay(detail.completed_at)}</p>
                         </div>
                       )}
                     </div>

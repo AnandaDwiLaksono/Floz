@@ -278,7 +278,7 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
     render(<ApprovalsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/ADMIN Override/i)).toBeInTheDocument();
+      expect(screen.getByText(/Pengambilalihan Admin/i)).toBeInTheDocument();
       expect(screen.getByText(/Super Admin/i)).toBeInTheDocument();
     });
   });

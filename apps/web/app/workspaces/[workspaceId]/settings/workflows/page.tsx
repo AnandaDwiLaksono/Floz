@@ -194,7 +194,7 @@ export default function WorkflowSettingsPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold">{wf.name}</span>
                 {wf.is_default && <span className="text-xs px-2 py-0.5 rounded font-medium bg-yellow-100 text-yellow-800">Bawaan</span>}
-                <span className={`text-xs px-2 py-0.5 rounded font-medium ${wf.team_id ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>{wf.team_id ? `Tim: ${teams.find((t) => t.id === wf.team_id)?.name || 'Tidak diketahui'}` : 'Workspace'}</span>
+                <span className={`text-xs px-2 py-0.5 rounded font-medium ${wf.team_id ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>{wf.team_id ? `Tim: ${teams.find((t) => t.id === wf.team_id)?.name || 'Tidak diketahui'}` : 'Ruang Kerja'}</span>
                 <span className={`text-xs px-2 py-0.5 rounded font-medium ${wf.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{wf.is_active ? 'Aktif' : 'Diarsipkan'}</span>
               </div>
             </button>

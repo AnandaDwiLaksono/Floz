@@ -15,7 +15,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setError('Email and password are required');
+      setError('Email dan kata sandi wajib diisi.');
       return;
     }
     setError(null);
@@ -23,7 +23,7 @@ export default function LoginPage() {
     try {
       await login(email, password);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Invalid credentials or connection failure';
+      const msg = err instanceof Error ? err.message : 'Kredensial tidak valid atau koneksi bermasalah.';
       setError(msg);
     } finally {
       setSubmitting(false);
@@ -31,27 +31,27 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 px-4">
-      <div className="max-w-md w-full space-y-8 bg-white dark:bg-gray-900 p-8 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <div className="w-full max-w-md space-y-8 rounded-xl border border-border bg-surface p-6 sm:p-8 shadow-xs">
         <div className="text-center">
           <div className="mx-auto w-36">
             <BrandLogo />
           </div>
-          <h2 className="mt-6 text-3xl font-extrabold tracking-tight">Floz Log In</h2>
-          <p className="mt-2 text-sm text-gray-500">Business Operating System</p>
+          <h2 className="mt-6 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Masuk ke Floz</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Sistem Operasi Manajemen Kerja</p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
           {error && (
-            <div className="bg-red-50 dark:bg-red-950/50 border-l-4 border-red-500 p-4 rounded text-sm text-red-700 dark:text-red-300">
+            <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
               {error}
             </div>
           )}
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                Email address
+              <label htmlFor="email" className="mb-1 block text-sm font-semibold text-foreground">
+                Email
               </label>
               <input
                 id="email"
@@ -59,16 +59,17 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 required
+                disabled={submitting}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm dark:bg-gray-800"
+                placeholder="nama@perusahaan.com"
+                className="block min-h-11 w-full rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                Password
+              <label htmlFor="password" className="mb-1 block text-sm font-semibold text-foreground">
+                Kata sandi
               </label>
               <input
                 id="password"
@@ -76,10 +77,11 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
+                disabled={submitting}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm dark:bg-gray-800"
+                className="block min-h-11 w-full rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               />
             </div>
           </div>
@@ -88,16 +90,17 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-bold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition"
+              className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             >
-              {submitting ? 'Logging in...' : 'Sign In'}
+              {submitting ? 'Sedang masuk...' : 'Masuk'}
             </button>
           </div>
         </form>
-        <p className="text-center text-sm text-gray-600 dark:text-gray-400">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="font-semibold text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-400">
-            Create account
+
+        <p className="text-center text-sm text-muted-foreground">
+          Belum memiliki akun?{' '}
+          <Link href="/register" className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Daftar akun
           </Link>
         </p>
       </div>

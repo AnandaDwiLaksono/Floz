@@ -72,7 +72,7 @@ export function TaskCommentsSection({
         setHasMore(res.meta.pagination.has_more);
         setNextCursor(res.meta.pagination.next_cursor);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Failed to load comments';
+        const msg = err instanceof Error ? err.message : 'Gagal memuat komentar';
         setError(msg);
       } finally {
         setLoading(false);
@@ -201,24 +201,25 @@ export function TaskCommentsSection({
 
       {/* Error alert */}
       {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-700 dark:text-red-300" role="alert">
+        <div className="p-3 bg-danger/10 border border-danger/30 rounded-md text-xs text-danger" role="alert">
           {error}
         </div>
       )}
 
       {deleteError && (
-        <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-700 dark:text-red-300" role="alert">
+        <div className="p-3 bg-danger/10 border border-danger/30 rounded-md text-xs text-danger" role="alert">
           {deleteError}
         </div>
       )}
 
       {/* Chronological Feed */}
       {loading ? (
-        <div className="flex justify-center py-6" aria-live="polite">
-          <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+        <div className="space-y-3 py-2" aria-live="polite">
+          <div className="h-14 w-full animate-pulse rounded-lg bg-surface-subtle" />
+          <div className="h-14 w-full animate-pulse rounded-lg bg-surface-subtle" />
         </div>
       ) : comments.length === 0 ? (
-        <div className="text-center py-6 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40 rounded-lg">
+        <div className="text-center py-6 text-xs text-muted-foreground bg-surface-subtle rounded-lg">
           Belum ada komentar. Mulai percakapan di bawah.
         </div>
       ) : (
@@ -231,14 +232,14 @@ export function TaskCommentsSection({
             return (
               <article
                 key={comment.id}
-                className="p-3.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm space-y-2"
+                className="p-3.5 bg-surface border border-border rounded-lg shadow-xs space-y-2"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-gray-900 dark:text-white">
+                    <span className="text-xs font-bold text-foreground">
                       {comment.author.full_name}
                     </span>
-                    <time dateTime={comment.created_at} className="text-[11px] text-gray-400">
+                    <time dateTime={comment.created_at} className="text-[11px] text-muted-foreground">
                       {formatDateTimeDisplay(comment.created_at)}
                     </time>
                   </div>
@@ -247,7 +248,7 @@ export function TaskCommentsSection({
                     <button
                       onClick={() => handleDelete(comment.id)}
                       disabled={deletingId === comment.id}
-                      className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded transition focus:outline-none focus:ring-1 focus:ring-red-500"
+                      className="p-1 text-muted-foreground hover:text-danger rounded transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger"
                       aria-label={`Hapus komentar oleh ${comment.author.full_name}`}
                     >
                       {deletingId === comment.id ? (
@@ -260,18 +261,18 @@ export function TaskCommentsSection({
                 </div>
 
                 {/* Content - plain text with whitespace/newlines preserved and safe React escaping */}
-                <div className="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
+                <div className="text-xs text-foreground whitespace-pre-wrap break-words">
                   {comment.content}
                 </div>
 
                 {/* Structured Mentions Tags */}
                 {comment.mentions && comment.mentions.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-gray-100 dark:border-gray-800/60">
-                    <span className="text-[11px] text-gray-400 font-medium">Disebut:</span>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-border">
+                    <span className="text-[11px] text-muted-foreground font-medium">Disebut:</span>
                     {comment.mentions.map((m) => (
                       <span
                         key={m.user_id}
-                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-primary/10 text-primary border border-primary/20"
                       >
                         @{m.full_name}
                       </span>
@@ -288,7 +289,7 @@ export function TaskCommentsSection({
               <button
                 onClick={() => fetchComments(nextCursor)}
                 disabled={loadingMore}
-                className="px-3 py-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 rounded-md transition disabled:opacity-50 flex items-center gap-1.5"
+                className="px-3 py-1.5 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition disabled:opacity-50 flex items-center gap-1.5"
               >
                 {loadingMore && <Loader2 className="w-3 h-3 animate-spin" />}
                 Muat komentar sebelumnya
@@ -301,14 +302,14 @@ export function TaskCommentsSection({
       {/* Comment Composer */}
       <form onSubmit={handleSubmit} className="space-y-3 pt-2">
         {submitError && (
-          <div className="p-2.5 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-700 dark:text-red-300" role="alert">
+          <div className="p-2.5 bg-danger/10 border border-danger/30 rounded-md text-xs text-danger" role="alert">
             {submitError}
           </div>
         )}
 
         <div>
-          <label htmlFor={`comment-composer-${taskId}`} className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-            Tulis komentar <span className="text-gray-400 font-normal">(maks. 2000 karakter)</span>
+          <label htmlFor={`comment-composer-${taskId}`} className="block text-xs font-semibold text-foreground mb-1">
+            Tulis komentar <span className="text-muted-foreground font-normal">(maks. 2000 karakter)</span>
           </label>
           <textarea
             id={`comment-composer-${taskId}`}
@@ -318,14 +319,14 @@ export function TaskCommentsSection({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Tulis komentar... (gunakan tombol @ untuk menyebut anggota tim)"
-            className="w-full px-3 py-2 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-xs bg-surface border border-input rounded-md text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
 
         {/* Selected Mentions Chips */}
         {selectedMentionIds.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-gray-500 font-medium">Yang disebut:</span>
+            <span className="text-[11px] text-muted-foreground font-medium">Yang disebut:</span>
             {selectedMentionIds.map((userId) => {
               const member = workspaceMembers.find(
                 (m) => (m.user_id || (m as unknown as { id?: string }).id) === userId
@@ -334,14 +335,14 @@ export function TaskCommentsSection({
               return (
                 <span
                   key={userId}
-                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 gap-1"
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-primary/10 text-primary border border-primary/20 gap-1"
                 >
                   @{name}
                   <button
                     type="button"
                     onClick={() => removeMentionUser(userId)}
                     aria-label={`Hapus sebutan ${name}`}
-                    className="hover:text-blue-900 dark:hover:text-white"
+                    className="hover:opacity-80"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -357,26 +358,26 @@ export function TaskCommentsSection({
             <button
               type="button"
               onClick={() => setShowMentionPicker((prev) => !prev)}
-              className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-foreground bg-surface-subtle hover:bg-surface border border-border rounded-md transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-expanded={showMentionPicker}
               aria-label="Sebut anggota tim"
             >
-              <AtSign className="w-3.5 h-3.5 mr-1 text-blue-600" />
+              <AtSign className="w-3.5 h-3.5 mr-1 text-primary" />
               Sebut anggota
             </button>
 
             {/* Mention Candidate Dropdown */}
             {showMentionPicker && (
               <div
-                className="absolute left-0 bottom-full mb-2 w-64 max-h-48 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-xl z-20 p-2 space-y-1"
+                className="absolute left-0 bottom-full mb-2 w-64 max-h-48 overflow-y-auto bg-surface border border-border rounded-lg shadow-lg z-20 p-2 space-y-1"
                 role="listbox"
                 aria-label="Anggota yang dapat disebut"
               >
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 py-1">
+                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1">
                   Pilih anggota untuk disebut
                 </div>
                 {eligibleMembers.length === 0 ? (
-                  <p className="text-xs text-gray-500 p-2">Tidak ada anggota ruang kerja aktif.</p>
+                  <p className="text-xs text-muted-foreground p-2">Tidak ada anggota ruang kerja aktif.</p>
                 ) : (
                   eligibleMembers.map((m) => {
                     const id = m.user_id || (m as unknown as { id?: string }).id || '';
@@ -392,12 +393,12 @@ export function TaskCommentsSection({
                         onClick={() => toggleMentionUser(id)}
                         className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center justify-between transition ${
                           isSelected
-                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-semibold'
-                            : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200'
+                            ? 'bg-primary/10 text-primary font-semibold'
+                            : 'hover:bg-surface-subtle text-foreground'
                         }`}
                       >
                         <span>{name}</span>
-                        {isSelected && <span className="text-[10px] text-blue-600 font-bold">✓</span>}
+                        {isSelected && <span className="text-[10px] text-primary font-bold">✓</span>}
                       </button>
                     );
                   })
@@ -409,7 +410,7 @@ export function TaskCommentsSection({
           <button
             type="submit"
             disabled={submitting || !content.trim()}
-            className="inline-flex items-center px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md transition disabled:opacity-50"
+            className="inline-flex min-h-9 items-center px-4 py-1.5 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition disabled:opacity-50 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {submitting ? (
               <>
