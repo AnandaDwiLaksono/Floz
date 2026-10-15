@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { AlertCircle, Building2 } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
 import { api, ApiError } from '../../../lib/api-client';
 import { BrandLogo } from '../../../components/brand-logo';
@@ -22,10 +23,10 @@ function AcceptInvitationContent() {
     if (token) {
       api.invitations.preview(token)
         .then((res) => setPreview(res.data))
-        .catch((err) => setError(err instanceof ApiError ? err.message : 'Invalid or expired invitation token.'))
+        .catch((err) => setError(err instanceof ApiError ? err.message : 'Token undangan tidak valid atau telah kedaluwarsa.'))
         .finally(() => setLoading(false));
     } else {
-      setError('No invitation token provided.');
+      setError('Token undangan tidak ditemukan.');
       setLoading(false);
     }
   }, [token]);
@@ -39,7 +40,7 @@ function AcceptInvitationContent() {
       await refetchUser();
       router.push(`/workspaces/${res.data.workspace_id}/tasks`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to accept invitation.');
+      setError(err instanceof ApiError ? err.message : 'Gagal menerima undangan.');
     } finally {
       setAccepting(false);
     }
@@ -47,9 +48,9 @@ function AcceptInvitationContent() {
 
   if (loading || authLoading) {
     return (
-      <div className="flex flex-col items-center justify-center space-y-4 text-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
-        <p className="text-sm text-gray-600 dark:text-gray-300">Loading invitation details...</p>
+      <div className="space-y-4 py-8 text-center" aria-live="polite">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto" />
+        <p className="text-sm text-muted-foreground">Memuat rincian undangan...</p>
       </div>
     );
   }
@@ -57,16 +58,19 @@ function AcceptInvitationContent() {
   if (error || !preview) {
     return (
       <div className="space-y-6 text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300">
-          ⚠️
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-danger/10 text-danger">
+          <AlertCircle className="h-6 w-6" aria-hidden="true" />
         </div>
-        <h1 className="text-2xl font-bold">Invitation Error</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          {error || 'Could not load invitation.'}
+        <h1 className="text-2xl font-bold text-foreground">Kendala Undangan</h1>
+        <p className="text-sm text-muted-foreground">
+          {error || 'Detail undangan tidak dapat dimuat.'}
         </p>
         <div className="pt-2">
-          <Link href="/login" className="inline-block rounded bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">
-            Go to Login
+          <Link
+            href="/login"
+            className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          >
+            Ke Halaman Masuk
           </Link>
         </div>
       </div>
@@ -78,41 +82,48 @@ function AcceptInvitationContent() {
   return (
     <div className="space-y-6">
       <header className="space-y-2 text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-2xl dark:bg-blue-900">
-          🏢
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Building2 className="h-6 w-6" aria-hidden="true" />
         </div>
-        <h1 className="text-2xl font-bold">You&apos;re invited!</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          You have been invited to join <strong className="text-gray-900 dark:text-white">{preview.workspace_name}</strong> as <span className="font-semibold text-blue-600 dark:text-blue-400">{preview.role}</span>.
+        <h1 className="text-2xl font-bold text-foreground">Anda diundang!</h1>
+        <p className="text-sm text-muted-foreground">
+          Anda diundang untuk bergabung ke <strong className="text-foreground">{preview.workspace_name}</strong> sebagai <span className="font-semibold text-primary">{preview.role}</span>.
         </p>
       </header>
 
       {!user ? (
-        <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-center dark:border-gray-800 dark:bg-gray-800/50">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            To accept this invitation, please sign in or register with <strong>{preview.invited_email}</strong>.
+        <div className="space-y-4 rounded-xl border border-border bg-surface-subtle p-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            Untuk menerima undangan ini, silakan masuk atau daftar dengan email <strong>{preview.invited_email}</strong>.
           </p>
           <div className="flex gap-3 pt-2">
-            <Link href={`/login?redirect=/invitations/accept?token=${token}`} className="flex-1 rounded bg-blue-600 py-2 text-center text-sm font-semibold text-white hover:bg-blue-700">
-              Sign In
+            <Link
+              href={`/login?redirect=/invitations/accept?token=${token}`}
+              className="flex min-h-11 flex-1 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            >
+              Masuk
             </Link>
-            <Link href={`/register?email=${encodeURIComponent(preview.invited_email)}`} className="flex-1 rounded border border-gray-300 py-2 text-center text-sm font-semibold transition hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800">
-              Register
+            <Link
+              href={`/register?email=${encodeURIComponent(preview.invited_email)}`}
+              className="flex min-h-11 flex-1 items-center justify-center rounded-md border border-border bg-surface text-sm font-semibold text-foreground transition hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            >
+              Daftar
             </Link>
           </div>
         </div>
       ) : !isEmailMatch ? (
-        <div role="alert" className="rounded border border-amber-300 bg-amber-50 p-4 text-center text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          You are currently logged in as <strong>{user.email}</strong>, but this invitation was sent to <strong>{preview.invited_email}</strong>. Please switch accounts to accept.
+        <div role="alert" className="rounded-md border border-warning/30 bg-warning/10 p-4 text-center text-sm text-warning font-medium">
+          Anda sedang masuk sebagai <strong>{user.email}</strong>, tetapi undangan ini dikirim ke <strong>{preview.invited_email}</strong>. Silakan ganti akun untuk menerima.
         </div>
       ) : (
         <div className="space-y-4">
           <button
+            type="button"
             onClick={handleAccept}
             disabled={accepting}
-            className="w-full rounded bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+            className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
           >
-            {accepting ? 'Joining workspace...' : `Accept & Join ${preview.workspace_name}`}
+            {accepting ? 'Sedang bergabung ke workspace...' : `Terima & Gabung ke ${preview.workspace_name}`}
           </button>
         </div>
       )}
@@ -122,10 +133,15 @@ function AcceptInvitationContent() {
 
 export default function AcceptInvitationPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10 dark:bg-gray-950">
-      <div className="w-full max-w-md space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <div className="w-full max-w-md space-y-6 rounded-xl border border-border bg-surface p-6 sm:p-8 shadow-xs">
         <div className="mx-auto w-36"><BrandLogo /></div>
-        <Suspense fallback={<div className="text-center">Loading...</div>}>
+        <Suspense fallback={
+          <div className="space-y-4 py-6 text-center" aria-live="polite">
+            <div className="h-6 w-3/4 mx-auto animate-pulse rounded bg-surface-subtle" />
+            <div className="h-10 w-full animate-pulse rounded bg-surface-subtle" />
+          </div>
+        }>
           <AcceptInvitationContent />
         </Suspense>
       </div>

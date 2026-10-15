@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Building2, Link as LinkIcon } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { api } from '../../lib/api-client';
+import { formatDateDisplay } from '../../lib/i18n-labels';
 import { BrandLogo } from '../../components/brand-logo';
 
 export default function OnboardingPage() {
@@ -25,8 +27,11 @@ export default function OnboardingPage() {
 
   if (loading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-md space-y-4 text-center" aria-live="polite">
+          <div className="h-8 w-3/4 mx-auto animate-pulse rounded bg-surface-subtle" />
+          <div className="h-20 w-full animate-pulse rounded bg-surface-subtle" />
+        </div>
       </div>
     );
   }
@@ -39,93 +44,123 @@ export default function OnboardingPage() {
     setResendStatus(null);
     try {
       await api.auth.resendVerification({ email: user.email });
-      setResendStatus('Verification email sent. Please check your inbox.');
+      setResendStatus('Email verifikasi telah dikirim. Silakan periksa kotak masuk Anda.');
     } catch {
-      setResendStatus('Failed to send verification email.');
+      setResendStatus('Gagal mengirim email verifikasi.');
     } finally {
       setResending(false);
     }
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 px-4 py-12 dark:bg-gray-950">
+    <main className="min-h-screen bg-background px-4 py-12">
       <div className="mx-auto max-w-2xl space-y-8">
         <header className="space-y-2 text-center">
           <div className="mx-auto w-36"><BrandLogo /></div>
-          <h1 className="text-3xl font-bold tracking-tight">Welcome to Floz, {user.full_name}!</h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Let&apos;s get you started. You can create your own workspace, join an existing team, or view pending invitations.
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Selamat datang di Floz, {user.full_name}!</h1>
+          <p className="text-sm text-muted-foreground">
+            Mari mulai penyiapan akun Anda. Anda dapat membuat workspace baru, bergabung dengan tim, atau meninjau undangan.
           </p>
         </header>
 
         {!isVerified && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            <div className="flex items-center justify-between">
+          <div className="rounded-xl border border-warning/30 bg-warning/10 p-4 text-warning">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <p className="font-semibold">Verify your email address</p>
-                <p className="text-sm">Please verify your email to create or join workspaces.</p>
+                <p className="font-semibold text-foreground">Verifikasi alamat email Anda</p>
+                <p className="text-sm text-muted-foreground">Silakan verifikasi email Anda untuk dapat membuat atau bergabung dengan workspace.</p>
               </div>
               <button
+                type="button"
                 onClick={handleResend}
                 disabled={resending}
-                className="rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                className="inline-flex min-h-11 items-center justify-center rounded-md bg-warning px-3 py-1.5 text-xs font-semibold text-warning-foreground transition hover:opacity-90 disabled:opacity-50"
               >
-                {resending ? 'Sending...' : 'Resend Email'}
+                {resending ? 'Sedang mengirim...' : 'Kirim Ulang Email'}
               </button>
             </div>
             {resendStatus && <p className="mt-2 text-xs font-medium">{resendStatus}</p>}
           </div>
         )}
 
-        <section className="space-y-3"><h2 className="text-xl font-bold">Pending Invitations</h2>{invitations.length === 0 ? <p className="text-sm text-gray-600 dark:text-gray-400">No pending invitations.</p> : <div className="space-y-2">{invitations.map((invitation) => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"><div><p className="font-semibold">{invitation.workspaceName}</p><p className="text-sm text-gray-600 dark:text-gray-400">{invitation.role} · Expires {new Date(invitation.expiresAt).toLocaleDateString()}</p></div><span className="text-sm text-gray-500">Use the invitation email link to accept</span></div>)}</div>}</section>
+        <section className="space-y-3">
+          <h2 className="text-lg font-bold text-foreground">Undangan Tertunda</h2>
+          {invitations.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-surface-subtle/50 p-6 text-center text-sm text-muted-foreground">
+              Tidak ada undangan yang tertunda saat ini.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {invitations.map((invitation) => (
+                <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-4 shadow-xs">
+                  <div>
+                    <p className="font-semibold text-foreground">{invitation.workspaceName}</p>
+                    <p className="text-sm text-muted-foreground">{invitation.role} · Kedaluwarsa {formatDateDisplay(invitation.expiresAt)}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Gunakan tautan pada email undangan untuk menerima</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         <div className="grid gap-6 sm:grid-cols-2">
           {/* Card 1: Create Workspace */}
-          <div className="flex flex-col justify-between rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-col justify-between rounded-xl border border-border bg-surface p-6 shadow-xs">
             <div className="space-y-2">
-              <div className="text-2xl">🏢</div>
-              <h2 className="text-xl font-bold">Create Workspace</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Start a fresh workspace for your team or organization. You&apos;ll be the Workspace Admin.
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Building2 className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <h2 className="text-lg font-bold text-foreground">Buat Ruang Kerja</h2>
+              <p className="text-sm text-muted-foreground">
+                Mulai ruang kerja baru untuk tim atau organisasi Anda. Anda akan menjadi Administrator Ruang Kerja.
               </p>
             </div>
             <div className="pt-6">
               <Link
                 href={isVerified ? '/onboarding/create-workspace' : '#'}
-                className={`block w-full rounded py-2.5 text-center text-sm font-semibold text-white transition ${
-                  isVerified ? 'bg-blue-600 hover:bg-blue-700' : 'cursor-not-allowed bg-gray-400'
+                className={`flex min-h-11 w-full items-center justify-center rounded-md py-2.5 text-center text-sm font-semibold transition ${
+                  isVerified
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs'
+                    : 'cursor-not-allowed bg-muted text-muted-foreground opacity-50'
                 }`}
               >
-                Create Workspace
+                Buat Ruang Kerja
               </Link>
             </div>
           </div>
 
           {/* Card 2: Join Workspace */}
-          <div className="flex flex-col justify-between rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-col justify-between rounded-xl border border-border bg-surface p-6 shadow-xs">
             <div className="space-y-2">
-              <div className="text-2xl">🔗</div>
-              <h2 className="text-xl font-bold">Join Workspace</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Join an existing workspace using a Join Code, Join Link, or exact Workspace ID.
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <LinkIcon className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <h2 className="text-lg font-bold text-foreground">Gabung ke Ruang Kerja</h2>
+              <p className="text-sm text-muted-foreground">
+                Gabung ke ruang kerja yang sudah ada menggunakan Kode Gabung atau ID Ruang Kerja.
               </p>
             </div>
             <div className="pt-6">
               <Link
                 href={isVerified ? '/join' : '#'}
-                className={`block w-full rounded border border-gray-300 py-2.5 text-center text-sm font-semibold transition dark:border-gray-700 ${
-                  isVerified ? 'hover:bg-gray-100 dark:hover:bg-gray-800' : 'cursor-not-allowed opacity-50'
+                className={`flex min-h-11 w-full items-center justify-center rounded-md border border-border py-2.5 text-center text-sm font-semibold text-foreground transition ${
+                  isVerified ? 'hover:bg-surface-subtle shadow-xs' : 'cursor-not-allowed opacity-50'
                 }`}
               >
-                Join with Code or ID
+                Gabung dengan Kode atau ID
               </Link>
             </div>
           </div>
         </div>
 
-        <div className="flex justify-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-          <button onClick={() => void logout()} className="hover:underline">
-            Sign out
+        <div className="flex justify-center gap-4 text-sm text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          >
+            Keluar
           </button>
         </div>
       </div>

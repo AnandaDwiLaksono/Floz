@@ -11,6 +11,15 @@
     "test": "pnpm -r --workspace-concurrency=1 test",
     "build": "pnpm -r build"
   },
+  "pnpm": {
+    "overrides": {
+      "next@15.5.27>postcss": "8.5.26",
+      "@esbuild-kit/core-utils>esbuild": "0.25.12"
+    },
+    "patchedDependencies": {
+      "braces@3.0.3": "patches/braces@3.0.3.patch"
+    }
+  },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.3.2",
     "@typescript-eslint/eslint-plugin": "^8.67.0",

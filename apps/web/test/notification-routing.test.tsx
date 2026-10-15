@@ -86,7 +86,7 @@ describe('Phase 10 Task 10 — Notification Deep-Link Routing & Accessibility', 
         />
       );
 
-      expect(screen.getByRole('heading', { name: /Notifications/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Notifikasi' })).toBeInTheDocument();
       expect(screen.getByText('Approval Requested')).toBeInTheDocument();
       expect(screen.getByText('Alice submitted Budget Q4 for review')).toBeInTheDocument();
       expect(screen.getByText('Mentioned in Task')).toBeInTheDocument();
@@ -97,6 +97,17 @@ describe('Phase 10 Task 10 — Notification Deep-Link Routing & Accessibility', 
       fireEvent.click(firstBtn!);
 
       expect(selectSpy).toHaveBeenCalledWith(mockNotifications[0]);
+    });
+
+    it('renders Indonesian relative time and unread copy', () => {
+      render(
+        <NotificationItem
+          notification={{ ...mockNotifications[0], created_at: new Date(Date.now() - 60_000).toISOString() }}
+          onSelect={vi.fn()}
+        />
+      );
+      expect(screen.getByText(/menit yang lalu|1 menit lalu/)).toBeInTheDocument();
+      expect(screen.getByText('Belum dibaca')).toBeInTheDocument();
     });
 
     it('renders distinct icons for approvals vs comments vs tasks without relying on color alone', () => {
@@ -130,7 +141,7 @@ describe('Phase 10 Task 10 — Notification Deep-Link Routing & Accessibility', 
       );
 
       expect(screen.getByText('Network error loading notifications')).toBeInTheDocument();
-      const retryBtn = screen.getByRole('button', { name: /Retry/i });
+      const retryBtn = screen.getByRole('button', { name: 'Coba lagi' });
       fireEvent.click(retryBtn);
       expect(retrySpy).toHaveBeenCalled();
     });

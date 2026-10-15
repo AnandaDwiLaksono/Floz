@@ -24,11 +24,8 @@ export async function getKpis(db: DatabaseClient, scope: ReportingScope): Promis
   const eligible = buildKpiEligiblePredicate();
   const operational = buildOperationalActivePredicate();
   const from = period.from.toISOString(), to = period.to.toISOString(), evaluationAt = scope.evaluationAt.toISOString();
-  const taskScope = scope.userId
-    ? sql`EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_id = tasks.id AND task_assignees.user_id = ${scope.userId})`
-    : scope.teamIds
-      ? scope.teamIds.length ? sql`tasks.team_id IN ${sql`(${sql.join(scope.teamIds.map((id) => sql`${id}`), sql`, `)})`}` : sql`false`
-      : sql`true`;
+  const assigneeScope = scope.userId ? sql`EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_id = tasks.id AND task_assignees.user_id = ${scope.userId})` : sql`true`;
+  const teamScope = scope.teamIds ? scope.teamIds.length ? sql`tasks.team_id IN ${sql`(${sql.join(scope.teamIds.map((id) => sql`${id}`), sql`, `)})`}` : sql`false` : sql`true`;
   const rows = await db.execute(sql`
     SELECT
       count(*) FILTER (WHERE tasks.due_at >= ${from} AND tasks.due_at < ${to})::int AS due,
@@ -38,7 +35,7 @@ export async function getKpis(db: DatabaseClient, scope: ReportingScope): Promis
       coalesce(avg(extract(epoch from (tasks.completed_at - tasks.created_at))) FILTER (WHERE tasks.completed_at IS NOT NULL AND tasks.completed_at <= ${evaluationAt} AND tasks.due_at >= ${from} AND tasks.due_at < ${to}), 0)::numeric AS average_seconds,
       count(*) FILTER (WHERE ${operational})::int AS workload
     FROM tasks JOIN task_statuses ON task_statuses.id = tasks.status_id
-    WHERE tasks.workspace_id = ${scope.workspaceId} AND ${eligible} AND ${taskScope}` as SQL);
+    WHERE tasks.workspace_id = ${scope.workspaceId} AND ${eligible} AND ${assigneeScope} AND ${teamScope}` as SQL);
   const row = rows[0] as unknown as KpiRow;
   const due = Number(row.due), completed = Number(row.completed), overdue = Number(row.overdue), onTime = Number(row.on_time);
   return { completion_rate: rate(completed, due), overdue_rate: rate(overdue, due), on_time_completion_rate: rate(onTime, completed), average_completion_time_seconds: Number(row.average_seconds).toString(), workload: Number(row.workload), denominators: { due, completed, overdue, onTime }, period, filters: { deleted: 'NULL', category: 'NOT_CANCELLED', due: 'CURRENT_DUE_AT', completion: 'CURRENT_COMPLETED_AT' } };

@@ -12,5 +12,5 @@
       "default": "./dist/index.js"
     }
   },
-  "devDependencies": {"typescript":"^5.8.2","vitest":"^3.0.8"}
+  "devDependencies": {"typescript":"^5.8.2","vitest":"4.1.11"}
 }

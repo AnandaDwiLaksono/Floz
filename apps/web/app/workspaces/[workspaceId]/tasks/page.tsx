@@ -15,7 +15,9 @@ import {
   Trash2,
   Users,
   Calendar,
+  X,
 } from 'lucide-react';
+import { formatStatusName, formatTransitionLabel, formatDateDisplay, formatDateTimeDisplay } from '../../../../lib/i18n-labels';
 
 export default function TasksPage() {
   const { workspaceId } = useParams() as { workspaceId: string };
@@ -46,8 +48,9 @@ export default function TasksPage() {
   const calAssigneeId = searchParams.get('cal_assignee_id');
   const returnTo = searchParams.get('return_to');
 
-  const calendarReturnUrl = useMemo(() => {
-    if (returnTo && returnTo.startsWith(`/workspaces/${workspaceId}/calendar`) && !returnTo.includes('//')) {
+  const contextReturnUrl = useMemo(() => {
+    const allowed = [`/workspaces/${workspaceId}/calendar`, `/workspaces/${workspaceId}/kanban`];
+    if (returnTo && allowed.some((path) => returnTo === path || returnTo.startsWith(`${path}?`)) && !returnTo.includes('//')) {
       return returnTo;
     }
     if (!calView && !calDate && !calTeamId && !calAssigneeId) return null;
@@ -71,15 +74,26 @@ export default function TasksPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Ephemeral UI State
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(Boolean(priority || team_id || assignee_id || due_from || due_to || overdue || sort !== '-created_at'));
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const createDialogRef = useRef<HTMLDivElement>(null);
   const createTriggerRef = useRef<HTMLButtonElement>(null);
   const wasCreateOpen = useRef(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const detailDialogRef = useRef<HTMLDivElement>(null);
+  const detailTriggerRef = useRef<HTMLElement | null>(null);
+  const wasDetailOpen = useRef(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [availableTransitions, setAvailableTransitions] = useState<{ to_status_id: string; code: string; name: string }[]>([]);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const [editValidationError, setEditValidationError] = useState<string | null>(null);
+  const listRequest = useRef(0);
+  const detailRequest = useRef(0);
+
+  useEffect(() => {
+    const request = detailRequest;
+    return () => { request.current++; };
+  }, [workspaceId]);
 
   // Form State - Create
   const [createTitle, setCreateTitle] = useState('');
@@ -115,6 +129,7 @@ export default function TasksPage() {
   // Load static metadata (workflows, teams, members)
   useEffect(() => {
     if (workspaceResolving || activeWorkspace?.id !== workspaceId) return;
+    let active = true;
     const loadMetadata = async () => {
       try {
         const [wfRes, teamRes, memRes] = await Promise.all([
@@ -122,6 +137,7 @@ export default function TasksPage() {
           api.workspaces.teams(workspaceId),
           api.workspaces.members(workspaceId),
         ]);
+        if (!active) return;
         setWorkflows(wfRes.data);
         setTeams(teamRes.data);
         setMembers(memRes.data);
@@ -130,11 +146,13 @@ export default function TasksPage() {
       }
     };
     loadMetadata();
+    return () => { active = false; };
   }, [activeWorkspace?.id, workspaceId, workspaceResolving]);
 
   // Load Task list on filter change
   const fetchTasks = useCallback(async (cursor?: string) => {
     if (workspaceResolving || activeWorkspace?.id !== workspaceId) return;
+    const id = ++listRequest.current;
     if (cursor) {
       setLoadingMore(true);
     } else {
@@ -150,12 +168,13 @@ export default function TasksPage() {
         team_id,
         due_from: due_from || undefined,
         due_to: due_to || undefined,
-        bucket: bucket || undefined,
+        bucket: bucket || 'active',
         overdue: overdue === 'true' ? 'true' : undefined,
         sort,
         limit: 10,
         cursor,
       });
+      if (id !== listRequest.current) return;
       if (cursor) {
         setTasks((prev) => [...prev, ...res.data]);
       } else {
@@ -164,16 +183,21 @@ export default function TasksPage() {
       setHasMore(res.meta.pagination.has_more);
       setNextCursor(res.meta.pagination.next_cursor);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to load tasks';
+      if (id !== listRequest.current) return;
+      const msg = err instanceof Error ? err.message : 'Tugas belum dapat dimuat';
       setError(msg);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (id === listRequest.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, [activeWorkspace?.id, workspaceId, workspaceResolving, q, status_id, priority, assignee_id, team_id, due_from, due_to, bucket, overdue, sort]);
 
   useEffect(() => {
-    fetchTasks();
+    const request = listRequest;
+    void fetchTasks();
+    return () => { request.current++; };
   }, [fetchTasks]);
 
   const updateFilters = (newParams: Record<string, string>) => {
@@ -186,8 +210,19 @@ export default function TasksPage() {
     router.push(`/workspaces/${workspaceId}/tasks?${params.toString()}`);
   };
 
+  const handleCloseDetail = useCallback(() => {
+    detailRequest.current++;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('selected_task_id');
+    params.delete('edit_schedule');
+    setSelectedTask(null);
+    router.push(contextReturnUrl || `/workspaces/${workspaceId}/tasks${params.size ? `?${params}` : ''}`);
+  }, [router, searchParams, workspaceId, contextReturnUrl]);
+
   // Open Detail & load transitions/history
-  const handleOpenDetail = useCallback(async (task: Task) => {
+  const handleOpenDetail = useCallback(async (task: Task, id = ++detailRequest.current) => {
+    if (id !== detailRequest.current) return;
+    detailTriggerRef.current = document.activeElement as HTMLElement;
     setSelectedTask(task);
     setIsEditMode(editSchedule === '1');
     setConflictError(null);
@@ -198,9 +233,10 @@ export default function TasksPage() {
     setEditPriority(task.priority);
     setEditStartAt(task.start_at ? task.start_at.substring(0, 16) : '');
     setEditDueAt(task.due_at ? task.due_at.substring(0, 16) : '');
+    setAvailableTransitions([]);
     try {
       const transRes = await api.tasks.availableTransitions(workspaceId, task.id);
-      setAvailableTransitions(transRes.data);
+      if (id === detailRequest.current) setAvailableTransitions(transRes.data);
     } catch (err) {
       console.error('Failed to load transitions', err);
     }
@@ -224,18 +260,44 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (!selectedTaskId) return;
-    void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data));
+    const request = detailRequest;
+    const id = ++detailRequest.current;
+    void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data, id)).catch(console.error);
+    return () => { request.current++; };
   }, [workspaceId, selectedTaskId, handleOpenDetail]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && selectedTask) {
-        setSelectedTask(null);
+    if (!selectedTask) {
+      if (wasDetailOpen.current) detailTriggerRef.current?.focus();
+      wasDetailOpen.current = false;
+      return;
+    }
+    wasDetailOpen.current = true;
+    const dialog = detailDialogRef.current;
+    const focusable = dialog?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    focusable?.[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handleCloseDetail();
+        return;
+      }
+      if (event.key !== 'Tab' || !focusable?.length) return;
+      const items = Array.from(focusable);
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedTask]);
+    dialog?.addEventListener('keydown', onKeyDown);
+    return () => dialog?.removeEventListener('keydown', onKeyDown);
+  }, [handleCloseDetail, selectedTask]);
 
   useEffect(() => {
     if (!isCreateOpen) {
@@ -271,11 +333,14 @@ export default function TasksPage() {
   }, [isCreateOpen]);
 
   const handleRefreshDetail = async (id: string) => {
+    const request = ++detailRequest.current;
     try {
       const res = await api.tasks.get(workspaceId, id);
+      if (request !== detailRequest.current) return;
       setSelectedTask(res.data);
       setAssigneeList(res.data.assignees.map((a) => ({ user_id: a.user_id, is_primary: a.is_primary })));
       const transRes = await api.tasks.availableTransitions(workspaceId, id);
+      if (request !== detailRequest.current) return;
       setAvailableTransitions(transRes.data);
       // Update item in list
       setTasks((prev) => prev.map((t) => (t.id === id ? res.data : t)));
@@ -294,13 +359,13 @@ export default function TasksPage() {
         const interval = Number(createInterval);
         const occurrenceLimit = createOccurrenceLimit ? Number(createOccurrenceLimit) : undefined;
         if (!createStartAt || !createTimezone || !Number.isInteger(interval) || interval < 1) {
-          throw new Error('Recurring tasks require a start, timezone, and positive integer interval.');
+          throw new Error('Tugas berulang memerlukan waktu mulai, zona waktu, dan interval bilangan bulat positif.');
         }
         if (occurrenceLimit !== undefined && (!Number.isInteger(occurrenceLimit) || occurrenceLimit < 1)) {
-          throw new Error('Occurrence count must be a positive integer.');
+          throw new Error('Jumlah kemunculan harus berupa bilangan bulat positif.');
         }
         if (createEndDate && occurrenceLimit !== undefined) {
-          throw new Error('Choose an end date or occurrence count, not both.');
+          throw new Error('Pilih tanggal akhir atau jumlah kemunculan, bukan keduanya.');
         }
         const primaryAssignee = assignees.find((a) => a.is_primary);
         await api.tasks.createRecurring(workspaceId, {
@@ -349,7 +414,7 @@ export default function TasksPage() {
        setCreateOccurrenceLimit('');
        fetchTasks();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create task';
+      const msg = err instanceof Error ? err.message : 'Tugas belum dapat dibuat';
       setCreateValidationError(msg);
     }
   };
@@ -362,7 +427,7 @@ export default function TasksPage() {
     setEditValidationError(null);
 
     if (editStartAt && editDueAt && editStartAt > editDueAt) {
-      setEditValidationError('Start date must be before or equal to due date.');
+      setEditValidationError('Waktu mulai harus sebelum atau sama dengan tenggat.');
       return;
     }
 
@@ -382,7 +447,7 @@ export default function TasksPage() {
       if (err instanceof ApiError && err.status === 409) {
         setConflictError('VERSION_CONFLICT');
       } else {
-        const msg = err instanceof Error ? err.message : 'Update failed';
+        const msg = err instanceof Error ? err.message : 'Tugas belum dapat diperbarui';
         setEditValidationError(msg);
       }
     }
@@ -401,7 +466,7 @@ export default function TasksPage() {
       if (err instanceof ApiError && err.status === 409) {
         setConflictError('VERSION_CONFLICT');
       } else {
-        const msg = err instanceof Error ? err.message : 'Transition failed';
+        const msg = err instanceof Error ? err.message : 'Status belum dapat diubah';
         alert(msg);
       }
     }
@@ -421,7 +486,7 @@ export default function TasksPage() {
       if (err instanceof ApiError && err.status === 409) {
         setConflictError('VERSION_CONFLICT');
       } else {
-        const msg = err instanceof Error ? err.message : 'Assignment failed';
+        const msg = err instanceof Error ? err.message : 'Penanggung jawab belum dapat diperbarui';
         alert(msg);
       }
     }
@@ -430,7 +495,7 @@ export default function TasksPage() {
   // Mutations - Soft Delete
   const handleDelete = async () => {
     if (!selectedTask) return;
-    if (!confirm('Are you sure you want to delete/archive this task?')) return;
+    if (!confirm('Hapus atau arsipkan tugas ini?')) return;
     try {
       await api.tasks.delete(workspaceId, selectedTask.id, selectedTask.version);
       setSelectedTask(null);
@@ -439,7 +504,7 @@ export default function TasksPage() {
       if (err instanceof ApiError && err.status === 409) {
         setConflictError('VERSION_CONFLICT');
       } else {
-        const msg = err instanceof Error ? err.message : 'Delete failed';
+        const msg = err instanceof Error ? err.message : 'Tugas belum dapat dihapus';
         alert(msg);
       }
     }
@@ -448,193 +513,92 @@ export default function TasksPage() {
   const activeWorkflow = workflows[0];
   const allStatuses = activeWorkflow?.statuses || [];
 
+  const hasActiveFilters = Boolean(q || status_id || priority || team_id || assignee_id || due_from || due_to || overdue || sort !== '-created_at' || bucket === 'completed');
+
   return (
-    <div className="space-y-6">
-      {/* Header Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+    <div className="min-w-0 space-y-6 text-foreground">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Tasks</h2>
-          <p className="text-sm text-gray-500">Manage, organize, and execute workspace items.</p>
+          <p className="text-sm font-medium text-muted-foreground">Ruang kerja</p>
+          <h2 className="text-2xl font-semibold tracking-tight">Tugas</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Atur pekerjaan tim, tenggat, dan penanggung jawab dalam satu tempat.</p>
         </div>
         <button
           ref={createTriggerRef}
-          onClick={() => {
-            setCreateValidationError(null);
-            setIsCreateOpen(true);
-          }}
-          className="inline-flex items-center justify-center px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition"
+          type="button"
+          onClick={() => { setCreateValidationError(null); setIsCreateOpen(true); }}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          <Plus className="h-4 w-4 mr-2" />
-          <span>New Task</span>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          <span>Buat tugas</span>
         </button>
-      </div>
+      </header>
 
-      {/* Bucket Tabs */}
-      <div className="flex gap-2">
-        <button type="button" aria-pressed={!bucket || bucket === 'active'} onClick={() => updateFilters({ bucket: 'active' })} className={`px-3 py-1.5 text-sm font-medium rounded-md ${!bucket || bucket === 'active' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'}`}>Active</button>
-        <button type="button" aria-pressed={bucket === 'completed'} onClick={() => updateFilters({ bucket: 'completed' })} className={`px-3 py-1.5 text-sm font-medium rounded-md ${bucket === 'completed' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'}`}>Completed</button>
-      </div>
+      <nav aria-label="Kelompok tugas" className="flex gap-1 border-b border-border">
+        <button type="button" aria-pressed={!bucket || bucket === 'active'} onClick={() => updateFilters({ bucket: 'active' })} className={`min-h-11 border-b-2 px-3 text-sm font-medium ${!bucket || bucket === 'active' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Aktif</button>
+        <button type="button" aria-pressed={bucket === 'completed'} onClick={() => updateFilters({ bucket: 'completed' })} className={`min-h-11 border-b-2 px-3 text-sm font-medium ${bucket === 'completed' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Selesai</button>
+      </nav>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 space-y-4 shadow-sm">
-        <div className="flex flex-col md:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-            <input type="text" placeholder="Search by title or key..." value={q} onChange={(e) => updateFilters({ q: e.target.value })} className="pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500" />
+      <section aria-label="Filter tugas" className="space-y-3 rounded-lg border border-border bg-surface p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="relative min-w-0 flex-1">
+            <label htmlFor="task-search" className="mb-1 block text-xs font-medium text-muted-foreground">Cari tugas</label>
+            <Search className="pointer-events-none absolute left-3 top-9 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <input id="task-search" type="text" placeholder="Cari judul atau kode" value={q} onChange={(e) => updateFilters({ q: e.target.value })} className="min-h-11 w-full rounded-md border border-border bg-surface px-3 pl-9 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary" />
           </div>
-          <div className="w-full md:w-48">
-            <select aria-label="Status filter" value={status_id} onChange={(e) => updateFilters({ status_id: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
-              <option value="">All Statuses</option>
-              {allStatuses.map((st) => (<option key={st.id} value={st.id}>{st.name}</option>))}
+          <div className="sm:w-52">
+            <label htmlFor="task-status-filter" className="mb-1 block text-xs font-medium text-muted-foreground">Status</label>
+            <select id="task-status-filter" aria-label="Status filter" value={status_id} onChange={(e) => updateFilters({ status_id: e.target.value })} className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              <option value="">Semua status</option>
+              {allStatuses.map((st) => (<option key={st.id} value={st.id}>{formatStatusName(st.name)}</option>))}
             </select>
           </div>
-          <div className="w-full md:w-40">
-            <select aria-label="Priority filter" value={priority} onChange={(e) => updateFilters({ priority: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
-              <option value="">All Priorities</option>
-              <option value="LOW">Low</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="HIGH">High</option>
-              <option value="URGENT">Urgent</option>
-            </select>
-          </div>
-          <div className="w-full md:w-48">
-            <select aria-label="Team filter" value={team_id} onChange={(e) => updateFilters({ team_id: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
-              <option value="">All Teams</option>
-              {teams.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
-            </select>
-          </div>
-          <div className="w-full md:w-48">
-            <select aria-label="Assignee filter" value={assignee_id} onChange={(e) => updateFilters({ assignee_id: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
-              <option value="">All Assignees</option>
-              {members.map((m) => (<option key={m.user_id} value={m.user_id}>{m.full_name || m.user_id}</option>))}
-            </select>
-          </div>
-          <div className="w-full md:w-48">
-            <select aria-label="Sort order" value={sort} onChange={(e) => updateFilters({ sort: e.target.value })} className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md w-full dark:bg-gray-800 focus:ring-1 focus:ring-blue-500">
-              <option value="-created_at">Newest Created</option>
-              <option value="created_at">Oldest Created</option>
-              <option value="due_at">Due Date (Asc)</option>
-              <option value="-due_at">Due Date (Desc)</option>
-              <option value="task_key">Task Key (Asc)</option>
-              <option value="-task_key">Task Key (Desc)</option>
-            </select>
-          </div>
+          <button type="button" aria-expanded={showAdvancedFilters} onClick={() => setShowAdvancedFilters((open) => !open)} className="min-h-11 rounded-md border border-border px-3 text-sm font-medium text-foreground hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Filter lainnya</button>
         </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label htmlFor="filter_due_from" className="text-xs font-medium text-gray-500">Due from</label>
-            <input id="filter_due_from" aria-label="Due from" type="date" value={due_from ? due_from.substring(0, 10) : ''} onChange={(e) => updateFilters({ due_from: e.target.value ? `${e.target.value}T00:00:00.000Z` : '' })} className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-800" />
-          </div>
-          <div className="flex items-center gap-2">
-            <label htmlFor="filter_due_to" className="text-xs font-medium text-gray-500">Due to</label>
-            <input id="filter_due_to" aria-label="Due to" type="date" value={due_to ? due_to.substring(0, 10) : ''} onChange={(e) => updateFilters({ due_to: e.target.value ? `${e.target.value}T23:59:59.999Z` : '' })} className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-800" />
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" aria-label="Overdue only" checked={overdue === 'true'} onChange={(e) => updateFilters({ overdue: e.target.checked ? 'true' : '' })} className="rounded border-gray-300 text-red-600 focus:ring-red-500" />
-            <span className="text-xs font-semibold text-red-700 dark:text-red-400">Overdue only</span>
-          </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <select aria-label="Priority filter" value={priority} onChange={(e) => updateFilters({ priority: e.target.value })} className="min-h-11 rounded-md border border-border bg-surface px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <option value="">Semua prioritas</option><option value="LOW">Rendah</option><option value="MEDIUM">Sedang</option><option value="HIGH">Tinggi</option><option value="URGENT">Mendesak</option>
+          </select>
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-danger"><input type="checkbox" aria-label="Overdue only" checked={overdue === 'true'} onChange={(e) => updateFilters({ overdue: e.target.checked ? 'true' : '' })} className="h-4 w-4 rounded border-border text-danger focus:ring-danger" /> Terlambat saja</label>
+          {hasActiveFilters && <button type="button" onClick={() => router.push(`/workspaces/${workspaceId}/tasks`)} className="min-h-11 px-2 text-sm font-medium text-primary hover:underline">Hapus semua filter</button>}
         </div>
-      </div>
+        {showAdvancedFilters && (
+          <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div><label htmlFor="filter_due_from" className="mb-1 block text-xs font-medium text-muted-foreground">Tenggat mulai</label><input id="filter_due_from" aria-label="Tenggat mulai" type="date" value={due_from ? due_from.substring(0, 10) : ''} onChange={(e) => updateFilters({ due_from: e.target.value ? `${e.target.value}T00:00:00.000Z` : '' })} className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm" /></div>
+            <div><label htmlFor="filter_due_to" className="mb-1 block text-xs font-medium text-muted-foreground">Tenggat sampai</label><input id="filter_due_to" aria-label="Tenggat sampai" type="date" value={due_to ? due_to.substring(0, 10) : ''} onChange={(e) => updateFilters({ due_to: e.target.value ? `${e.target.value}T23:59:59.999Z` : '' })} className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm" /></div>
+            <div><label htmlFor="task-team-filter" className="mb-1 block text-xs font-medium text-muted-foreground">Tim</label><select id="task-team-filter" aria-label="Team filter" value={team_id} onChange={(e) => updateFilters({ team_id: e.target.value })} className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"><option value="">Semua tim</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+            <div><label htmlFor="task-assignee-filter" className="mb-1 block text-xs font-medium text-muted-foreground">Penanggung jawab</label><select id="task-assignee-filter" aria-label="Assignee filter" value={assignee_id} onChange={(e) => updateFilters({ assignee_id: e.target.value })} className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"><option value="">Semua orang</option>{members.map((m) => <option key={m.user_id} value={m.user_id}>{m.full_name || m.user_id}</option>)}</select></div>
+            <div className="sm:col-span-2 lg:col-span-1"><label htmlFor="task-sort-filter" className="mb-1 block text-xs font-medium text-muted-foreground">Urutkan</label><select id="task-sort-filter" aria-label="Sort order" value={sort} onChange={(e) => updateFilters({ sort: e.target.value })} className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"><option value="-created_at">Terbaru dibuat</option><option value="created_at">Terlama dibuat</option><option value="due_at">Tenggat terdekat</option><option value="-due_at">Tenggat terjauh</option><option value="task_key">Kode A-Z</option><option value="-task_key">Kode Z-A</option></select></div>
+          </div>
+        )}
+      </section>
 
-      {/* Task Rows & States */}
       {loading && tasks.length === 0 ? (
-        <div className="space-y-3">
-          {[...Array(3)].map((_, i) => (
-            <div
-              key={i}
-              className="h-16 w-full animate-pulse bg-gray-150 dark:bg-gray-800 rounded-lg"
-            />
-          ))}
-        </div>
+        <div aria-label="Memuat tugas" className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-lg bg-surface-subtle" />)}</div>
       ) : error ? (
-        <div className="bg-red-50 dark:bg-red-950/50 border-l-4 border-red-500 p-4 rounded text-red-700 dark:text-red-300">
-          <p className="font-bold flex items-center">
-            <AlertCircle className="h-5 w-5 mr-2" />
-            <span>Error</span>
-          </p>
-          <p>{error}</p>
-        </div>
+        <div role="alert" className="rounded-lg border border-danger/30 bg-danger/10 p-4"><p className="flex items-center gap-2 font-semibold text-danger"><AlertCircle className="h-5 w-5" aria-hidden="true" />Tugas belum dapat dimuat</p><p className="mt-1 text-sm text-muted-foreground">{error}</p><button type="button" onClick={() => fetchTasks()} className="mt-3 min-h-11 rounded-md border border-border px-3 text-sm font-medium hover:bg-surface">Coba lagi</button></div>
       ) : tasks.length === 0 ? (
-        <div className="text-center py-12 border-2 border-dashed border-gray-200 dark:border-gray-850 rounded-lg bg-white dark:bg-gray-900">
-          <CheckCircle2 className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-4 text-sm font-semibold text-gray-950 dark:text-gray-100">
-            No tasks found
-          </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Get started by creating a new work item.
-          </p>
-        </div>
+        <div className="rounded-lg border border-dashed border-border bg-surface p-8 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-muted-foreground" aria-hidden="true" /><h3 className="mt-3 font-semibold">{hasActiveFilters ? 'Tidak ada tugas yang cocok' : 'Belum ada tugas'}</h3><p className="mt-1 text-sm text-muted-foreground">{hasActiveFilters ? 'Coba ubah atau hapus filter.' : 'Buat tugas pertama untuk mulai bekerja.'}</p>{hasActiveFilters && <button type="button" onClick={() => router.push(`/workspaces/${workspaceId}/tasks`)} className="mt-4 min-h-11 rounded-md border border-border px-3 text-sm font-medium hover:bg-surface-subtle">Hapus semua filter</button>}</div>
       ) : (
         <div className="space-y-3">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden shadow-sm">
-            <ul className="divide-y divide-gray-200 dark:divide-gray-850">
-              {tasks.map((task) => (
-                <li
-                  key={task.id}
-                  onClick={() => { void api.tasks.get(workspaceId, task.id).then((res) => handleOpenDetail(res.data)); }}
-                  className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition cursor-pointer flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
-                        {task.task_key}
-                      </span>
-                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                        {task.title}
-                      </h4>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                      <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-medium">
-                        {task.status.name}
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-medium">
-                        {task.priority}
-                      </span>
-                      {task.due_at && (
-                        <span className="flex items-center space-x-1">
-                          <Clock className="h-3 w-3" />
-                          <span>Due {new Date(task.due_at).toLocaleDateString()}</span>
-                        </span>
-                      )}
-                      {task.is_overdue && (
-                        <span className="px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 font-bold">
-                          Overdue
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2 self-start sm:self-auto">
-                    {task.assignees.map((a) => (
-                      <div
-                        key={a.user_id}
-                        title={`${a.full_name} ${a.is_primary ? '(Primary)' : ''}`}
-                        className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold ${
-                          a.is_primary
-                            ? 'bg-blue-600 text-white ring-2 ring-blue-300'
-                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600'
-                        }`}
-                      >
-                        {a.full_name.charAt(0).toUpperCase()}
-                      </div>
-                    ))}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Load More Keyset Pagination */}
-          {hasMore && (
-            <div className="flex justify-center pt-4">
-              <button
-                onClick={() => fetchTasks(nextCursor || undefined)}
-                disabled={loadingMore}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition"
-              >
-                {loadingMore ? 'Loading...' : 'Load More'}
-              </button>
-            </div>
-          )}
+          <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+            {tasks.map((task) => (
+              <li key={task.id} className="flex flex-col gap-3 p-4 transition hover:bg-surface-subtle sm:flex-row sm:items-center sm:justify-between">
+                <button type="button" aria-label={`Buka tugas ${task.title}`} onClick={() => { const id = ++detailRequest.current; void api.tasks.get(workspaceId, task.id).then((res) => handleOpenDetail(res.data, id)).catch(console.error); }} className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  <span className="text-xs font-semibold text-primary">{task.task_key}</span>
+                  <span className="mt-1 block truncate text-base font-semibold">{task.title}</span>
+                  <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                    <span>{formatStatusName(task.status.name)}</span><span>{task.priority === 'LOW' ? 'Rendah' : task.priority === 'MEDIUM' ? 'Sedang' : task.priority === 'HIGH' ? 'Tinggi' : 'Mendesak'}</span>
+                    {task.due_at && <span className={`inline-flex items-center gap-1 font-medium ${task.is_overdue ? 'text-danger' : 'text-foreground'}`}><Clock className="h-4 w-4" aria-hidden="true" />{task.is_overdue ? 'Terlambat' : 'Tenggat'} {formatDateDisplay(task.due_at)}</span>}
+                  </span>
+                </button>
+                <div className="flex items-center gap-2 self-start sm:self-auto" aria-label="Penanggung jawab">
+                  {task.assignees.map((a) => <span key={a.user_id} title={`${a.full_name} ${a.is_primary ? '(Utama)' : ''}`} className={`grid h-9 w-9 place-items-center rounded-full text-xs font-semibold ${a.is_primary ? 'bg-primary text-primary-foreground' : 'bg-surface-subtle text-muted-foreground'}`}>{a.full_name.charAt(0).toUpperCase()}</span>)}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {hasMore && <div className="flex justify-center"><button type="button" onClick={() => fetchTasks(nextCursor || undefined)} disabled={loadingMore} className="min-h-11 rounded-md border border-border px-4 text-sm font-semibold hover:bg-surface-subtle disabled:opacity-50">{loadingMore ? 'Memuat...' : 'Muat lebih banyak'}</button></div>}
         </div>
       )}
 
@@ -642,17 +606,17 @@ export default function TasksPage() {
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/50" onClick={() => setIsCreateOpen(false)} />
-          <div ref={createDialogRef} role="dialog" aria-modal="true" aria-labelledby="create-task-title" className="relative w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
-            <h3 id="create-task-title" className="text-lg font-bold mb-4">Create Task</h3>
+          <div ref={createDialogRef} role="dialog" aria-modal="true" aria-labelledby="create-task-title" className="relative w-full max-w-lg bg-surface border border-border p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
+            <h3 id="create-task-title" className="text-lg font-bold mb-4">Buat tugas</h3>
             <form onSubmit={handleCreate} className="space-y-4">
               {createValidationError && (
-                <div className="bg-red-50 dark:bg-red-950/50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700 dark:text-red-300">
+                <div className="border border-danger/30 bg-danger/10 p-3 rounded text-sm text-danger">
                   {createValidationError}
                 </div>
               )}
               <div>
-                <label htmlFor="title" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                  Title
+                <label htmlFor="title" className="block text-sm font-semibold mb-1 text-foreground">
+                  Judul
                 </label>
                 <input
                   id="title"
@@ -660,48 +624,48 @@ export default function TasksPage() {
                   required
                   value={createTitle}
                   onChange={(e) => setCreateTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary"
                 />
               </div>
               <div>
-                <label htmlFor="description" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                  Description
+                <label htmlFor="description" className="block text-sm font-semibold mb-1 text-foreground">
+                  Deskripsi
                 </label>
                 <textarea
                   id="description"
                   value={createDescription}
                   onChange={(e) => setCreateDescription(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 h-20"
+                  className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary h-20"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="priority" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                    Priority
+                  <label htmlFor="priority" className="block text-sm font-semibold mb-1 text-foreground">
+                    Prioritas
                   </label>
                   <select
                     id="priority"
                     value={createPriority}
                     onChange={(e) => setCreatePriority(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary"
                   >
-                    <option value="LOW">Low</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HIGH">High</option>
-                    <option value="URGENT">Urgent</option>
+                    <option value="LOW">Rendah</option>
+                    <option value="MEDIUM">Sedang</option>
+                    <option value="HIGH">Tinggi</option>
+                    <option value="URGENT">Mendesak</option>
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="team_id" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                    Team
+                  <label htmlFor="team_id" className="block text-sm font-semibold mb-1 text-foreground">
+                    Tim
                   </label>
                   <select
                     id="team_id"
                     value={createTeamId}
                     onChange={(e) => setCreateTeamId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary"
                   >
-                    <option value="">None</option>
+                    <option value="">Tanpa tim</option>
                     {teams.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name}
@@ -710,29 +674,29 @@ export default function TasksPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="start_at" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                    Start Date
+                  <label htmlFor="start_at" className="block text-sm font-semibold mb-1 text-foreground">
+                    Mulai
                   </label>
                   <input
                     id="start_at"
                     type="datetime-local"
                     value={createStartAt}
                     onChange={(e) => setCreateStartAt(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary"
                   />
                 </div>
                 <div>
-                  <label htmlFor="due_at" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                    Due Date
+                  <label htmlFor="due_at" className="block text-sm font-semibold mb-1 text-foreground">
+                    Tenggat
                   </label>
                   <input
                     id="due_at"
                     type="datetime-local"
                     value={createDueAt}
                     onChange={(e) => setCreateDueAt(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
@@ -742,48 +706,48 @@ export default function TasksPage() {
                   type="checkbox"
                   checked={createRecurring}
                   onChange={(e) => setCreateRecurring(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-border text-primary focus:ring-primary"
                 />
-                <label htmlFor="enable_recurring" className="text-sm font-semibold text-gray-700 dark:text-gray-300">Enable recurring</label>
+                <label htmlFor="enable_recurring" className="text-sm font-semibold text-foreground">Tugas berulang</label>
               </div>
               {createRecurring && (
                 <div className="space-y-4 border rounded-md p-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label htmlFor="recurrence_frequency" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Frequency</label>
-                      <select id="recurrence_frequency" value={createFrequency} onChange={(e) => setCreateFrequency(e.target.value as 'DAILY' | 'WEEKLY' | 'MONTHLY')} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800">
-                        <option value="DAILY">Daily</option>
-                        <option value="WEEKLY">Weekly</option>
-                        <option value="MONTHLY">Monthly</option>
+                      <label htmlFor="recurrence_frequency" className="block text-sm font-semibold mb-1 text-foreground">Frekuensi</label>
+                      <select id="recurrence_frequency" value={createFrequency} onChange={(e) => setCreateFrequency(e.target.value as 'DAILY' | 'WEEKLY' | 'MONTHLY')} className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface">
+                        <option value="DAILY">Harian</option>
+                        <option value="WEEKLY">Mingguan</option>
+                        <option value="MONTHLY">Bulanan</option>
                       </select>
                     </div>
                     <div>
-                      <label htmlFor="recurrence_interval" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Interval</label>
-                      <input id="recurrence_interval" type="number" min="1" step="1" required value={createInterval} onChange={(e) => setCreateInterval(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800" />
+                      <label htmlFor="recurrence_interval" className="block text-sm font-semibold mb-1 text-foreground">Interval</label>
+                      <input id="recurrence_interval" type="number" min="1" step="1" required value={createInterval} onChange={(e) => setCreateInterval(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface" />
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="recurrence_timezone" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Recurrence timezone</label>
-                    <input id="recurrence_timezone" type="text" required value={createTimezone} onChange={(e) => setCreateTimezone(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800" />
+                    <label htmlFor="recurrence_timezone" className="block text-sm font-semibold mb-1 text-foreground">Zona waktu pengulangan</label>
+                    <input id="recurrence_timezone" type="text" required value={createTimezone} onChange={(e) => setCreateTimezone(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface" />
                   </div>
-                  <p className="text-sm text-gray-500">Start uses the task start date. CUSTOM recurrence is not supported.</p>
-                  <div className="grid grid-cols-2 gap-4">
+                  <p className="text-sm text-muted-foreground">Pengulangan dimulai dari tanggal mulai tugas. Pola kustom belum didukung.</p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label htmlFor="recurrence_end_date" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">End date</label>
-                      <input id="recurrence_end_date" type="date" disabled={Boolean(createOccurrenceLimit)} value={createEndDate} onChange={(e) => setCreateEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 disabled:opacity-50" />
+                      <label htmlFor="recurrence_end_date" className="block text-sm font-semibold mb-1 text-foreground">Tanggal akhir</label>
+                      <input id="recurrence_end_date" type="date" disabled={Boolean(createOccurrenceLimit)} value={createEndDate} onChange={(e) => setCreateEndDate(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface disabled:opacity-50" />
                     </div>
                     <div>
-                      <label htmlFor="recurrence_occurrence_limit" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Occurrence count</label>
-                      <input id="recurrence_occurrence_limit" type="number" min="1" step="1" disabled={Boolean(createEndDate)} value={createOccurrenceLimit} onChange={(e) => setCreateOccurrenceLimit(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 disabled:opacity-50" />
+                      <label htmlFor="recurrence_occurrence_limit" className="block text-sm font-semibold mb-1 text-foreground">Jumlah kemunculan</label>
+                      <input id="recurrence_occurrence_limit" type="number" min="1" step="1" disabled={Boolean(createEndDate)} value={createOccurrenceLimit} onChange={(e) => setCreateOccurrenceLimit(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface disabled:opacity-50" />
                     </div>
                   </div>
                 </div>
               )}
               <div>
-                <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                  Assignees
+                <label className="block text-sm font-semibold mb-1 text-foreground">
+                  Penanggung jawab
                 </label>
-                <div className="space-y-2 border rounded-md p-3 max-h-40 overflow-y-auto dark:border-gray-700">
+                <div className="space-y-2 border rounded-md p-3 max-h-40 overflow-y-auto border-border">
                   {members.map((m) => {
                     const cur = createAssignees.find((a) => a.user_id === m.user_id);
                     return (
@@ -806,7 +770,7 @@ export default function TasksPage() {
                                 });
                               }
                             }}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            className="rounded border-border text-primary focus:ring-primary"
                           />
                           <span>{m.full_name || m.user?.full_name || m.user_id}</span>
                         </label>
@@ -819,29 +783,29 @@ export default function TasksPage() {
                               );
                             }}
                             className={`text-xs px-2 py-0.5 rounded font-bold ${
-                              cur.is_primary ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                              cur.is_primary ? 'bg-primary text-primary-foreground' : 'bg-surface-subtle text-muted-foreground'
                             }`}
                           >
-                            {cur.is_primary ? 'Primary' : 'Make Primary'}
+                            {cur.is_primary ? 'Utama' : 'Jadikan utama'}
                           </button>
                         )}
                       </div>
                     );
                   })}
-                  {members.length === 0 && <p className="text-xs text-gray-500">No members found.</p>}
+                  {members.length === 0 && <p className="text-xs text-muted-foreground">Tidak ada anggota.</p>}
                 </div>
               </div>
               <div>
-                <label htmlFor="initial_status" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                  Initial Status
+                <label htmlFor="initial_status" className="block text-sm font-semibold mb-1 text-foreground">
+                  Status awal
                 </label>
                 <select
                   id="initial_status"
                   value={createStatusId}
                   onChange={(e) => setCreateStatusId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary"
                 >
-                  <option value="">Default (Initial)</option>
+                  <option value="">Default (Awal)</option>
                   {allStatuses.map((st) => (
                     <option key={st.id} value={st.id}>
                       {st.name}
@@ -853,15 +817,15 @@ export default function TasksPage() {
                 <button
                   type="button"
                   onClick={() => setIsCreateOpen(false)}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                  className="px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-subtle hover:bg-surface-subtle"
                 >
-                  Cancel
+                  Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-bold"
+                  className="min-h-11 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
                 >
-                  Create
+                  Buat
                 </button>
               </div>
             </form>
@@ -872,137 +836,52 @@ export default function TasksPage() {
       {/* TASK DETAIL / EDIT MODAL */}
       {selectedTask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setSelectedTask(null)} />
-          <div role="dialog" aria-modal="true" aria-label="Task details" className="relative w-full max-w-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
+          <div className="fixed inset-0 bg-black/50" onClick={handleCloseDetail} />
+          <div ref={detailDialogRef} role="dialog" aria-modal="true" aria-label="Detail tugas" className="relative max-h-[min(90dvh,48rem)] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto rounded-lg border border-border bg-surface p-4 shadow-xl sm:p-6">
             {conflictError && (
-              <div role="alert" className="bg-orange-50 dark:bg-orange-950/50 border-l-4 border-orange-500 p-4 rounded mb-4 text-orange-700 dark:text-orange-300 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div>
-                  <p className="font-bold">VERSION_CONFLICT</p>
-                  <p className="text-sm">This task has been modified by another user. Reload state to continue.</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setConflictError(null);
-                    setIsEditMode(false);
-                    handleRefreshDetail(selectedTask.id);
-                  }}
-                  className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded"
-                >
-                  Reload State
-                </button>
+              <div role="alert" className="mb-4 flex flex-col gap-3 rounded-md border border-danger/30 bg-danger/10 p-4 text-danger sm:flex-row sm:items-center sm:justify-between">
+                <div><p className="font-semibold">Versi tugas berubah</p><p className="text-sm">Tugas ini diperbarui pengguna lain. Muat ulang sebelum melanjutkan.</p></div>
+                <button onClick={() => { setConflictError(null); setIsEditMode(false); handleRefreshDetail(selectedTask.id); }} className="min-h-11 rounded-md border border-danger px-3 text-sm font-semibold">Muat ulang</button>
               </div>
             )}
 
             {!isEditMode ? (
               <div className="space-y-6">
-                <div className="flex items-center justify-between border-b pb-3">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                      {selectedTask.task_key}
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded bg-gray-100 font-medium">
-                      Version: {selectedTask.version}
-                    </span>
+                <header className="space-y-4 border-b border-border pb-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0"><p className="text-xs font-semibold text-primary">{selectedTask.task_key} · Versi {selectedTask.version}</p><h3 className="mt-1 break-words text-xl font-semibold">{selectedTask.title}</h3></div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button onClick={() => setIsEditMode(true)} className="min-h-11 rounded-md border border-border px-3 text-sm font-medium hover:bg-surface-subtle">Ubah</button>
+                      {(currentRole === 'ADMIN' || currentRole === 'MANAGER') && <button type="button" aria-label={`Hapus tugas ${selectedTask.title}`} onClick={handleDelete} className="grid min-h-11 min-w-11 place-items-center rounded-md text-muted-foreground hover:bg-danger/10 hover:text-danger"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>}
+                      <button type="button" aria-label="Tutup detail tugas" onClick={handleCloseDetail} className="grid min-h-11 min-w-11 place-items-center rounded-md text-muted-foreground hover:bg-surface-subtle hover:text-foreground"><X className="h-5 w-5" aria-hidden="true" /></button>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setIsEditMode(true)}
-                      className="px-3 py-1 border border-gray-300 dark:border-gray-700 hover:bg-gray-50 text-xs rounded"
-                    >
-                      Edit Fields
-                    </button>
-                    {currentRole === 'ADMIN' && (
-                      <button
-                        onClick={handleDelete}
-                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-gray-100 rounded"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div><span className="block text-xs font-medium text-muted-foreground">Status</span><span className="mt-1 block font-semibold">{formatStatusName(selectedTask.status.name)}</span></div>
+                    <div><span className="block text-xs font-medium text-muted-foreground">Prioritas</span><span className="mt-1 block font-semibold">{selectedTask.priority === 'LOW' ? 'Rendah' : selectedTask.priority === 'MEDIUM' ? 'Sedang' : selectedTask.priority === 'HIGH' ? 'Tinggi' : 'Mendesak'}</span></div>
+                    <div><span className="block text-xs font-medium text-muted-foreground">Tim</span><span className="mt-1 block font-semibold">{teams.find((t) => t.id === selectedTask.team_id)?.name || 'Tanpa tim'}</span></div>
                   </div>
-                </div>
+                  <div className={`rounded-md border p-3 ${selectedTask.is_overdue ? 'border-danger/30 bg-danger/10 text-danger' : 'border-border bg-surface-subtle'}`}>
+                    <span className="block text-xs font-medium">Tenggat</span><span className="mt-1 flex items-center gap-2 font-semibold"><Calendar className="h-4 w-4" aria-hidden="true" />{selectedTask.due_at ? formatDateTimeDisplay(selectedTask.due_at) : 'Belum ditentukan'}{selectedTask.is_overdue ? ' · Terlambat' : ''}</span>
+                  </div>
+                </header>
 
-                <div className="space-y-1">
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                    {selectedTask.title}
-                  </h3>
-                  {selectedTask.is_overdue && (
-                    <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800">
-                      Overdue
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg text-sm">
-                  <div>
-                    <span className="block text-gray-500 text-xs uppercase font-semibold">Status</span>
-                    <span className="font-medium">{selectedTask.status.name}</span>
-                  </div>
-                  <div>
-                    <span className="block text-gray-500 text-xs uppercase font-semibold">Priority</span>
-                    <span className="font-medium">{selectedTask.priority}</span>
-                  </div>
-                  <div>
-                    <span className="block text-gray-500 text-xs uppercase font-semibold">Team</span>
-                    <span className="font-medium">
-                      {teams.find((t) => t.id === selectedTask.team_id)?.name || 'None'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-gray-500 text-xs uppercase font-semibold">Creator</span>
-                    <span className="font-medium">
-                      {members.find((m) => m.user_id === selectedTask.creator_id)?.full_name || 'System'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Dates */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="h-4 w-4 text-gray-400" />
-                    <span>
-                      Start: {selectedTask.start_at ? new Date(selectedTask.start_at).toLocaleString() : 'N/A'}
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="h-4 w-4 text-gray-400" />
-                    <span>
-                      Due: {selectedTask.due_at ? new Date(selectedTask.due_at).toLocaleString() : 'N/A'}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-xs uppercase font-semibold text-gray-500 mb-1">Description</h4>
-                  <div className="text-sm border border-gray-150 dark:border-gray-800 rounded p-3 bg-white dark:bg-gray-900 min-h-[60px] whitespace-pre-wrap">
-                    {selectedTask.description || 'No description provided.'}
-                  </div>
-                </div>
+                <section><h4 className="mb-2 text-sm font-semibold">Deskripsi</h4><div className="min-h-16 whitespace-pre-wrap rounded-md border border-border bg-surface-subtle p-3 text-sm">{selectedTask.description || 'Belum ada deskripsi.'}</div></section>
 
                 {/* Transitions */}
-                <div className="space-y-2 border-t pt-4">
-                  <h4 className="text-xs uppercase font-semibold text-gray-500">Change Status</h4>
+                <section className="space-y-2 border-t border-border pt-4">
+                  <h4 className="text-sm font-semibold">Ubah status</h4>
                   <div className="flex flex-wrap gap-2">
-                    {availableTransitions.map((t) => (
-                      <button
-                        key={t.to_status_id}
-                        onClick={() => handleTransition(t.to_status_id)}
-                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-xs font-semibold rounded transition"
-                      >
-                        To {t.name}
-                      </button>
-                    ))}
-                    {availableTransitions.length === 0 && (
-                      <span className="text-xs text-gray-500">No status transitions available.</span>
-                    )}
+                    {availableTransitions.map((t) => <button key={t.to_status_id} type="button" onClick={() => handleTransition(t.to_status_id)} className="min-h-11 rounded-md border border-border px-3 text-sm font-medium hover:bg-surface-subtle">{formatTransitionLabel(t.name)}</button>)}
+                    {availableTransitions.length === 0 && <span className="text-sm text-muted-foreground">Tidak ada perubahan status tersedia.</span>}
                   </div>
-                </div>
+                </section>
 
                 {/* Assignees */}
-                <div className="space-y-3 border-t pt-4">
-                  <h4 className="text-xs uppercase font-semibold text-gray-500 flex items-center">
-                    <Users className="h-4 w-4 mr-2" />
-                    <span>Manage Assignment</span>
+                <section className="space-y-3 border-t border-border pt-4">
+                  <h4 className="flex items-center text-sm font-semibold">
+                    <Users className="mr-2 h-4 w-4" aria-hidden="true" />
+                    <span>Penanggung jawab</span>
                   </h4>
                   <div className="space-y-2">
                     {members.map((m) => {
@@ -1021,7 +900,7 @@ export default function TasksPage() {
                                   setAssigneeList((prev) => prev.filter((a) => a.user_id !== m.user_id));
                                 }
                               }}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              className="rounded border-border text-primary focus:ring-primary"
                             />
                             {cur && (
                               <button
@@ -1032,10 +911,10 @@ export default function TasksPage() {
                                   );
                                 }}
                                 className={`text-xs px-2 py-0.5 rounded font-bold ${
-                                  cur.is_primary ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                                  cur.is_primary ? 'bg-primary text-primary-foreground' : 'bg-surface-subtle text-muted-foreground'
                                 }`}
                               >
-                                {cur.is_primary ? 'Primary' : 'Make Primary'}
+                                {cur.is_primary ? 'Utama' : 'Jadikan utama'}
                               </button>
                             )}
                           </div>
@@ -1043,13 +922,10 @@ export default function TasksPage() {
                       );
                     })}
                   </div>
-                  <button
-                    onClick={handleAssignReplace}
-                    className="w-full py-2 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded"
-                  >
-                    Save Assignment Changes
+                  <button type="button" onClick={handleAssignReplace} className="min-h-11 w-full rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary-hover">
+                    Simpan penanggung jawab
                   </button>
-                </div>
+                </section>
 
                 {/* Task Comments & Mentions Section */}
                 <TaskCommentsSection
@@ -1063,15 +939,15 @@ export default function TasksPage() {
             ) : (
               // EDIT MODE Form
               <form onSubmit={handleUpdate} className="space-y-4">
-                <h3 className="text-lg font-bold mb-4">Edit Task Fields</h3>
+                <h3 className="text-lg font-bold mb-4">Ubah tugas</h3>
                 {editValidationError && (
-                  <div role="alert" className="bg-red-50 dark:bg-red-950/50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700 dark:text-red-300">
+                  <div role="alert" className="border border-danger/30 bg-danger/10 p-3 rounded text-sm text-danger">
                     {editValidationError}
                   </div>
                 )}
                 <div>
-                  <label htmlFor="edit_title" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                    Title
+                  <label htmlFor="edit_title" className="block text-sm font-semibold mb-1 text-foreground">
+                    Judul
                   </label>
                   <input
                     id="edit_title"
@@ -1079,59 +955,59 @@ export default function TasksPage() {
                     required
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface"
                   />
                 </div>
                 <div>
-                  <label htmlFor="edit_description" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                    Description
+                  <label htmlFor="edit_description" className="block text-sm font-semibold mb-1 text-foreground">
+                    Deskripsi
                   </label>
                   <textarea
                     id="edit_description"
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800 h-24"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface h-24"
                   />
                 </div>
                 <div>
-                  <label htmlFor="edit_priority" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                    Priority
+                  <label htmlFor="edit_priority" className="block text-sm font-semibold mb-1 text-foreground">
+                    Prioritas
                   </label>
                   <select
                     id="edit_priority"
                     value={editPriority}
                     onChange={(e) => setEditPriority(e.target.value as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT')}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface"
                   >
-                    <option value="LOW">Low</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HIGH">High</option>
-                    <option value="URGENT">Urgent</option>
+                    <option value="LOW">Rendah</option>
+                    <option value="MEDIUM">Sedang</option>
+                    <option value="HIGH">Tinggi</option>
+                    <option value="URGENT">Mendesak</option>
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label htmlFor="edit_start_at" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                      Start Date
+                    <label htmlFor="edit_start_at" className="block text-sm font-semibold mb-1 text-foreground">
+                      Mulai
                     </label>
                     <input
                       id="edit_start_at"
                       type="datetime-local"
                       value={editStartAt}
                       onChange={(e) => setEditStartAt(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800"
+                      className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface"
                     />
                   </div>
                   <div>
-                    <label htmlFor="edit_due_at" className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">
-                      Due Date
+                    <label htmlFor="edit_due_at" className="block text-sm font-semibold mb-1 text-foreground">
+                      Tenggat
                     </label>
                     <input
                       id="edit_due_at"
                       type="datetime-local"
                       value={editDueAt}
                       onChange={(e) => setEditDueAt(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm dark:bg-gray-800"
+                      className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface"
                     />
                   </div>
                 </div>
@@ -1139,15 +1015,15 @@ export default function TasksPage() {
                   <button
                     type="button"
                     onClick={() => setIsEditMode(false)}
-                    className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm hover:bg-gray-50"
+                    className="px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-subtle"
                   >
-                    Cancel
+                    Batal
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-bold"
+                    className="min-h-11 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
                   >
-                    Save Changes
+                    Simpan perubahan
                   </button>
                 </div>
               </form>
@@ -1155,21 +1031,21 @@ export default function TasksPage() {
 
             <div className="flex justify-between items-center pt-4 border-t mt-6">
               <div>
-                {calendarReturnUrl && (
+                {contextReturnUrl && (
                   <button
                     type="button"
-                    onClick={() => router.push(calendarReturnUrl)}
-                    className="px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-400 rounded-md text-sm font-bold transition"
+                    onClick={() => router.push(contextReturnUrl)}
+                    className="rounded-md bg-surface-subtle px-4 py-2 text-sm font-bold text-primary transition hover:bg-surface"
                   >
-                    Return to Calendar
+                    {contextReturnUrl.includes('/kanban') ? 'Kembali ke kanban' : 'Kembali ke kalender'}
                   </button>
                 )}
               </div>
               <button
-                onClick={() => setSelectedTask(null)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                onClick={handleCloseDetail}
+                className="px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-subtle hover:bg-surface-subtle"
               >
-                Close
+                Tutup
               </button>
             </div>
           </div>

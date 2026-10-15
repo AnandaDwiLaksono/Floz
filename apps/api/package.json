@@ -7,7 +7,7 @@
     "dev": "nest start --watch",
     "lint": "eslint src test --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --pool=forks --poolOptions.forks.singleFork",
+    "test": "vitest run --dir test --pool=forks --maxWorkers=1 --no-file-parallelism",
     "test:task9-sigterm": "pnpm build && docker build -f test/fixtures/sigterm-proof.Dockerfile -t floz-task9-sigterm-proof . && docker run --rm --init floz-task9-sigterm-proof",
     "build": "nest build",
     "start": "node dist/src/main.js"
@@ -19,7 +19,7 @@
     "@floz/observability": "workspace:*",
     "@nestjs/common": "^11.0.11",
     "@nestjs/core": "^11.0.11",
-    "@nestjs/platform-express": "^11.0.11",
+    "@nestjs/platform-express": "11.2.7",
     "bcrypt": "^6.0.0",
     "better-auth": "^1.7.1",
     "class-transformer": "^0.5.1",
@@ -43,6 +43,6 @@
     "@types/supertest": "^7.2.1",
     "supertest": "^7.2.2",
     "typescript": "^5.8.2",
-    "vitest": "^3.0.8"
+    "vitest": "4.1.11"
   }
 }

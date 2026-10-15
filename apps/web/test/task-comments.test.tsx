@@ -82,6 +82,10 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
       expect(screen.getByText(/First comment in thread/i)).toBeInTheDocument();
     });
 
+    expect(screen.getByText('Komentar (2)')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Tulis komentar/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kirim komentar' })).toBeInTheDocument();
+
     const articles = screen.getAllByRole('article');
     expect(articles).toHaveLength(2);
     expect(within(articles[0]).getByText(/First comment in thread/i)).toBeInTheDocument();
@@ -107,10 +111,10 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
       expect(screen.getByText(/First comment in thread/i)).toBeInTheDocument();
     });
 
-    const submitBtn = screen.getByRole('button', { name: /Post Comment/i });
+    const submitBtn = screen.getByRole('button', { name: /Kirim komentar/i });
     expect(submitBtn).toBeDisabled();
 
-    const textarea = screen.getByLabelText(/Add a Comment/i);
+    const textarea = screen.getByLabelText(/Tulis komentar/i);
     fireEvent.change(textarea, { target: { value: '    ' } });
     expect(submitBtn).toBeDisabled();
 
@@ -152,11 +156,11 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
     });
 
     // Enter comment content
-    const textarea = screen.getByLabelText(/Add a Comment/i);
+    const textarea = screen.getByLabelText(/Tulis komentar/i);
     fireEvent.change(textarea, { target: { value: '  Here is the progress report.  ' } });
 
     // Open mention picker
-    const mentionBtn = screen.getByRole('button', { name: /Mention team member/i });
+    const mentionBtn = screen.getByRole('button', { name: /Sebut anggota tim/i });
     fireEvent.click(mentionBtn);
 
     // Select Alice Colleague
@@ -168,7 +172,7 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
     fireEvent.click(bobOption);
 
     // Submit comment
-    const submitBtn = screen.getByRole('button', { name: /Post Comment/i });
+    const submitBtn = screen.getByRole('button', { name: /Kirim komentar/i });
     expect(submitBtn).not.toBeDisabled();
     fireEvent.click(submitBtn);
 
@@ -213,17 +217,17 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
       expect(screen.getByText(/First comment in thread/i)).toBeInTheDocument();
     });
 
-    const textarea = screen.getByLabelText(/Add a Comment/i);
+    const textarea = screen.getByLabelText(/Tulis komentar/i);
     fireEvent.change(textarea, { target: { value: 'Taking this sub-task.' } });
 
     // Open mention picker and select self
-    const mentionBtn = screen.getByRole('button', { name: /Mention team member/i });
+    const mentionBtn = screen.getByRole('button', { name: /Sebut anggota tim/i });
     fireEvent.click(mentionBtn);
 
     const selfOption = screen.getByRole('option', { name: /Current User/i });
     fireEvent.click(selfOption);
 
-    const submitBtn = screen.getByRole('button', { name: /Post Comment/i });
+    const submitBtn = screen.getByRole('button', { name: /Kirim komentar/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -253,15 +257,15 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
       expect(screen.getByText(/First comment in thread/i)).toBeInTheDocument();
     });
 
-    const textarea = screen.getByLabelText(/Add a Comment/i);
+    const textarea = screen.getByLabelText(/Tulis komentar/i);
     fireEvent.change(textarea, { target: { value: 'Tagging invalid user' } });
 
-    const submitBtn = screen.getByRole('button', { name: /Post Comment/i });
+    const submitBtn = screen.getByRole('button', { name: /Kirim komentar/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Selected mentioned user is inactive or does not have access to this task/i)
+        screen.getByText(/Pengguna yang dipilih tidak aktif atau tidak memiliki akses ke tugas ini/i)
       ).toBeInTheDocument();
     });
   });
@@ -284,7 +288,7 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
     });
 
     // Delete button for own comment (comm-2)
-    const deleteBtn = screen.getByRole('button', { name: /Delete comment by Current User/i });
+    const deleteBtn = screen.getByRole('button', { name: /Hapus komentar oleh Current User/i });
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {
@@ -313,7 +317,7 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
     });
 
     // Admin can delete Alice's comment
-    const deleteAliceBtn = screen.getByRole('button', { name: /Delete comment by Alice Colleague/i });
+    const deleteAliceBtn = screen.getByRole('button', { name: /Hapus komentar oleh Alice Colleague/i });
     expect(deleteAliceBtn).toBeInTheDocument();
     fireEvent.click(deleteAliceBtn);
 
@@ -340,7 +344,7 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
     });
 
     // Delete button for Alice's comment should NOT exist for user-3
-    expect(screen.queryByRole('button', { name: /Delete comment by Alice Colleague/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Hapus komentar oleh Alice Colleague/i })).not.toBeInTheDocument();
   });
 
   it('supports pagination / loading earlier comments without duplicating items', async () => {
@@ -363,7 +367,7 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
       expect(screen.getByText('Second comment tagging Alice')).toBeInTheDocument();
     });
 
-    const loadMoreBtn = screen.getByRole('button', { name: /Load Earlier Comments/i });
+    const loadMoreBtn = screen.getByRole('button', { name: /Muat komentar sebelumnya/i });
     expect(loadMoreBtn).toBeInTheDocument();
 
     // Mock next page response
@@ -380,6 +384,6 @@ describe('Phase 10 Task 9 — Task Comments & Structured Mentions UX', () => {
 
     // Both comments visible
     expect(screen.getByText('Second comment tagging Alice')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Load Earlier Comments/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Muat komentar sebelumnya/i })).not.toBeInTheDocument();
   });
 });

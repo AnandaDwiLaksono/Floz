@@ -26,7 +26,7 @@ async function resetDatabase() { const { sql: client } = createDatabase(database
 describe('Auth persistence', () => {
   let app: INestApplication | undefined;
 
-  beforeEach(async () => { await resetDatabase(); app = await createApp(); const auth = app.get(AuthService).auth; const admin = await auth.api.signUpEmail({ body: { email: 'admin@example.com', password: 'password123', name: 'Admin' } }); const { sql } = createDatabase(databaseUrl); const role = await sql`INSERT INTO roles (code, name) VALUES ('ADMIN', 'Admin') ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name RETURNING id`; await sql`INSERT INTO workspaces (name, slug, created_by) VALUES ('Floz', 'floz', ${String(admin.user.id)})`; await sql`INSERT INTO workspace_memberships (workspace_id, user_id, role_id) SELECT w.id, ${String(admin.user.id)}, ${String(role[0].id)} FROM workspaces w WHERE w.slug = 'floz'`; await sql.end(); });
+  beforeEach(async () => { await resetDatabase(); app = await createApp(); const auth = app.get(AuthService).auth; const admin = await auth.api.signUpEmail({ body: { email: 'admin@example.com', password: 'password123', name: 'Admin' } }); const { sql } = createDatabase(databaseUrl); const role = await sql`INSERT INTO roles (code, name) VALUES ('ADMIN', 'Admin') ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name RETURNING id`; await sql`INSERT INTO workspaces (name, slug, timezone, created_by) VALUES ('Floz', 'floz', 'Asia/Jakarta', ${String(admin.user.id)})`; await sql`INSERT INTO workspace_memberships (workspace_id, user_id, role_id) SELECT w.id, ${String(admin.user.id)}, ${String(role[0].id)} FROM workspaces w WHERE w.slug = 'floz'`; await sql.end(); });
   afterEach(async () => { await app?.close(); app = undefined; await resetDatabase(); });
 
   it('signUpEmail creates no session when autoSignIn is disabled and login still creates one', async () => {
@@ -73,6 +73,7 @@ describe('Auth persistence', () => {
     await request(app!.getHttpServer()).get('/api/v1/me').set('Cookie', cookie.split(';')[0]).expect(200).expect(({ body }) => {
       expect(body.data.email).toBe('admin@example.com');
       expect(body.data.workspaces).toHaveLength(1);
+      expect(body.data.workspaces[0].timezone).toBe('Asia/Jakarta');
     });
   });
 

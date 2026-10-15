@@ -420,7 +420,7 @@ export class FlozController {
   }
 
   @Get('me')
-  async me(@Req() req: Request) { const user = await this.current(req); return ok({ ...this.publicUser(user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, role: w.role, membership_status: w.membershipStatus })) }); }
+  async me(@Req() req: Request) { const user = await this.current(req); return ok({ ...this.publicUser(user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, slug: w.slug, timezone: w.timezone, role: w.role, membership_status: w.membershipStatus })) }); }
   @Patch('me')
   async updateMe(@Req() req: Request, @Body() body: UpdateMeDto) {
     const user = await this.current(req);
@@ -429,7 +429,7 @@ export class FlozController {
     if (body.locale !== undefined && !localePattern.test(body.locale)) throw new BadRequestException('VALIDATION_ERROR');
     if (body.avatar_url !== undefined && body.avatar_url !== null && !urlPattern.test(body.avatar_url)) throw new BadRequestException('VALIDATION_ERROR');
     const updated = await this.floz.updateUser(user.id, { name: body.full_name?.trim(), timezone: body.timezone, locale: body.locale, image: body.avatar_url });
-    return ok({ ...this.publicUser(updated ?? user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, role: w.role, membership_status: w.membershipStatus })) });
+    return ok({ ...this.publicUser(updated ?? user), workspaces: (await this.floz.workspacesFor(user.id)).map((w) => ({ id: w.id, name: w.name, slug: w.slug, timezone: w.timezone, role: w.role, membership_status: w.membershipStatus })) });
   }
   @Patch('me/password')
   @UseGuards(AuthRateLimitGuard)
@@ -495,7 +495,7 @@ export class FlozController {
     return ok({ ...dashboard, drilldown_url });
   }
   @Get('workspaces/:workspaceId/reports/kpis')
-  async kpis(@Req() req: Request, @Param('workspaceId') wid: string) { const ctx = await this.member(req, wid); const workspace = await this.floz.workspace(wid); const teamId = req.query.team_id ? String(req.query.team_id) : undefined; if (teamId && !uuidPattern.test(teamId)) throw new BadRequestException('VALIDATION_ERROR'); const team = teamId ? await this.floz.team(wid, teamId) : null; if (teamId && (!team || !team.isActive)) throw new BadRequestException('TEAM_SCOPE_MISMATCH'); const scope = this.reportingScope(req.query as Record<string, string>, wid, workspace!.timezone); if (['MEMBER', 'FIELD_WORKER'].includes(ctx.membership.role)) scope.userId = ctx.user.id; else if (ctx.membership.role === 'MANAGER') { const managed = await this.floz.managedTeamIds(wid, ctx.user.id); if (teamId && !managed.includes(teamId)) throw new ForbiddenException('FORBIDDEN'); scope.teamIds = teamId ? [teamId] : managed; } else if (teamId) scope.teamIds = [teamId]; if (req.query.assignee_id) { const assigneeId = String(req.query.assignee_id); if (!uuidPattern.test(assigneeId)) throw new BadRequestException('VALIDATION_ERROR'); if (ctx.membership.role !== 'ADMIN' && assigneeId !== ctx.user.id) throw new ForbiddenException('FORBIDDEN'); if (!(await this.floz.membership(assigneeId, wid))) throw new BadRequestException('CROSS_WORKSPACE_REFERENCE'); scope.userId = assigneeId; } return ok(await getKpis(this.authService.database.db, scope)); }
+  async kpis(@Req() req: Request, @Param('workspaceId') wid: string) { const ctx = await this.member(req, wid); const workspace = await this.floz.workspace(wid); const teamId = req.query.team_id ? String(req.query.team_id) : undefined; if (teamId && !uuidPattern.test(teamId)) throw new BadRequestException('VALIDATION_ERROR'); const team = teamId ? await this.floz.team(wid, teamId) : null; if (teamId && (!team || !team.isActive)) throw new BadRequestException('TEAM_SCOPE_MISMATCH'); const scope = this.reportingScope(req.query as Record<string, string>, wid, workspace!.timezone); if (['MEMBER', 'FIELD_WORKER'].includes(ctx.membership.role)) { scope.userId = ctx.user.id; if (teamId) scope.teamIds = [teamId]; } else if (ctx.membership.role === 'MANAGER') { const managed = await this.floz.managedTeamIds(wid, ctx.user.id); if (teamId && !managed.includes(teamId)) throw new ForbiddenException('FORBIDDEN'); scope.teamIds = teamId ? [teamId] : managed; } else if (teamId) scope.teamIds = [teamId]; if (req.query.assignee_id) { const assigneeId = String(req.query.assignee_id); if (!uuidPattern.test(assigneeId)) throw new BadRequestException('VALIDATION_ERROR'); if (ctx.membership.role !== 'ADMIN' && assigneeId !== ctx.user.id) throw new ForbiddenException('FORBIDDEN'); if (!(await this.floz.membership(assigneeId, wid))) throw new BadRequestException('CROSS_WORKSPACE_REFERENCE'); scope.userId = assigneeId; } return ok(await getKpis(this.authService.database.db, scope)); }
 
   @Get('workspaces/:workspaceId/workflows')
   async workflows(@Req() req: Request, @Param('workspaceId') wid: string) {

@@ -4,17 +4,19 @@ import type { Sql } from 'postgres';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { randomUUID } from 'node:crypto';
+import { assertQaDatabase } from '../e2e-environment';
 
-const databaseUrl = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5433/floz';
-const apiUrl = 'http://127.0.0.1:3001/api/v1';
+const databaseUrl = assertQaDatabase();
+const apiUrl = process.env.PLAYWRIGHT_API_URL!;
+const webOrigin = process.env.PLAYWRIGHT_TEST_BASE_URL!;
 
 const auth = betterAuth({
   database: drizzleAdapter(createDatabase(databaseUrl).db as never, {
     provider: 'pg',
     schema: { user: users, account: accounts, session: sessions, verification: verifications }
   }),
-  secret: 'test-secret-at-least-32-characters-long',
-  baseURL: 'http://127.0.0.1:3001',
+  secret: process.env.BETTER_AUTH_SECRET!,
+  baseURL: process.env.BETTER_AUTH_URL!,
   emailAndPassword: { enabled: true },
   advanced: { database: { generateId: 'uuid' } }
 });
@@ -30,7 +32,7 @@ async function createVerifiedUser(request: APIRequestContext, sql: Sql, email: s
 
   const loginRes = await request.post(`${apiUrl}/auth/login`, {
     data: { email: normEmail, password },
-    headers: { Origin: 'http://localhost:3005' }
+    headers: { Origin: webOrigin }
   });
   expect(loginRes.status()).toBe(200);
   const cookie = loginRes.headers()['set-cookie'];
@@ -58,7 +60,7 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
     // 1. Register
     const regRes = await request.post(`${apiUrl}/auth/register`, {
       data: { email, password, full_name: fullName },
-      headers: { Origin: 'http://localhost:3005' }
+      headers: { Origin: webOrigin }
     });
     expect([201, 202]).toContain(regRes.status());
 
@@ -69,7 +71,7 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
     // 3. Verify Email
     const verifyRes = await request.post(`${apiUrl}/auth/verify-email`, {
       data: { token: verif.value, email },
-      headers: { Origin: 'http://localhost:3005' }
+      headers: { Origin: webOrigin }
     });
     expect(verifyRes.status()).toBe(200);
 
@@ -80,7 +82,7 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
     // 5. Login
     const loginRes = await request.post(`${apiUrl}/auth/login`, {
       data: { email, password },
-      headers: { Origin: 'http://localhost:3005' }
+      headers: { Origin: webOrigin }
     });
     expect(loginRes.status()).toBe(200);
     const cookieHeader = loginRes.headers()['set-cookie'];
@@ -88,7 +90,7 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
     // 6. Create Workspace
     const createWsRes = await request.post(`${apiUrl}/workspaces`, {
       data: { name: 'Alpha Workspace' },
-      headers: { Origin: 'http://localhost:3005', Cookie: cookieHeader }
+      headers: { Origin: webOrigin, Cookie: cookieHeader }
     });
     expect(createWsRes.status()).toBe(201);
     const wsData = await createWsRes.json();
@@ -112,13 +114,13 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
 
     const ws1Res = await request.post(`${apiUrl}/workspaces`, {
       data: { name: 'Beta WS 1' },
-      headers: { Origin: 'http://localhost:3005', Cookie: userB.cookie }
+      headers: { Origin: webOrigin, Cookie: userB.cookie }
     });
     expect(ws1Res.status()).toBe(201);
 
     const ws2Res = await request.post(`${apiUrl}/workspaces`, {
       data: { name: 'Beta WS 2' },
-      headers: { Origin: 'http://localhost:3005', Cookie: userB.cookie }
+      headers: { Origin: webOrigin, Cookie: userB.cookie }
     });
     expect(ws2Res.status()).toBe(201);
 
@@ -139,21 +141,21 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
 
     const wsRes = await request.post(`${apiUrl}/workspaces`, {
       data: { name: 'WS C' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(wsRes.status()).toBe(201);
     const wsId = (await wsRes.json()).data.id;
 
     const invRes = await request.post(`${apiUrl}/workspaces/${wsId}/invitations`, {
       data: { email: target.email, role: 'MEMBER' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(invRes.status()).toBe(201);
     const rawToken = (await invRes.json()).data.token;
 
     const acceptRes = await request.post(`${apiUrl}/workspace-invitations/accept`, {
       data: { token: rawToken },
-      headers: { Origin: 'http://localhost:3005', Cookie: target.cookie }
+      headers: { Origin: webOrigin, Cookie: target.cookie }
     });
     expect([200, 201]).toContain(acceptRes.status());
 
@@ -167,14 +169,14 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
 
     const wsRes = await request.post(`${apiUrl}/workspaces`, {
       data: { name: 'WS D' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(wsRes.status()).toBe(201);
     const wsId = (await wsRes.json()).data.id;
 
     const invRes = await request.post(`${apiUrl}/workspaces/${wsId}/invitations`, {
       data: { email: newEmail, role: 'MEMBER' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(invRes.status()).toBe(201);
     const rawToken = (await invRes.json()).data.token;
@@ -183,7 +185,7 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
 
     const acceptRes = await request.post(`${apiUrl}/workspace-invitations/accept`, {
       data: { token: rawToken },
-      headers: { Origin: 'http://localhost:3005', Cookie: newUser.cookie }
+      headers: { Origin: webOrigin, Cookie: newUser.cookie }
     });
     expect([200, 201]).toContain(acceptRes.status());
   });
@@ -194,7 +196,7 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
 
     const wsRes = await request.post(`${apiUrl}/workspaces`, {
       data: { name: 'WS E' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(wsRes.status()).toBe(201);
     const wsId = (await wsRes.json()).data.id;
@@ -202,20 +204,20 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
     // Set policy to JOIN_CODE
     const patchRes = await request.patch(`${apiUrl}/workspaces/${wsId}/join-settings`, {
       data: { join_policy: 'JOIN_CODE' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(patchRes.status()).toBe(200);
 
     // 1. Generate code (route: POST /workspaces/:wid/join-code)
     const codeRes1 = await request.post(`${apiUrl}/workspaces/${wsId}/join-code`, {
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect([200, 201]).toContain(codeRes1.status());
     const code1 = (await codeRes1.json()).data.join_code;
 
     // 2. Rotate code
     const codeRes2 = await request.post(`${apiUrl}/workspaces/${wsId}/join-code`, {
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect([200, 201]).toContain(codeRes2.status());
     const code2 = (await codeRes2.json()).data.join_code;
@@ -224,14 +226,14 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
     // 3. Attempt join with old code1 (must fail)
     const failJoin = await request.post(`${apiUrl}/workspace-joins`, {
       data: { join_code: code1 },
-      headers: { Origin: 'http://localhost:3005', Cookie: joiner.cookie }
+      headers: { Origin: webOrigin, Cookie: joiner.cookie }
     });
     expect(failJoin.status()).toBeGreaterThanOrEqual(400);
 
     // 4. Join with new code2 (must succeed as MEMBER)
     const okJoin = await request.post(`${apiUrl}/workspace-joins`, {
       data: { join_code: code2 },
-      headers: { Origin: 'http://localhost:3005', Cookie: joiner.cookie }
+      headers: { Origin: webOrigin, Cookie: joiner.cookie }
     });
     expect([200, 201]).toContain(okJoin.status());
 
@@ -249,7 +251,7 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
 
     const wsRes = await request.post(`${apiUrl}/workspaces`, {
       data: { name: 'WS F' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(wsRes.status()).toBe(201);
     const wsId = (await wsRes.json()).data.id;
@@ -257,19 +259,19 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
     // Set policy to APPROVAL_REQUIRED
     const patchRes = await request.patch(`${apiUrl}/workspaces/${wsId}/join-settings`, {
       data: { join_policy: 'APPROVAL_REQUIRED' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(patchRes.status()).toBe(200);
 
     const reqRes = await request.post(`${apiUrl}/workspace-joins`, {
       data: { workspace_id: wsId },
-      headers: { Origin: 'http://localhost:3005', Cookie: requester.cookie }
+      headers: { Origin: webOrigin, Cookie: requester.cookie }
     });
     expect(reqRes.status()).toBe(201);
     const reqId = (await reqRes.json()).data.id;
 
     const appRes = await request.post(`${apiUrl}/workspaces/${wsId}/join-requests/${reqId}/approve`, {
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect([200, 201]).toContain(appRes.status());
 
@@ -283,14 +285,14 @@ test.describe('Phase 13 Real-Stack Playwright Scenarios A–G', () => {
 
     const wsRes = await request.post(`${apiUrl}/workspaces`, {
       data: { name: 'WS G' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(wsRes.status()).toBe(201);
     const wsId = (await wsRes.json()).data.id;
 
     const provRes = await request.post(`${apiUrl}/workspaces/${wsId}/accounts`, {
       data: { email: provEmail, full_name: 'Provisioned User' },
-      headers: { Origin: 'http://localhost:3005', Cookie: admin.cookie }
+      headers: { Origin: webOrigin, Cookie: admin.cookie }
     });
     expect(provRes.status()).toBe(201);
 

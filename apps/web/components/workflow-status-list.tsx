@@ -6,9 +6,9 @@ import WorkflowStatusCard from './workflow-status-card';
 import WorkflowStatusDialog from './workflow-status-dialog';
 
 const messages: Record<string, string> = {
-  STATUS_CATEGORY_IN_USE: 'This category cannot change while tasks use this status.',
-  RECURRENCE_DEPENDENCY_CONFLICT: 'This status is used by a recurring task. Update that recurrence first.',
-  CANNOT_ARCHIVE_INITIAL_STATUS: 'Choose another initial status before archiving this one.',
+  STATUS_CATEGORY_IN_USE: 'Kategori ini tidak dapat diubah selama tugas menggunakan status ini.',
+  RECURRENCE_DEPENDENCY_CONFLICT: 'Status ini digunakan oleh tugas berulang. Perbarui perulangan tersebut terlebih dahulu.',
+  CANNOT_ARCHIVE_INITIAL_STATUS: 'Pilih status awal lain sebelum mengarsipkan status ini.',
 };
 
 export default function WorkflowStatusList({ workspaceId, workflow, onWorkflowUpdate, onError, showToast, onPendingChange, onReload, pending = false }: {
@@ -31,7 +31,7 @@ export default function WorkflowStatusList({ workspaceId, workflow, onWorkflowUp
       if (onReload) await onReload();
       else { const response = await api.workspaces.workflowDetail(workspaceId, workflow.id); onWorkflowUpdate(response.data); }
       setDialog(null); setError('');
-    } catch { setError('Unable to reload configuration. Reload to try again.'); }
+    } catch { setError('Gagal memuat ulang konfigurasi. Muat ulang untuk mencoba lagi.'); }
     finally { setSaving(false); onPendingChange?.(false); }
   };
 
@@ -40,7 +40,7 @@ export default function WorkflowStatusList({ workspaceId, workflow, onWorkflowUp
     const result = await onError(err);
     const errorCode = err instanceof ApiError ? err.code : '';
     if (errorCode === 'VERSION_CONFLICT' || result === 'VERSION_CONFLICT') setError('Configuration changed elsewhere. Reload the latest configuration before continuing.');
-    else setError(messages[errorCode] || (err instanceof ApiError ? err.message : 'Operation failed.'));
+    else setError(messages[errorCode] || (err instanceof ApiError ? err.message : 'Operasi gagal.'));
   };
   const mutate = async (request: () => Promise<{ data: WorkflowDetail }>, success: string) => {
     if (locked) return false;
@@ -54,25 +54,25 @@ export default function WorkflowStatusList({ workspaceId, workflow, onWorkflowUp
   const validCode = /^[A-Z0-9_]{2,32}$/.test(code.trim().toUpperCase());
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validName) return setError('Name is required and must be 100 characters or fewer.');
-    if (dialog === 'create' && !validCode) return setError('Code must be 2–32 uppercase letters, numbers, or underscores.');
+    if (!validName) return setError('Nama wajib diisi dan maksimal 100 karakter.');
+    if (dialog === 'create' && !validCode) return setError('Kode harus berupa 2–32 huruf besar, angka, atau garis bawah.');
     const ok = dialog === 'create'
-      ? await mutate(() => api.workspaces.addWorkflowStatus(workspaceId, workflow.id, { name: name.trim(), code: code.trim().toUpperCase(), category, version: workflow.version }), 'Status created.')
-      : await mutate(() => api.workspaces.updateWorkflowStatus(workspaceId, workflow.id, selected!.id, { name: name.trim(), category, version: workflow.version }), 'Status updated.');
+      ? await mutate(() => api.workspaces.addWorkflowStatus(workspaceId, workflow.id, { name: name.trim(), code: code.trim().toUpperCase(), category, version: workflow.version }), 'Status berhasil dibuat.')
+      : await mutate(() => api.workspaces.updateWorkflowStatus(workspaceId, workflow.id, selected!.id, { name: name.trim(), category, version: workflow.version }), 'Status berhasil diperbarui.');
     if (ok) setDialog(null);
   };
   const reorder = async (ids: string[], movedId: string) => {
     const focused = document.activeElement as HTMLElement | null;
-    const ok = await mutate(() => api.workspaces.reorderWorkflowStatuses(workspaceId, workflow.id, { status_ids: ids, version: workflow.version }), 'Status order updated.');
+    const ok = await mutate(() => api.workspaces.reorderWorkflowStatuses(workspaceId, workflow.id, { status_ids: ids, version: workflow.version }), 'Urutan status berhasil diperbarui.');
     if (ok) {
       const position = ids.indexOf(movedId) + 1;
-      setAnnouncement(`${active.find(s => s.id === movedId)?.name} moved to position ${position} of ${ids.length}.`);
+      setAnnouncement(`${active.find(s => s.id === movedId)?.name} dipindahkan ke posisi ${position} dari ${ids.length}.`);
       requestAnimationFrame(() => { if (focused?.matches('[data-reorder]')) focused.focus(); else document.querySelector<HTMLElement>(`[data-status-id="${movedId}"] [data-reorder="true"]`)?.focus(); });
     }
   };
   const move = (index: number, direction: -1 | 1) => {
     const target = Math.max(0, Math.min(active.length - 1, index + direction));
-    if (target === index) { setAnnouncement(`${active[index].name} is already at position ${index + 1} of ${active.length}.`); return; }
+    if (target === index) { setAnnouncement(`${active[index].name} sudah berada pada posisi ${index + 1} dari ${active.length}.`); return; }
     const ids = active.map(s => s.id); [ids[index], ids[target]] = [ids[target], ids[index]]; void reorder(ids, ids[target]);
   };
   const drop = (targetId: string) => {
@@ -83,12 +83,12 @@ export default function WorkflowStatusList({ workspaceId, workflow, onWorkflowUp
   };
 
   return <div role="region" aria-label="Statuses" className="space-y-3 rounded-lg border p-4">
-    <div className="flex justify-between"><h3 className="text-lg font-bold">Statuses</h3><button disabled={locked} onClick={() => { setName(''); setCode(''); setCategory('TODO'); setDialog('create'); }}>Add Status</button></div>
+    <div className="flex justify-between"><h3 className="text-lg font-bold">Status</h3><button disabled={locked} onClick={() => { setName(''); setCode(''); setCategory('TODO'); setDialog('create'); }}>Tambah Status</button></div>
     <div aria-live="polite" className="sr-only">{announcement}</div>
-    {error && !dialog && <div role="alert">{error}{error.includes('Reload') && <button onClick={() => void reload()}>Reload Configuration</button>}</div>}
-    {active.map((status, index) => <WorkflowStatusCard key={status.id} status={status} index={index} count={active.length} locked={locked} onMove={d => move(index, d)} onEdit={() => openEdit(status)} onInitial={() => void mutate(() => api.workspaces.setInitialStatus(workspaceId, workflow.id, status.id, { version: workflow.version }), 'Initial status updated.')} onArchive={() => { setSelected(status); setDialog('archive'); }} onRestore={() => {}} onDragStart={() => { if (!locked) dragging.current = status.id; }} onDragOver={e => e.preventDefault()} onDrop={() => drop(status.id)} onDragEnd={() => { dragging.current = null; }} />)}
-    {archived.length > 0 && <section><h4>Archived</h4>{archived.map((status, index) => <WorkflowStatusCard key={status.id} status={status} index={index} count={archived.length} locked={locked} onMove={() => {}} onEdit={() => {}} onInitial={() => {}} onArchive={() => {}} onRestore={() => void mutate(() => api.workspaces.restoreWorkflowStatus(workspaceId, workflow.id, status.id, { version: workflow.version }), 'Status restored.')} />)}</section>}
-    {(dialog === 'create' || dialog === 'edit') && <WorkflowStatusDialog label={dialog === 'create' ? 'Add Status' : 'Edit Status'} onClose={close}><form onSubmit={submit} className="space-y-4"><h4>{dialog === 'create' ? 'Add Status' : 'Edit Status'}</h4>{error && <div role="alert">{error}{error.includes('Reload') && <button type="button" onClick={() => void reload()}>Reload Configuration</button>}</div>}<label className="block">Name<input disabled={locked} aria-label="Name" value={name} maxLength={100} onChange={e => setName(e.target.value)} /></label><label className="block">Code<input aria-label="Code" value={code} disabled={locked || dialog === 'edit'} onChange={e => setCode(e.target.value.toUpperCase())} /></label><label className="block">Category<select disabled={locked} aria-label="Category" value={category} onChange={e => setCategory(e.target.value as WorkflowStatus['category'])}>{['TODO','IN_PROGRESS','DONE','CANCELLED'].map(x => <option key={x}>{x}</option>)}</select></label><button type="button" onClick={close}>Cancel</button><button type="submit" disabled={locked}>{dialog === 'create' ? 'Create' : 'Save'}</button></form></WorkflowStatusDialog>}
-    {dialog === 'archive' && selected && <WorkflowStatusDialog label="Confirm Archive Status" onClose={close}><h4>Archive Status</h4>{error && <div role="alert">{error}{error.includes('Reload') && <button onClick={() => void reload()}>Reload Configuration</button>}</div>}<p>Existing tasks with this status will remain attached and will appear under the archived status.</p><button onClick={close}>Cancel</button><button disabled={locked} onClick={async () => { if (await mutate(() => api.workspaces.archiveWorkflowStatus(workspaceId, workflow.id, selected.id, { version: workflow.version }), 'Status archived.')) setDialog(null); }}>Archive</button></WorkflowStatusDialog>}
+    {error && !dialog && <div role="alert">{error}{(error.includes('Muat Ulang') || error.includes('Reload')) && <button onClick={() => void reload()}>Muat Ulang Konfigurasi</button>}</div>}
+    {active.map((status, index) => <WorkflowStatusCard key={status.id} status={status} index={index} count={active.length} locked={locked} onMove={d => move(index, d)} onEdit={() => openEdit(status)} onInitial={() => void mutate(() => api.workspaces.setInitialStatus(workspaceId, workflow.id, status.id, { version: workflow.version }), 'Status awal berhasil diperbarui.')} onArchive={() => { setSelected(status); setDialog('archive'); }} onRestore={() => {}} onDragStart={() => { if (!locked) dragging.current = status.id; }} onDragOver={e => e.preventDefault()} onDrop={() => drop(status.id)} onDragEnd={() => { dragging.current = null; }} />)}
+    {archived.length > 0 && <section><h4>Diarsipkan</h4>{archived.map((status, index) => <WorkflowStatusCard key={status.id} status={status} index={index} count={archived.length} locked={locked} onMove={() => {}} onEdit={() => {}} onInitial={() => {}} onArchive={() => {}} onRestore={() => void mutate(() => api.workspaces.restoreWorkflowStatus(workspaceId, workflow.id, status.id, { version: workflow.version }), 'Status berhasil dipulihkan.')} />)}</section>}
+    {(dialog === 'create' || dialog === 'edit') && <WorkflowStatusDialog label={dialog === 'create' ? 'Tambah Status' : 'Ubah Status'} onClose={close}><form onSubmit={submit} className="space-y-4"><h4>{dialog === 'create' ? 'Tambah Status' : 'Ubah Status'}</h4>{error && <div role="alert">{error}{(error.includes('Muat Ulang') || error.includes('Reload')) && <button type="button" onClick={() => void reload()}>Muat Ulang Konfigurasi</button>}</div>}<label className="block">Nama<input disabled={locked} aria-label="Name" value={name} maxLength={100} onChange={e => setName(e.target.value)} /></label><label className="block">Kode<input aria-label="Code" value={code} disabled={locked || dialog === 'edit'} onChange={e => setCode(e.target.value.toUpperCase())} /></label><label className="block">Kategori<select disabled={locked} aria-label="Category" value={category} onChange={e => setCategory(e.target.value as WorkflowStatus['category'])}>{['TODO','IN_PROGRESS','DONE','CANCELLED'].map(x => <option key={x}>{x}</option>)}</select></label><button type="button" onClick={close}>Batal</button><button type="submit" disabled={locked}>{dialog === 'create' ? 'Buat' : 'Simpan'}</button></form></WorkflowStatusDialog>}
+    {dialog === 'archive' && selected && <WorkflowStatusDialog label="Konfirmasi Arsip Status" onClose={close}><h4>Arsipkan Status</h4>{error && <div role="alert">{error}{(error.includes('Muat Ulang') || error.includes('Reload')) && <button onClick={() => void reload()}>Muat Ulang Konfigurasi</button>}</div>}<p>Tugas yang ada dengan status ini akan tetap terhubung dan akan ditampilkan di bawah status yang diarsipkan.</p><button onClick={close}>Batal</button><button disabled={locked} onClick={async () => { if (await mutate(() => api.workspaces.archiveWorkflowStatus(workspaceId, workflow.id, selected.id, { version: workflow.version }), 'Status berhasil diarsipkan.')) setDialog(null); }}>Arsipkan</button></WorkflowStatusDialog>}
   </div>;
 }

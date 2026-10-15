@@ -37,7 +37,7 @@ function JoinContent() {
       const res = await api.join.preview(isUuid ? { workspace_id: trimmed } : { join_code: trimmed });
       setPreview(res.data);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Invalid code or workspace ID.');
+      setError(err instanceof ApiError ? err.message : 'Kode atau ID Workspace tidak valid.');
     } finally {
       setLoading(false);
     }
@@ -50,10 +50,10 @@ function JoinContent() {
     try {
       const res = await api.join.joinByCode(inputVal.trim());
       await refetchUser();
-      setSuccess('Successfully joined workspace!');
+      setSuccess('Berhasil bergabung dengan workspace!');
       router.push(`/workspaces/${res.data.workspace_id}/tasks`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to join workspace.');
+      setError(err instanceof ApiError ? err.message : 'Gagal bergabung dengan workspace.');
     } finally {
       setSubmitting(false);
     }
@@ -65,97 +65,108 @@ function JoinContent() {
     setError(null);
     try {
       await api.join.requestJoin(preview.workspace_id);
-      setSuccess('Join request submitted! Please wait for a workspace administrator to approve.');
+      setSuccess('Permohonan gabung telah dikirim! Silakan tunggu persetujuan administrator workspace.');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to submit join request.');
+      setError(err instanceof ApiError ? err.message : 'Gagal mengirim permohonan gabung.');
     } finally {
       setSubmitting(false);
     }
   };
 
   if (authLoading) {
-    return <div className="text-center">Loading...</div>;
+    return (
+      <div className="space-y-4 py-4" aria-live="polite">
+        <div className="h-6 w-3/4 mx-auto animate-pulse rounded bg-surface-subtle" />
+        <div className="h-10 w-full animate-pulse rounded bg-surface-subtle" />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <header className="space-y-2 text-center">
-        <h1 className="text-2xl font-bold">Join a Workspace</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Enter a Join Code (e.g. FLOZ-XXXX-XXXX-XXXX) or exact Workspace ID.
+        <h1 className="text-2xl font-bold text-foreground">Gabung Workspace</h1>
+        <p className="text-sm text-muted-foreground">
+          Masukkan Kode Gabung (contoh: FLOZ-XXXX-XXXX-XXXX) atau ID Workspace.
         </p>
       </header>
 
       {error ? (
-        <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+        <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
           {error}
         </div>
       ) : null}
 
       {success ? (
-        <div role="status" className="rounded border border-green-300 bg-green-50 p-3 text-sm text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+        <div role="status" className="rounded-md border border-success/30 bg-success/10 p-3 text-sm text-success">
           {success}
         </div>
       ) : null}
 
       <div className="space-y-4">
         <div>
-          <label htmlFor="join_input" className="mb-1 block text-sm font-medium">Join Code or Workspace ID</label>
+          <label htmlFor="join_input" className="mb-1 block text-sm font-semibold text-foreground">
+            Kode Gabung atau ID Workspace
+          </label>
           <div className="flex gap-2">
             <input
               id="join_input"
               type="text"
+              disabled={loading || submitting}
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
-              className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+              className="flex-1 min-h-11 rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               placeholder="FLOZ-XXXX-XXXX-XXXX"
             />
             <button
+              type="button"
               onClick={() => handlePreview(inputVal)}
-              disabled={loading || !inputVal.trim()}
-              className="rounded border border-gray-300 px-4 py-2 text-sm font-semibold transition hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+              disabled={loading || submitting || !inputVal.trim()}
+              className="flex min-h-11 items-center justify-center rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
             >
-              {loading ? 'Checking...' : 'Check'}
+              {loading ? 'Memeriksa...' : 'Periksa'}
             </button>
           </div>
         </div>
 
         {preview && (
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3 dark:border-gray-800 dark:bg-gray-800/50">
+          <div className="rounded-xl border border-border bg-surface-subtle p-4 space-y-3">
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Workspace</p>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">{preview.workspace_name}</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Workspace</p>
+              <p className="text-lg font-bold text-foreground">{preview.workspace_name}</p>
             </div>
 
             {preview.action === 'JOIN' && (
               <button
+                type="button"
                 onClick={handleJoin}
                 disabled={submitting || !user}
-                className="w-full rounded bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               >
-                {submitting ? 'Joining...' : !user ? 'Please Sign In to Join' : `Join as Member`}
+                {submitting ? 'Sedang bergabung...' : !user ? 'Silakan Masuk untuk Bergabung' : 'Gabung sebagai Anggota'}
               </button>
             )}
 
             {preview.action === 'REQUEST_APPROVAL' && (
               <button
+                type="button"
                 onClick={handleRequestApproval}
                 disabled={submitting || !user}
-                className="w-full rounded bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               >
-                {submitting ? 'Submitting request...' : !user ? 'Please Sign In to Request' : 'Request to Join'}
+                {submitting ? 'Sedang mengirim permohonan...' : !user ? 'Silakan Masuk untuk Meminta' : 'Kirim Permohonan Gabung'}
               </button>
             )}
 
             {preview.action === 'JOIN_CODE_REQUIRED' && (
-              <p className="text-sm text-amber-700 dark:text-amber-300">
-                This workspace requires a valid Join Code. Please enter the full code above.
+              <p className="text-sm text-warning font-medium">
+                Workspace ini memerlukan Kode Gabung yang valid. Silakan masukkan kode lengkap di atas.
               </p>
             )}
 
             {preview.action === 'INVITATION_REQUIRED' && (
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                This workspace is invitation-only. Please contact a workspace administrator for an invitation.
+              <p className="text-sm text-muted-foreground">
+                Workspace ini hanya dapat diakses melalui undangan. Silakan hubungi administrator workspace.
               </p>
             )}
           </div>
@@ -163,8 +174,8 @@ function JoinContent() {
       </div>
 
       <footer className="text-center text-sm">
-        <Link href="/onboarding" className="text-gray-600 hover:underline dark:text-gray-400">
-          Back to Onboarding
+        <Link href="/onboarding" className="text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
+          Kembali ke Penyiapan
         </Link>
       </footer>
     </div>
@@ -173,10 +184,15 @@ function JoinContent() {
 
 export default function JoinPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10 dark:bg-gray-950">
-      <div className="w-full max-w-md space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <div className="w-full max-w-md space-y-6 rounded-xl border border-border bg-surface p-6 sm:p-8 shadow-xs">
         <div className="mx-auto w-36"><BrandLogo /></div>
-        <Suspense fallback={<div className="text-center">Loading...</div>}>
+        <Suspense fallback={
+          <div className="space-y-4 py-6 text-center" aria-live="polite">
+            <div className="h-6 w-3/4 mx-auto animate-pulse rounded bg-surface-subtle" />
+            <div className="h-10 w-full animate-pulse rounded bg-surface-subtle" />
+          </div>
+        }>
           <JoinContent />
         </Suspense>
       </div>

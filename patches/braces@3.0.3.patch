@@ -1,0 +1,143 @@
+diff --git a/lib/parse.js b/lib/parse.js
+index 3a6988e629f52aee6609dc5ec290a5e9ff47cecb..6d85d605a932c951fcd0b1d927efd8d0a2b6422d 100644
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -143,6 +143,7 @@ const parse = (input, options = {}) => {
+      */
+ 
+     if (value === CHAR_LEFT_PARENTHESES) {
++      if (stack.length > 256) throw new RangeError('Pattern nesting exceeds maximum depth (256)');
+       block = push({ type: 'paren', nodes: [] });
+       stack.push(block);
+       push({ type: 'text', value });
+@@ -195,6 +196,7 @@ const parse = (input, options = {}) => {
+      */
+ 
+     if (value === CHAR_LEFT_CURLY_BRACE) {
++      if (stack.length > 256) throw new RangeError('Pattern nesting exceeds maximum depth (256)');
+       depth++;
+ 
+       const dollar = prev.value && prev.value.slice(-1) === '$' || block.dollar === true;
+diff --git a/lib/compile.js b/lib/compile.js
+--- a/lib/compile.js
++++ b/lib/compile.js
+@@ -4,5 +4,6 @@ const fill = require('fill-range');
+ const utils = require('./utils');
+ 
+ const compile = (ast, options = {}) => {
+-  const walk = (node, parent = {}) => {
++  const walk = (node, parent = {}, depth = 0) => {
++    if (depth > 256) throw new RangeError('Pattern nesting exceeds maximum depth (256)');
+     const invalidBlock = utils.isInvalidBrace(parent);
+@@ -47,6 +48,6 @@ const compile = (ast, options = {}) => {
+ 
+     if (node.nodes) {
+       for (const child of node.nodes) {
+-        output += walk(child, node);
++        output += walk(child, node, depth + 1);
+       }
+     }
+diff --git a/lib/expand.js b/lib/expand.js
+--- a/lib/expand.js
++++ b/lib/expand.js
+@@ -7,2 +7,3 @@
+-const append = (queue = '', stash = '', enclose = false) => {
++const append = (queue = '', stash = '', enclose = false, depth = 0) => {
++  if (depth > 256) throw new RangeError('Pattern nesting exceeds maximum depth (256)');
+   const result = [];
+@@ -19,8 +20,8 @@
+     if (Array.isArray(item)) {
+       for (const value of item) {
+-        result.push(append(value, stash, enclose));
++        result.push(append(value, stash, enclose, depth + 1));
+       }
+     } else {
+       for (let ele of stash) {
+         if (enclose === true && typeof ele === 'string') ele = `{${ele}}`;
+-        result.push(Array.isArray(ele) ? append(item, ele, enclose) : item + ele);
++        result.push(Array.isArray(ele) ? append(item, ele, enclose, depth + 1) : item + ele);
+@@ -33,16 +33,21 @@
+ const expand = (ast, options = {}) => {
+   const rangeLimit = options.rangeLimit === undefined ? 1000 : options.rangeLimit;
+ 
+-  const walk = (node, parent = {}) => {
++  const ancestorQueue = start => {
++    let block = start;
++    let depth = 0;
++    while (block.type !== 'brace' && block.type !== 'root' && block.parent) {
++      if (++depth > 256) throw new RangeError('Pattern nesting exceeds maximum depth (256)');
++      block = block.parent;
++    }
++    return block.queue;
++  };
++
++  const walk = (node, parent = {}, depth = 0) => {
++    if (depth > 256) throw new RangeError('Pattern nesting exceeds maximum depth (256)');
+     node.queue = [];
+ 
+-    let p = parent;
+-    let q = parent.queue;
+-
+-    while (p.type !== 'brace' && p.type !== 'root' && p.parent) {
+-      p = p.parent;
+-      q = p.queue;
+-    }
++    let q = ancestorQueue(parent);
+ 
+     if (node.invalid || node.dollar) {
+       q.push(append(q.pop(), stringify(node, options)));
+@@ -72,13 +77,7 @@
+     }
+ 
+     const enclose = utils.encloseBrace(node);
+-    let queue = node.queue;
+-    let block = node;
+-
+-    while (block.type !== 'brace' && block.type !== 'root' && block.parent) {
+-      block = block.parent;
+-      queue = block.queue;
+-    }
++    let queue = ancestorQueue(node);
+ 
+     for (let i = 0; i < node.nodes.length; i++) {
+       const child = node.nodes[i];
+@@ -100,7 +99,7 @@
+       }
+ 
+       if (child.nodes) {
+-        walk(child, node);
++        walk(child, node, depth + 1);
+       }
+     }
+ 
+diff --git a/lib/stringify.js b/lib/stringify.js
+--- a/lib/stringify.js
++++ b/lib/stringify.js
+@@ -3,4 +3,5 @@ const utils = require('./utils');
+ 
+ module.exports = (ast, options = {}) => {
+-  const stringify = (node, parent = {}) => {
++  const stringify = (node, parent = {}, depth = 0) => {
++    if (depth > 256) throw new RangeError('Pattern nesting exceeds maximum depth (256)');
+     const invalidBlock = options.escapeInvalid && utils.isInvalidBrace(parent);
+@@ -21,6 +22,6 @@ module.exports = (ast, options = {}) => {
+ 
+     if (node.nodes) {
+       for (const child of node.nodes) {
+-        output += stringify(child);
++        output += stringify(child, {}, depth + 1);
+       }
+     }
+diff --git a/lib/utils.js b/lib/utils.js
+--- a/lib/utils.js
++++ b/lib/utils.js
+@@ -104,6 +104,7 @@
+-  const flat = arr => {
++  const flat = (arr, depth = 0) => {
++    if (depth > 256) throw new RangeError('Pattern nesting exceeds maximum depth (256)');
+     for (let i = 0; i < arr.length; i++) {
+       const ele = arr[i];
+ 
+       if (Array.isArray(ele)) {
+-        flat(ele);
++        flat(ele, depth + 1);

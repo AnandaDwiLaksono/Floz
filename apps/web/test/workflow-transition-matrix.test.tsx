@@ -92,14 +92,14 @@ describe('Workflow Transition Matrix — Task 11', () => {
     vi.mocked(api.workspaces.workflowDetail).mockResolvedValue({ data: { ...baseWorkflow, version: 9, transitions: [baseWorkflow.transitions[2]] } });
     function Parent() { const [workflow, setWorkflow] = useState<WorkflowDetail>(baseWorkflow); return <><output>{workflow.version}</output><WorkflowTransitionMatrix workspaceId="ws-1" workflow={workflow} onWorkflowUpdate={setWorkflow} onError={mockOnError} showToast={mockShowToast} /></>; }
     render(<Parent />); fireEvent.click(screen.getByRole('checkbox', { name: /Backlog to Done/ })); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reload Configuration' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Reload Configuration|Muat Ulang/i }));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('9'));
     await waitFor(() => expect(screen.getByRole('checkbox', { name: /Backlog to Done/ })).not.toBeChecked());
     expect(screen.getByRole('checkbox', { name: /Backlog to Old Status/ })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /Backlog to Old Status/ })).toBeDisabled();
   });
 
-  it.each([['SELF_LOOP_NOT_ALLOWED', 'A status cannot transition to itself.'], ['INACTIVE_TRANSITION_TARGET', 'An archived status cannot be a new transition target. Reload the configuration.']])('explains %s', async (code, message) => {
+  it.each([['SELF_LOOP_NOT_ALLOWED', /A status cannot transition to itself|Status tidak dapat bertransisi ke dirinya sendiri/i], ['INACTIVE_TRANSITION_TARGET', /An archived status cannot be a new transition target|Status yang diarsipkan tidak dapat menjadi target transisi baru/i]])('explains %s', async (code, message) => {
     vi.mocked(api.workspaces.replaceWorkflowTransitions).mockRejectedValue(new ApiError(409, code, 'raw'));
     renderMatrix(); fireEvent.click(screen.getByRole('checkbox', { name: /Backlog to Done/ })); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
@@ -123,7 +123,7 @@ describe('Workflow Transition Matrix — Task 11', () => {
 
   it('renders desktop matrix with correct headers', () => {
     renderMatrix();
-    expect(screen.getByText('Transitions')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Transitions|Transisi/i })).toBeInTheDocument();
     expect(screen.getAllByText('Backlog')).toHaveLength(2);
     expect(screen.getAllByText('In Progress')).toHaveLength(2);
     expect(screen.getAllByText('Done')).toHaveLength(2);
@@ -132,7 +132,7 @@ describe('Workflow Transition Matrix — Task 11', () => {
 
   it('self-loop diagonal cells show disabled dash', () => {
     renderMatrix();
-    const dashes = screen.getAllByText('Self-loop not allowed');
+    const dashes = screen.getAllByText(/Self-loop not allowed|Transisi ke status yang sama tidak diizinkan|Perulangan mandiri/i);
     expect(dashes.length).toBeGreaterThanOrEqual(3);
   });
 

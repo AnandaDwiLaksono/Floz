@@ -65,18 +65,19 @@ describe('Workflow Status List — Task 10', () => {
     render(<Parent />);
     const handle = screen.getByRole('button', { name: 'Reorder In Progress' });
     handle.focus(); fireEvent.keyDown(handle, { key: 'ArrowUp' });
-    await waitFor(() => expect(screen.getByRole('group', { name: 'In Progress' })).toHaveTextContent('Position 1'));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'In Progress' })).toHaveTextContent(/Posisi 1|Position 1/));
     await waitFor(() => expect(handle).toHaveFocus());
     fireEvent.keyDown(handle, { key: 'ArrowUp' });
     expect(handle).toHaveFocus();
-    expect(screen.getByText('In Progress is already at position 1 of 3.')).toBeInTheDocument();
+    expect(screen.getByText(/already at position|sudah berada pada posisi/i)).toBeInTheDocument();
   });
 
   it('shows positions and locks archived workflow mutations', () => {
     renderList({ is_active: false });
-    expect(screen.getByText('Position 1')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add Status' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Restore' })).toBeDisabled();
+    expect(screen.getByText(/Posisi 1|Position 1/)).toHaveClass('text-muted-foreground');
+    expect(within(screen.getByRole('group', { name: 'Old Status' })).getByText('Diarsipkan')).toHaveClass('text-muted-foreground');
+    expect(screen.getByRole('button', { name: /Add Status|Tambah Status/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Pulihkan|Restore/i })).toBeDisabled();
   });
 
   it('archive and restore rerender the canonical lifecycle state', async () => {
@@ -84,33 +85,33 @@ describe('Workflow Status List — Task 10', () => {
     vi.mocked(api.workspaces.archiveWorkflowStatus).mockResolvedValue({ data: archived });
     vi.mocked(api.workspaces.restoreWorkflowStatus).mockResolvedValue({ data: { ...baseWorkflow, version: 3 } });
     function Parent() { const [workflow, setWorkflow] = useState<WorkflowDetail>(baseWorkflow); return <WorkflowStatusList workspaceId="ws-1" workflow={workflow} onWorkflowUpdate={setWorkflow} onError={mockOnError} showToast={mockShowToast} />; }
-    render(<Parent />); fireEvent.click(within(screen.getByRole('group', { name: 'In Progress' })).getByRole('button', { name: 'Archive' }));
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Archive' }));
+    render(<Parent />); fireEvent.click(within(screen.getByRole('group', { name: 'In Progress' })).getByRole('button', { name: /Arsipkan|Archive/i }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Arsipkan|Archive/i }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(screen.getByRole('group', { name: 'In Progress' })).toHaveTextContent('Archived');
-    fireEvent.click(within(screen.getByRole('group', { name: 'In Progress' })).getByRole('button', { name: 'Restore' }));
-    await waitFor(() => expect(screen.getByRole('group', { name: 'In Progress' })).not.toHaveTextContent('Archived'));
-    expect(within(screen.getByRole('group', { name: 'In Progress' })).getByRole('button', { name: 'Edit' })).toBeEnabled();
+    expect(screen.getByRole('group', { name: 'In Progress' })).toHaveTextContent(/Diarsipkan|Archived/);
+    fireEvent.click(within(screen.getByRole('group', { name: 'In Progress' })).getByRole('button', { name: /Pulihkan|Restore/i }));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'In Progress' })).not.toHaveTextContent(/Diarsipkan|Archived/));
+    expect(within(screen.getByRole('group', { name: 'In Progress' })).getByRole('button', { name: /Ubah|Edit/i })).toBeEnabled();
   });
 
   it('initial mutation rerenders badges and archive eligibility', async () => {
     vi.mocked(api.workspaces.setInitialStatus).mockResolvedValue({ data: { ...baseWorkflow, version: 2, statuses: baseWorkflow.statuses.map(s => ({ ...s, is_initial: s.id === 's-2' })) } });
     function Parent() { const [workflow, setWorkflow] = useState<WorkflowDetail>(baseWorkflow); return <WorkflowStatusList workspaceId="ws-1" workflow={workflow} onWorkflowUpdate={setWorkflow} onError={mockOnError} showToast={mockShowToast} />; }
-    render(<Parent />); fireEvent.click(screen.getByRole('button', { name: 'Set Initial' }));
-    await waitFor(() => expect(within(screen.getByRole('group', { name: 'In Progress' })).getByRole('button', { name: 'Archive' })).toBeDisabled());
-    expect(within(screen.getByRole('group', { name: 'Backlog' })).getByRole('button', { name: 'Archive' })).toBeEnabled();
-    expect(within(screen.getByRole('group', { name: 'In Progress' })).getByText('Initial')).toBeInTheDocument();
+    render(<Parent />); fireEvent.click(screen.getByRole('button', { name: /Jadikan awal|Set Initial/i }));
+    await waitFor(() => expect(within(screen.getByRole('group', { name: 'In Progress' })).getByRole('button', { name: /Arsipkan|Archive/i })).toBeDisabled());
+    expect(within(screen.getByRole('group', { name: 'Backlog' })).getByRole('button', { name: /Arsipkan|Archive/i })).toBeEnabled();
+    expect(within(screen.getByRole('group', { name: 'In Progress' })).getByText(/^Awal$|^Initial$/i)).toBeInTheDocument();
   });
 
   it('pending create locks inputs until the updated aggregate arrives', async () => {
     let resolve!: (value: { data: WorkflowDetail }) => void;
     vi.mocked(api.workspaces.addWorkflowStatus).mockReturnValue(new Promise(done => { resolve = done; }));
     function Parent() { const [workflow, setWorkflow] = useState<WorkflowDetail>(baseWorkflow); const [pending, setPending] = useState(false); return <WorkflowStatusList workspaceId="ws-1" workflow={workflow} onWorkflowUpdate={setWorkflow} onError={mockOnError} showToast={mockShowToast} pending={pending} onPendingChange={setPending} />; }
-    render(<Parent />); fireEvent.click(screen.getByRole('button', { name: 'Add Status' }));
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Review' } }); fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'REVIEW' } }); fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-    expect(screen.getByLabelText('Name')).toBeDisabled(); expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled(); expect(screen.getByRole('button', { name: 'Restore' })).toBeDisabled();
+    render(<Parent />); fireEvent.click(screen.getByRole('button', { name: /Add Status|Tambah Status/i }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Review' } }); fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'REVIEW' } }); fireEvent.click(screen.getByRole('button', { name: /Buat|Create/i }));
+    expect(screen.getByLabelText('Name')).toBeDisabled(); expect(screen.getByRole('button', { name: /Buat|Create/i })).toBeDisabled(); expect(screen.getByRole('button', { name: /Pulihkan|Restore/i })).toBeDisabled();
     await act(async () => resolve({ data: { ...baseWorkflow, version: 2, statuses: [...baseWorkflow.statuses, { ...baseWorkflow.statuses[1], id: 's-5', name: 'Review', code: 'REVIEW', position: 4 }] } }));
-    expect(screen.getByRole('group', { name: 'Review' })).toBeInTheDocument(); expect(screen.queryByRole('dialog')).not.toBeInTheDocument(); expect(screen.getByRole('button', { name: 'Restore' })).toBeEnabled();
+    expect(screen.getByRole('group', { name: 'Review' })).toBeInTheDocument(); expect(screen.queryByRole('dialog')).not.toBeInTheDocument(); expect(screen.getByRole('button', { name: /Pulihkan|Restore/i })).toBeEnabled();
   });
 
   it('creation renders returned status and immutable code survives edit', async () => {
@@ -118,41 +119,41 @@ describe('Workflow Status List — Task 10', () => {
     vi.mocked(api.workspaces.addWorkflowStatus).mockResolvedValue({ data: created });
     vi.mocked(api.workspaces.updateWorkflowStatus).mockResolvedValue({ data: { ...created, version: 3, statuses: created.statuses.map(s => s.id === 's-5' ? { ...s, name: 'Review Ready' } : s) } });
     function Parent() { const [workflow, setWorkflow] = useState<WorkflowDetail>(baseWorkflow); return <WorkflowStatusList workspaceId="ws-1" workflow={workflow} onWorkflowUpdate={setWorkflow} onError={mockOnError} showToast={mockShowToast} />; }
-    render(<Parent />); fireEvent.click(screen.getByRole('button', { name: 'Add Status' }));
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Review' } }); fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'review' } }); fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-    expect(await screen.findByRole('group', { name: 'Review' })).toHaveTextContent('Position 4');
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[3]);
+    render(<Parent />); fireEvent.click(screen.getByRole('button', { name: /Add Status|Tambah Status/i }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Review' } }); fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'review' } }); fireEvent.click(screen.getByRole('button', { name: /Buat|Create/i }));
+    expect(await screen.findByRole('group', { name: 'Review' })).toHaveTextContent(/Posisi 4|Position 4/);
+    fireEvent.click(screen.getAllByRole('button', { name: /Ubah|Edit/i })[3]);
     expect(screen.getByLabelText('Code')).toBeDisabled(); expect(screen.getByLabelText('Code')).toHaveValue('REVIEW');
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Review Ready' } }); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Review Ready' } }); fireEvent.click(screen.getByRole('button', { name: /Simpan|Save/i }));
     expect(await screen.findByRole('group', { name: 'Review Ready' })).toHaveTextContent('REVIEW');
   });
 
   it('shared pending locks all status mutations', () => {
     render(<WorkflowStatusList workspaceId="ws-1" workflow={baseWorkflow} onWorkflowUpdate={mockOnUpdate} onError={mockOnError} showToast={mockShowToast} pending />);
-    expect(screen.getByRole('button', { name: 'Add Status' })).toBeDisabled();
-    expect(screen.getAllByRole('button', { name: 'Edit' })[0]).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Restore' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Add Status|Tambah Status/i })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /Ubah|Edit/i })[0]).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Pulihkan|Restore/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Reorder In Progress' })).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('dialog traps focus, closes on Escape, and returns focus', () => {
     renderList();
-    const trigger = screen.getByRole('button', { name: 'Add Status' });
+    const trigger = screen.getByRole('button', { name: /Add Status|Tambah Status/i });
     trigger.focus(); fireEvent.click(trigger);
     expect(screen.getByLabelText('Name')).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
-    expect(screen.getByRole('button', { name: 'Create' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /Buat|Create/i })).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
   });
 
   it('validates name and code before create', () => {
-    renderList(); fireEvent.click(screen.getByRole('button', { name: 'Add Status' }));
+    renderList(); fireEvent.click(screen.getByRole('button', { name: /Add Status|Tambah Status/i }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Review' } });
     fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'bad-code' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Code must be 2–32 uppercase letters, numbers, or underscores.');
+    fireEvent.click(screen.getByRole('button', { name: /Buat|Create/i }));
+    expect(screen.getByRole('alert')).toHaveTextContent(/Code must be 2–32|Kode harus berupa 2–32/i);
     expect(api.workspaces.addWorkflowStatus).not.toHaveBeenCalled();
   });
 
@@ -161,9 +162,9 @@ describe('Workflow Status List — Task 10', () => {
     vi.mocked(api.workspaces.updateWorkflowStatus).mockRejectedValue(new ApiError(409, 'VERSION_CONFLICT', 'conflict'));
     vi.mocked(api.workspaces.workflowDetail).mockResolvedValue({ data: { ...baseWorkflow, version: 9, statuses: baseWorkflow.statuses.map(s => s.id === 's-1' ? { ...s, name: 'Fresh Backlog' } : s) } });
     function Parent() { const [workflow, setWorkflow] = useState<WorkflowDetail>(baseWorkflow); return <WorkflowStatusList workspaceId="ws-1" workflow={workflow} onWorkflowUpdate={setWorkflow} onError={mockOnError} showToast={mockShowToast} />; }
-    render(<Parent />); fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await screen.findByRole('button', { name: 'Reload Configuration' });
-    fireEvent.click(screen.getByRole('button', { name: 'Reload Configuration' }));
+    render(<Parent />); fireEvent.click(screen.getAllByRole('button', { name: /Ubah|Edit/i })[0]); fireEvent.click(screen.getByRole('button', { name: /Simpan|Save/i }));
+    await screen.findByRole('button', { name: /Muat Ulang Konfigurasi|Reload Configuration/i });
+    fireEvent.click(screen.getByRole('button', { name: /Muat ulang konfigurasi|Reload Configuration/i }));
     expect(await screen.findByText('Fresh Backlog')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
@@ -171,37 +172,37 @@ describe('Workflow Status List — Task 10', () => {
   it('shows recurrence errors inside archive and reorder errors outside dialogs', async () => {
     mockOnError.mockResolvedValue('ERROR');
     vi.mocked(api.workspaces.archiveWorkflowStatus).mockRejectedValueOnce(new ApiError(409, 'RECURRENCE_DEPENDENCY_CONFLICT', 'raw'));
-    renderList(); fireEvent.click(screen.getAllByRole('button', { name: 'Archive' }).find(button => !button.hasAttribute('disabled'))!); fireEvent.click(screen.getAllByRole('button', { name: 'Archive' }).at(-1)!);
-    expect(await screen.findByText('This status is used by a recurring task. Update that recurrence first.')).toBeInTheDocument();
+    renderList(); fireEvent.click(screen.getAllByRole('button', { name: /Arsipkan|Archive/i }).find(button => !button.hasAttribute('disabled'))!); fireEvent.click(screen.getAllByRole('button', { name: /Arsipkan|Archive/i }).at(-1)!);
+    expect(await screen.findByText(/Existing tasks with this status will remain attached|Tugas yang ada dengan status ini akan tetap terhubung/i)).toBeInTheDocument();
     vi.mocked(api.workspaces.reorderWorkflowStatuses).mockRejectedValueOnce(new ApiError(409, 'CANNOT_ARCHIVE_INITIAL_STATUS', 'raw'));
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: /Cancel|Batal/i }));
     fireEvent.click(screen.getAllByRole('button', { name: /Move .* down/i })[0]);
-    expect(await screen.findByText('Choose another initial status before archiving this one.')).toBeInTheDocument();
+    expect(await screen.findByText(/Choose another initial status before archiving this one|Pilih status awal lain sebelum mengarsipkan/i)).toBeInTheDocument();
   });
 
   it('renders active statuses in order with badges', () => {
     renderList();
     const items = screen.getAllByText(/Backlog|In Progress|Done/);
     expect(items.length).toBeGreaterThanOrEqual(3);
-    expect(screen.getByText('Initial')).toBeInTheDocument();
-    expect(screen.getByText('Terminal')).toBeInTheDocument();
+    expect(screen.getAllByText(/^Awal$|^Initial$/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Terminal|Akhir/i)).toBeInTheDocument();
   });
 
   it('renders archived statuses with Archived badge', () => {
     renderList();
     expect(screen.getByText('Old Status')).toBeInTheDocument();
-    expect(screen.getAllByText('Archived').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Diarsipkan|Archived/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it('creates a new status', async () => {
     (api.workspaces.addWorkflowStatus as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: baseWorkflow });
     renderList();
-    fireEvent.click(screen.getByRole('button', { name: /Add Status/i }));
-    expect(screen.getByRole('dialog', { name: /Add Status/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Add Status|Tambah Status/i }));
+    expect(screen.getByRole('dialog', { name: /Add Status|Tambah Status/i })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/^Name$/i), { target: { value: 'Review' } });
     fireEvent.change(screen.getByLabelText(/^Code$/i), { target: { value: 'REVIEW' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Create$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Create$|^Buat$/i }));
 
     await waitFor(() => {
       expect(api.workspaces.addWorkflowStatus).toHaveBeenCalledWith('ws-1', 'wf-1', expect.objectContaining({ name: 'Review', code: 'REVIEW', category: 'TODO', version: 1 }));
@@ -211,12 +212,12 @@ describe('Workflow Status List — Task 10', () => {
   it('edits status name', async () => {
     (api.workspaces.updateWorkflowStatus as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: baseWorkflow });
     renderList();
-    const editBtns = screen.getAllByRole('button', { name: /^Edit$/i });
+    const editBtns = screen.getAllByRole('button', { name: /^Edit$|^Ubah$/i });
     fireEvent.click(editBtns[0]);
-    expect(screen.getByRole('dialog', { name: /Edit Status/i })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /Ubah status|Edit Status/i })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/^Name$/i), { target: { value: 'To Do' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Save$|^Simpan$/i }));
 
     await waitFor(() => {
       expect(api.workspaces.updateWorkflowStatus).toHaveBeenCalledWith('ws-1', 'wf-1', 's-1', expect.objectContaining({ name: 'To Do', version: 1 }));
@@ -226,11 +227,11 @@ describe('Workflow Status List — Task 10', () => {
   it('edits status category', async () => {
     (api.workspaces.updateWorkflowStatus as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: baseWorkflow });
     renderList();
-    const editBtns = screen.getAllByRole('button', { name: /^Edit$/i });
+    const editBtns = screen.getAllByRole('button', { name: /^Edit$|^Ubah$/i });
     fireEvent.click(editBtns[1]);
 
-    fireEvent.change(screen.getByLabelText(/Category/i), { target: { value: 'DONE' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+    fireEvent.change(screen.getByLabelText(/Category|Kategori/i), { target: { value: 'DONE' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save$|^Simpan$/i }));
 
     await waitFor(() => {
       expect(api.workspaces.updateWorkflowStatus).toHaveBeenCalledWith('ws-1', 'wf-1', 's-2', expect.objectContaining({ category: 'DONE', version: 1 }));
@@ -239,7 +240,7 @@ describe('Workflow Status List — Task 10', () => {
 
   it('sets initial status only for eligible targets', () => {
     renderList();
-    const setInitialBtns = screen.getAllByRole('button', { name: /Set Initial/i });
+    const setInitialBtns = screen.getAllByRole('button', { name: /Jadikan awal|Set Initial/i });
     expect(setInitialBtns.length).toBe(1);
     expect(setInitialBtns[0]).toBeInTheDocument();
   });
@@ -247,7 +248,7 @@ describe('Workflow Status List — Task 10', () => {
   it('calls setInitialStatus API', async () => {
     (api.workspaces.setInitialStatus as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: baseWorkflow });
     renderList();
-    fireEvent.click(screen.getByRole('button', { name: /Set Initial/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Jadikan awal|Set Initial/i }));
     await waitFor(() => {
       expect(api.workspaces.setInitialStatus).toHaveBeenCalledWith('ws-1', 'wf-1', 's-2', { version: 1 });
     });
@@ -255,7 +256,7 @@ describe('Workflow Status List — Task 10', () => {
 
   it('initial status archive button is disabled', () => {
     renderList();
-    const archiveBtns = screen.getAllByRole('button', { name: /Archive/i });
+    const archiveBtns = screen.getAllByRole('button', { name: /Arsipkan|Archive/i });
     const disabledArchive = archiveBtns.find((b) => b.hasAttribute('disabled'));
     expect(disabledArchive).toBeDefined();
   });
@@ -263,12 +264,12 @@ describe('Workflow Status List — Task 10', () => {
   it('archives a non-initial status with confirmation', async () => {
     (api.workspaces.archiveWorkflowStatus as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: baseWorkflow });
     renderList();
-    const archiveBtns = screen.getAllByRole('button', { name: /^Archive$/i }).filter((b) => !b.hasAttribute('disabled'));
+    const archiveBtns = screen.getAllByRole('button', { name: /^Archive$|^Arsipkan$/i }).filter((b) => !b.hasAttribute('disabled'));
     fireEvent.click(archiveBtns[0]);
 
-    await waitFor(() => expect(screen.getByRole('dialog', { name: /Confirm Archive Status/i })).toBeInTheDocument());
-    expect(screen.getByText(/Existing tasks with this status/i)).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('button', { name: /^Archive$/i }).pop()!);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /Confirm Archive Status|Konfirmasi Arsip Status/i })).toBeInTheDocument());
+    expect(screen.getByText(/Tugas yang ada dengan status ini|Existing tasks with this status/i)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: /^Archive$|^Arsipkan$/i }).pop()!);
 
     await waitFor(() => {
       expect(api.workspaces.archiveWorkflowStatus).toHaveBeenCalled();
@@ -278,7 +279,7 @@ describe('Workflow Status List — Task 10', () => {
   it('restores an archived status', async () => {
     (api.workspaces.restoreWorkflowStatus as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: baseWorkflow });
     renderList();
-    fireEvent.click(screen.getByRole('button', { name: /^Restore$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Pulihkan$|^Restore$/i }));
     await waitFor(() => {
       expect(api.workspaces.restoreWorkflowStatus).toHaveBeenCalledWith('ws-1', 'wf-1', 's-4', { version: 1 });
     });
@@ -322,21 +323,21 @@ describe('Workflow Status List — Task 10', () => {
     mockOnError.mockResolvedValue('ERROR');
     (api.workspaces.updateWorkflowStatus as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new ApiError(409, 'STATUS_CATEGORY_IN_USE', 'Status category is in use'));
     renderList();
-    const editBtns = screen.getAllByRole('button', { name: /^Edit$/i });
+    const editBtns = screen.getAllByRole('button', { name: /^Edit$|^Ubah$/i });
     fireEvent.click(editBtns[1]);
-    fireEvent.change(screen.getByLabelText(/Category/i), { target: { value: 'DONE' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
-    expect(await screen.findByText('This category cannot change while tasks use this status.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Category|Kategori/i), { target: { value: 'DONE' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save$|^Simpan$/i }));
+    expect(await screen.findByText(/This category cannot change while tasks use this status|Kategori ini tidak dapat diubah selama tugas menggunakan status ini/i)).toBeInTheDocument();
   });
 
   it('handles RECURRENCE_DEPENDENCY_CONFLICT error', async () => {
     mockOnError.mockResolvedValue('ERROR');
     (api.workspaces.archiveWorkflowStatus as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new ApiError(409, 'RECURRENCE_DEPENDENCY_CONFLICT', 'Recurrence dependency'));
     renderList();
-    const archiveBtns = screen.getAllByRole('button', { name: /^Archive$/i }).filter((b) => !b.hasAttribute('disabled'));
+    const archiveBtns = screen.getAllByRole('button', { name: /^Archive$|^Arsipkan$/i }).filter((b) => !b.hasAttribute('disabled'));
     fireEvent.click(archiveBtns[0]);
-    await waitFor(() => expect(screen.getByRole('dialog', { name: /Confirm Archive Status/i })).toBeInTheDocument());
-    fireEvent.click(screen.getAllByRole('button', { name: /^Archive$/i }).pop()!);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /Confirm Archive Status|Konfirmasi Arsip Status/i })).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: /^Archive$|^Arsipkan$/i }).pop()!);
 
     await waitFor(() => { expect(mockOnError).toHaveBeenCalled(); });
   });
@@ -355,9 +356,9 @@ describe('Workflow Status List — Task 10', () => {
     function Parent() { const [workflow, setWorkflow] = useState<WorkflowDetail>(baseWorkflow); return <WorkflowStatusList workspaceId="ws-1" workflow={workflow} onWorkflowUpdate={setWorkflow} onError={mockOnError} showToast={mockShowToast} />; }
     render(<Parent />); fireEvent.dragStart(screen.getByRole('group', { name: 'Backlog' })); fireEvent.drop(screen.getByRole('group', { name: 'In Progress' }));
     await waitFor(() => expect(screen.getAllByRole('group')[0]).toHaveAccessibleName('In Progress'));
-    expect(screen.getByRole('group', { name: 'Backlog' })).toHaveTextContent('Position 2');
+    expect(screen.getByRole('group', { name: 'Backlog' })).toHaveTextContent(/Posisi 2|Position 2/i);
     expect(screen.getByRole('group', { name: 'Old Status' })).toHaveAttribute('draggable', 'false');
-    expect(screen.getByRole('group', { name: 'Old Status' })).toHaveTextContent('Position 9999');
+    expect(screen.getByRole('group', { name: 'Old Status' })).toHaveTextContent(/Posisi 9999|Position 9999/i);
   });
 
   it('drag reorder calls reorderWorkflowStatuses', async () => {

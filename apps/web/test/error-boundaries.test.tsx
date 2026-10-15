@@ -8,9 +8,9 @@ describe('error boundaries', () => {
   it('renders an accessible segment recovery action and focuses it', () => {
     const reset = vi.fn();
     render(<ErrorBoundary error={new Error('boom')} reset={reset} />);
-    expect(screen.getByRole('heading', { name: 'Unable to load this page' })).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('Unable to load this page');
-    const retry = screen.getByRole('button', { name: 'Try again' });
+    expect(screen.getByRole('heading', { name: 'Gagal Memuat Halaman' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Gagal Memuat Halaman');
+    const retry = screen.getByRole('button', { name: 'Coba Lagi' });
     expect(document.activeElement).toBe(retry);
     fireEvent.click(retry);
     expect(reset).toHaveBeenCalledOnce();
@@ -20,8 +20,8 @@ describe('error boundaries', () => {
     const { getByRole } = render(<GlobalErrorBoundary error={new Error('boom')} reset={vi.fn()} />, {
       container: document,
     });
-    expect(getByRole('heading', { name: 'Application error' })).toBeInTheDocument();
-    const button = getByRole('button', { name: 'Reload application' });
+    expect(getByRole('heading', { name: 'Gagal Pada Aplikasi' })).toBeInTheDocument();
+    const button = getByRole('button', { name: 'Muat Ulang Aplikasi' });
     expect(document.activeElement).toBe(button);
   });
 });

@@ -1,4 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import { getE2eEnvironment } from './e2e-environment';
+
+// Config is evaluated in the runner and workers, before any fixture or server can mutate data.
+const env = getE2eEnvironment();
+Object.assign(process.env, env);
 
 export default defineConfig({
   testDir: './e2e',
@@ -9,36 +14,31 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: 'line',
+  globalTeardown: './e2e/teardown.ts',
   use: {
-    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3005',
+    baseURL: env.PLAYWRIGHT_TEST_BASE_URL,
     trace: 'on-first-retry',
   },
   webServer: [
     {
       command: 'node ../api/dist/src/main.js',
-      url: 'http://127.0.0.1:3001/api/v1/health/live',
+      url: `${env.PLAYWRIGHT_API_URL}/health/ready`,
       reuseExistingServer: false,
       timeout: 30000,
-      env: {
-        DATABASE_URL: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5433/floz',
-        REDIS_URL: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
-        BETTER_AUTH_SECRET: 'test-secret-at-least-32-characters-long',
-        BETTER_AUTH_URL: 'http://127.0.0.1:3001',
-        ALLOWED_ORIGINS: 'http://localhost:3005,http://127.0.0.1:3005',
-        NODE_ENV: 'test',
-        AUTH_RATE_LIMIT_MAX: '1000',
-        API_PORT: '3001',
-      },
+      env,
     },
     {
-      command: 'npx next start -p 3005',
-      url: 'http://127.0.0.1:3005',
+      command: `node node_modules/next/dist/bin/next start -H 127.0.0.1 -p ${env.PORT}`,
+      url: `${env.PLAYWRIGHT_TEST_BASE_URL}/login`,
       reuseExistingServer: false,
       timeout: 30000,
-      env: {
-        NEXT_PUBLIC_API_URL: 'http://127.0.0.1:3001/api/v1',
-        PORT: '3005',
-      },
+      env,
+    },
+    {
+      command: 'node ../worker/dist/main.js',
+      wait: { stdout: /worker started/ },
+      timeout: 30000,
+      env,
     },
   ],
   projects: [
