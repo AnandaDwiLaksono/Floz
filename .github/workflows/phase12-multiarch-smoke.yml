@@ -14,6 +14,8 @@ jobs:
     # redis:7-bookworm@sha256:737124266fd276e62abb75a2ca2eadfb95f81cfa82cc7c9a5f1f7d487b9c9e10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
         with: { version: 9.15.4 }
       - uses: actions/setup-node@v4

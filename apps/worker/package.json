@@ -8,8 +8,8 @@
     "dev": "tsx watch src/main.ts",
     "lint": "eslint src test --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --pool=forks --poolOptions.forks.singleFork",
-    "test:integration": "vitest run --pool=forks --poolOptions.forks.singleFork --dir test --testNamePattern \".*\" test/outbox.integration.test.ts test/outbox-db.integration.test.ts test/recurrence.integration.test.ts test/notification-reconciliation.integration.test.ts",
+    "test": "vitest run --dir test --pool=forks --maxWorkers=1 --no-file-parallelism",
+    "test:integration": "vitest run --pool=forks --maxWorkers=1 --no-file-parallelism --dir test --testNamePattern \".*\" test/outbox.integration.test.ts test/outbox-db.integration.test.ts test/recurrence.integration.test.ts test/notification-reconciliation.integration.test.ts",
     "build": "tsc",
     "start": "node dist/main.js",
     "failed-jobs": "node dist/failed-jobs.js",
@@ -29,6 +29,6 @@
     "@types/node": "^22.13.10",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "vitest": "^3.0.8"
+    "vitest": "4.1.11"
   }
 }

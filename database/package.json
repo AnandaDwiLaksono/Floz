@@ -6,7 +6,7 @@
     "prebuild": "pnpm --filter @floz/config --filter @floz/domain --filter @floz/observability build",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --pool=forks --poolOptions.forks.singleFork --passWithNoTests",
+    "test": "vitest run --pool=forks --maxWorkers=1 --no-file-parallelism --passWithNoTests",
     "build": "tsc",
     "generate": "drizzle-kit generate --config=drizzle.config.ts",
     "migrate": "drizzle-kit migrate --config=drizzle.config.ts",
@@ -27,7 +27,7 @@
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "vitest": "^3.0.8"
+    "vitest": "4.1.11"
   },
   "dependencies": {
     "@floz/config": "workspace:*",

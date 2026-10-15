@@ -3,11 +3,13 @@ import type { WorkflowDetail } from '../lib/api-client';
 import { createDatabase, accounts, sessions, users, verifications } from '@floz/database';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { assertQaDatabase } from '../e2e-environment';
 
-const databaseUrl = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5433/floz';
-const auth = betterAuth({ secret: process.env.BETTER_AUTH_SECRET || 'test-secret-at-least-32-characters-long', database: drizzleAdapter(createDatabase(databaseUrl).db as never, { provider: 'pg', schema: { user: users, account: accounts, session: sessions, verification: verifications } }), emailAndPassword: { enabled: true }, advanced: { database: { generateId: 'uuid' } } });
+const databaseUrl = assertQaDatabase();
+const auth = betterAuth({ secret: process.env.BETTER_AUTH_SECRET!, database: drizzleAdapter(createDatabase(databaseUrl).db as never, { provider: 'pg', schema: { user: users, account: accounts, session: sessions, verification: verifications } }), emailAndPassword: { enabled: true }, advanced: { database: { generateId: 'uuid' } } });
 
 async function resetDb() {
+  assertQaDatabase();
   const { sql } = createDatabase(databaseUrl);
   await sql`TRUNCATE team_memberships, teams, workspace_memberships, workspaces, roles, sessions, accounts, users, verifications RESTART IDENTITY CASCADE`;
   await sql`INSERT INTO roles (code, name) VALUES ('ADMIN', 'Admin'), ('MEMBER', 'Member') ON CONFLICT DO NOTHING`;
@@ -762,7 +764,11 @@ test.describe('Floz Kanban', () => {
     // 1. Requester logs in and creates approval request
     await login('e1-requester@example.com');
     await page.goto(`/workspaces/${workspaceId}/approvals`);
+    const membersLoaded = page.waitForResponse(response => response.url().includes(`/workspaces/${workspaceId}/members`) && response.request().method() === 'GET');
     await page.getByRole('button', { name: /Buat Permintaan Persetujuan Baru|New Approval Request/i }).click();
+    const membersResponse = await membersLoaded;
+    expect(membersResponse.ok()).toBe(true);
+    expect((await membersResponse.json()).data).toEqual(expect.arrayContaining([expect.objectContaining({ user_id: approverId })]));
     const createDialog = page.getByRole('dialog', { name: /Buat Permintaan Persetujuan Baru|New Approval Request/i });
     await expect(createDialog).toBeVisible();
     await createDialog.locator('#create-title').fill('Q4 Budget Request');
@@ -1005,7 +1011,7 @@ test.describe('Floz Kanban', () => {
 
     // Verify Approval list displays exactly the canonical matching request once
     await expect(page.getByText('Deterministic Managed Request')).toBeVisible();
-    const rows = page.locator('div[role="tabpanel"] > div');
+    const rows = page.getByRole('tabpanel', { name: 'Dikelola' }).getByRole('button');
     await expect(rows).toHaveCount(1);
   });
 
