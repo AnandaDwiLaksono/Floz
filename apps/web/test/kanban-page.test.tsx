@@ -179,6 +179,22 @@ describe('Kanban archived columns', () => {
     expect(within(screen.getByRole('region', { name: 'Belum dimulai' })).getByText('Active task')).toBeVisible();
   });
 
+  it('accepts drop while transition lookup is pending, then validates before mutation', async () => {
+    let resolve!: (value: Awaited<ReturnType<typeof api.tasks.availableTransitions>>) => void;
+    vi.mocked(api.tasks.availableTransitions).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    render(<KanbanPage />);
+    const activeColumn = await screen.findByRole('region', { name: 'Belum dimulai' });
+    fireEvent.dragStart(screen.getByText('Archived task').closest('article')!);
+    await waitFor(() => expect(api.tasks.availableTransitions).toHaveBeenCalledWith('workspace-1', 'task-2'));
+    const dragOver = createEvent.dragOver(activeColumn);
+    fireEvent(activeColumn, dragOver);
+    expect(dragOver.defaultPrevented).toBe(true);
+    fireEvent.drop(activeColumn);
+    expect(api.tasks.transition).not.toHaveBeenCalled();
+    await act(async () => resolve({ data: [{ to_status_id: 'active', code: 'TODO', name: 'Belum dimulai' }] }));
+    await waitFor(() => expect(api.tasks.transition).toHaveBeenCalledWith('workspace-1', 'task-2', { version: 1, to_status_id: 'active' }));
+  });
+
   it('preserves drops onto active columns', async () => {
     render(<KanbanPage />);
     const activeColumn = await screen.findByRole('region', { name: 'Belum dimulai' });

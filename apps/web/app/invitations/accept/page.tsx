@@ -68,7 +68,7 @@ function AcceptInvitationContent() {
         <div className="pt-2">
           <Link
             href="/login"
-            className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           >
             Ke Halaman Masuk
           </Link>
@@ -99,13 +99,13 @@ function AcceptInvitationContent() {
           <div className="flex gap-3 pt-2">
             <Link
               href={`/login?redirect=/invitations/accept?token=${token}`}
-              className="flex min-h-11 flex-1 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex min-h-11 flex-1 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               Masuk
             </Link>
             <Link
               href={`/register?email=${encodeURIComponent(preview.invited_email)}`}
-              className="flex min-h-11 flex-1 items-center justify-center rounded-md border border-border bg-surface text-sm font-semibold text-foreground transition hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex min-h-11 flex-1 items-center justify-center rounded-md border border-border bg-surface text-sm font-semibold text-foreground transition hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               Daftar
             </Link>
@@ -121,7 +121,7 @@ function AcceptInvitationContent() {
             type="button"
             onClick={handleAccept}
             disabled={accepting}
-            className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
           >
             {accepting ? 'Sedang bergabung ke workspace...' : `Terima & Gabung ke ${preview.workspace_name}`}
           </button>

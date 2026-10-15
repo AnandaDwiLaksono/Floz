@@ -18,7 +18,7 @@ function TaskList({ tasks, empty, timezone, onOpen }: { tasks: MyWorkTask[]; emp
     <ul className="divide-y divide-border">
       {tasks.slice(0, 4).map((task) => (
         <li key={task.id} className="py-3 first:pt-1 last:pb-1">
-          <button type="button" aria-label={task.title} onClick={() => onOpen(task.id)} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg px-2 text-left transition-colors hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" aria-label={task.title} onClick={() => onOpen(task.id)} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg px-2 text-left transition-colors hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold text-foreground">{task.title}</span>
               <span className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">

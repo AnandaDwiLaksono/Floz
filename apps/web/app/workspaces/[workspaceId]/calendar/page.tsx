@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { api, ApiError, CalendarTaskSummary, Team, WorkspaceMember } from '../../../../lib/api-client';
-import { CalendarView, getCalendarDayKey, getTaskCalendarDayKeys, getCalendarRange, getTodayInTimezone, shiftCalendarDate } from '../../../../lib/calendar-time';
+import { CalendarView, getCalendarDayKey, getTaskCalendarDayKeys, getCalendarRange, getTodayInTimezone, shiftCalendarDate, getCalendarLabelInstant } from '../../../../lib/calendar-time';
 
 const label = (iso: string, timezone: string, options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('id-ID', { timeZone: timezone, ...options }).format(new Date(iso));
 import { taskRoute } from '../../../../lib/task-route';
@@ -35,6 +35,7 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [metadataLoaded, setMetadataLoaded] = useState(false);
+  const requestId = useRef(0);
 
   const hasInvalidDate = requestedDate !== null && !validDate(requestedDate);
   const invalidState = hasInvalidView || hasInvalidDate;
@@ -47,16 +48,19 @@ export default function CalendarPage() {
   }, [router, searchParams, workspaceId]);
 
   const load = useCallback(async () => {
+    const id = ++requestId.current;
     setLoading(true);
     setError('');
     try {
       const workspace = await api.workspaces.get(workspaceId);
       const nextTimezone = workspace.data.timezone || 'UTC';
+      if (id !== requestId.current) return;
       setTimezone(nextTimezone);
       const [teamResult, memberResult] = await Promise.all([
         api.workspaces.teams(workspaceId),
         api.workspaces.members(workspaceId),
       ]);
+      if (id !== requestId.current) return;
       setTeams(teamResult.data);
       setMembers(memberResult.data);
       setMetadataLoaded(true);
@@ -67,15 +71,17 @@ export default function CalendarPage() {
       }
       const actualRange = getCalendarRange(view, date, nextTimezone);
       const calendar = await api.tasks.calendar(workspaceId, { ...actualRange, team_id: teamId, assignee_id: assigneeId });
+      if (id !== requestId.current) return;
       setTasks(calendar.data);
     } catch (err) {
+      if (id !== requestId.current) return;
       setError(err instanceof ApiError && err.status === 403 ? 'Anda tidak memiliki akses ke kalender ini.' : 'Kalender belum dapat dimuat.');
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
   }, [workspaceId, view, date, teamId, assigneeId, invalidState, hasInvalidView]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const request = requestId; void load(); return () => { request.current++; }; }, [load]);
 
   const days = useMemo(() => {
     const output: string[] = [];
@@ -113,8 +119,8 @@ export default function CalendarPage() {
     router.push(`/workspaces/${workspaceId}/tasks?${params}`);
   };
   const periodHeading = useMemo(() => {
-    if (view === 'day') return label(`${date}T12:00:00Z`, timezone, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    if (view === 'month') return label(`${date}T12:00:00Z`, timezone, { month: 'long', year: 'numeric' });
+    if (view === 'day') return label(getCalendarLabelInstant(date, timezone), timezone, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (view === 'month') return label(getCalendarLabelInstant(date, timezone), timezone, { month: 'long', year: 'numeric' });
     const start = label(range.from, timezone, { day: 'numeric', month: 'short' });
     const end = label(new Date(new Date(range.to).getTime() - 1).toISOString(), timezone, { day: 'numeric', month: 'short', year: 'numeric' });
     return `${start} - ${end}`;
@@ -166,7 +172,7 @@ export default function CalendarPage() {
   };
 
   const getDayOfWeek = (dateStr: string, tz: string): number => {
-    const d = new Date(`${dateStr}T12:00:00Z`);
+    const d = new Date(getCalendarLabelInstant(dateStr, tz));
     const weekdayShort = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(d);
     const map: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
     return map[weekdayShort] ?? 0;
@@ -176,7 +182,7 @@ export default function CalendarPage() {
   const trailingEmptyDays = days.length > 0 ? (7 - ((leadingEmptyDays + days.length) % 7)) % 7 : 0;
 
   return (
-    <main className="space-y-4 text-foreground">
+    <div className="space-y-4 text-foreground">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Kalender</h2>
@@ -230,13 +236,13 @@ export default function CalendarPage() {
                 {days.map((day) => (
                   <section
                     key={day}
-                    aria-label={label(`${day}T12:00:00Z`, timezone, { weekday: 'long', day: 'numeric', month: 'long' })}
+                    aria-label={label(getCalendarLabelInstant(day, timezone), timezone, { weekday: 'long', day: 'numeric', month: 'long' })}
                     className="group min-w-0 rounded-md border border-border/80 bg-surface p-2 min-h-[100px] flex flex-col justify-between"
                   >
                     <div>
                       <div className="mb-1.5 flex items-center justify-between gap-1">
                         <span className="text-xs font-semibold text-foreground">
-                          {label(`${day}T12:00:00Z`, timezone, { day: 'numeric' })}
+                          {label(getCalendarLabelInstant(day, timezone), timezone, { day: 'numeric' })}
                         </span>
                         <button
                           type="button"
@@ -259,12 +265,12 @@ export default function CalendarPage() {
                 {days.map((day) => (
                   <section
                     key={day}
-                    aria-label={label(`${day}T12:00:00Z`, timezone, { weekday: 'long', day: 'numeric', month: 'long' })}
+                    aria-label={label(getCalendarLabelInstant(day, timezone), timezone, { weekday: 'long', day: 'numeric', month: 'long' })}
                     className="min-w-0 rounded-md border border-border bg-surface p-3"
                   >
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <h4 className="truncate text-sm font-semibold">
-                        {label(`${day}T12:00:00Z`, timezone, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {label(getCalendarLabelInstant(day, timezone), timezone, { weekday: 'short', day: 'numeric', month: 'short' })}
                       </h4>
                       <button
                         type="button"
@@ -285,12 +291,12 @@ export default function CalendarPage() {
               {days.map((day) => (
                 <section
                   key={day}
-                  aria-label={label(`${day}T12:00:00Z`, timezone, { weekday: 'long', day: 'numeric', month: 'long' })}
+                  aria-label={label(getCalendarLabelInstant(day, timezone), timezone, { weekday: 'long', day: 'numeric', month: 'long' })}
                   className="group min-w-0 rounded-md border border-border bg-surface p-2.5 flex flex-col min-h-[140px]"
                 >
                   <div className="mb-2 flex items-center justify-between gap-1 border-b border-border/50 pb-1.5">
                     <h4 className="truncate text-xs font-semibold text-foreground">
-                      {label(`${day}T12:00:00Z`, timezone, { weekday: 'short', day: 'numeric' })}
+                      {label(getCalendarLabelInstant(day, timezone), timezone, { weekday: 'short', day: 'numeric' })}
                     </h4>
                     <button
                       type="button"
@@ -310,12 +316,12 @@ export default function CalendarPage() {
               {days.map((day) => (
                 <section
                   key={day}
-                  aria-label={label(`${day}T12:00:00Z`, timezone, { weekday: 'long', day: 'numeric', month: 'long' })}
+                  aria-label={label(getCalendarLabelInstant(day, timezone), timezone, { weekday: 'long', day: 'numeric', month: 'long' })}
                   className="min-w-0 rounded-md border border-border bg-surface p-3"
                 >
                   <div className="mb-2.5 flex items-center justify-between gap-2 border-b border-border/50 pb-2">
                     <h4 className="truncate text-sm font-semibold text-foreground">
-                      {label(`${day}T12:00:00Z`, timezone, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                      {label(getCalendarLabelInstant(day, timezone), timezone, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                     </h4>
                     <button
                       type="button"
@@ -333,6 +339,6 @@ export default function CalendarPage() {
           )}
         </>
       )}
-    </main>
+    </div>
   );
 };

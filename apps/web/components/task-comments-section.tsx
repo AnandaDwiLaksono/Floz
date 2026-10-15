@@ -186,15 +186,15 @@ export function TaskCommentsSection({
   });
 
   return (
-    <div className="space-y-4 border-t border-gray-200 dark:border-gray-800 pt-6">
+    <div className="space-y-4 border-t border-border pt-6">
       {/* Screen reader aria-live announcements */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {ariaLiveMessage}
       </div>
 
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-blue-600" />
+        <h3 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+          <MessageSquare className="w-4 h-4 text-primary" />
           <span>Komentar ({comments.length})</span>
         </h3>
       </div>
@@ -319,7 +319,7 @@ export function TaskCommentsSection({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Tulis komentar... (gunakan tombol @ untuk menyebut anggota tim)"
-            className="w-full px-3 py-2 text-xs bg-surface border border-input rounded-md text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full px-3 py-2 text-xs bg-surface border border-border rounded-md text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           />
         </div>
 
@@ -358,7 +358,7 @@ export function TaskCommentsSection({
             <button
               type="button"
               onClick={() => setShowMentionPicker((prev) => !prev)}
-              className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-foreground bg-surface-subtle hover:bg-surface border border-border rounded-md transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-foreground bg-surface-subtle hover:bg-surface border border-border rounded-md transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               aria-expanded={showMentionPicker}
               aria-label="Sebut anggota tim"
             >
@@ -410,7 +410,7 @@ export function TaskCommentsSection({
           <button
             type="submit"
             disabled={submitting || !content.trim()}
-            className="inline-flex min-h-9 items-center px-4 py-1.5 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition disabled:opacity-50 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-9 items-center px-4 py-1.5 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition disabled:opacity-50 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           >
             {submitting ? (
               <>

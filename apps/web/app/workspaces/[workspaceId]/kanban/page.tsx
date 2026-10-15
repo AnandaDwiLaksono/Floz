@@ -230,19 +230,19 @@ export default function KanbanPage() {
           <div aria-label="Papan Kanban" className="flex min-w-0 snap-x gap-3 overflow-x-auto pb-4">
             {board.columns.map((column) => {
               const archived = column.status.is_active === false;
-              // ponytail: valid is transition-cache-aware for UI feedback; dragOver accepts drop for non-archived targets so browser enables drop cursor; drop handler validates transitions before committing
               const canReceive = !!dragged && !archived && dragged.status.id !== column.status.id;
-              const valid = canReceive && !!transitions[dragged?.id ?? '']?.some((item) => item.to_status_id === column.status.id);
+              const known = transitions[dragged?.id ?? ''];
+              const valid = canReceive && !!known?.some((item) => item.to_status_id === column.status.id);
               return (
                 <section
                   key={column.status.id}
                   aria-label={archived ? `${formatStatusName(column.status.name)} (diarsipkan, tidak dapat menerima tugas)` : formatStatusName(column.status.name)}
                   onDragOver={(e) => { if (canReceive) { e.preventDefault(); } setHovered(column.status.id); }}
                   onDragLeave={() => setHovered(null)}
-                  onDrop={(e) => { if (valid && dragged) { e.preventDefault(); void move(dragged, column.status.id); } setHovered(null); }}
+                  onDrop={(e) => { if (canReceive && dragged) { e.preventDefault(); void move(dragged, column.status.id); } setHovered(null); }}
                   className={`w-[min(18rem,85vw)] shrink-0 snap-start rounded-xl border bg-surface-subtle/50 p-3 ${
                     archived ? 'border-dashed border-border/60 opacity-75' : 'border-border/80'
-                  } ${hovered === column.status.id ? (valid ? 'ring-2 ring-primary' : 'ring-2 ring-danger') : ''}`}
+                  } ${hovered === column.status.id ? (canReceive && !known || valid ? 'ring-2 ring-primary' : 'ring-2 ring-danger') : ''}`}
                 >
                   <h3 className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5 text-xs font-semibold text-foreground">
                     <span>{formatStatusName(column.status.name)}</span>
@@ -252,8 +252,8 @@ export default function KanbanPage() {
                   </h3>
                   {archived && <p className="mt-2 text-xs text-muted-foreground">Tidak dapat menerima tugas</p>}
                   {hovered === column.status.id && dragged && (
-                    <p role="status" className={`mt-2 text-xs ${valid ? 'text-primary' : 'text-danger'}`}>
-                      {valid ? 'Lepaskan untuk memindahkan' : 'Tidak dapat dipindahkan ke sini'}
+                    <p role="status" className={`mt-2 text-xs ${canReceive && !known || valid ? 'text-primary' : 'text-danger'}`}>
+                      {canReceive && !known ? 'Memeriksa pilihan status…' : valid ? 'Lepaskan untuk memindahkan' : 'Tidak dapat dipindahkan ke sini'}
                     </p>
                   )}
                   <div className="mt-3 space-y-2">

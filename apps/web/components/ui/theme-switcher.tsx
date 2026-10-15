@@ -1,26 +1,25 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useOptionalTheme } from './theme-provider';
 
 export function ThemeSwitcher() {
   const context = useOptionalTheme();
-  const [localTheme, setLocalTheme] = useState<'light' | 'dark'>('light');
-  const localThemeReady = useRef(false);
-  const theme = context?.theme ?? localTheme;
+  const [localTheme, setLocalTheme] = useState<'light' | 'dark' | null>(null);
+  const theme = context?.theme ?? localTheme ?? 'light';
   const setTheme = context?.setTheme ?? ((value: 'light' | 'dark') => setLocalTheme(value));
 
   useEffect(() => {
     if (context) return;
-    const saved = localStorage.getItem('floz-theme');
-    if (!localThemeReady.current) {
-      localThemeReady.current = true;
-      if (saved === 'dark') setLocalTheme('dark');
+    if (localTheme === null) {
+      let saved: string | null = null;
+      try { saved = localStorage.getItem('floz-theme'); } catch { /* preference is optional */ }
+      setLocalTheme(saved === 'dark' ? 'dark' : 'light');
       return;
     }
     document.documentElement.dataset.theme = localTheme;
     document.documentElement.style.colorScheme = localTheme;
-    localStorage.setItem('floz-theme', localTheme);
+    try { localStorage.setItem('floz-theme', localTheme); } catch { /* preference is optional */ }
   }, [context, localTheme]);
 
   return (

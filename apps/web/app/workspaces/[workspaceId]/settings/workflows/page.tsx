@@ -81,12 +81,13 @@ export default function WorkflowSettingsPage() {
   useEffect(() => {
     if (!isAdmin) return;
     let active = true;
+    const requests = detailRequest;
     loadWorkflows().then((wfs) => { if (active && wfs.length > 0) loadDetail(wfs[0].id); });
     loadTeams();
-    return () => { active = false; ++detailRequest.current; selectedId.current = null; };
+    return () => { active = false; ++requests.current; selectedId.current = null; };
   }, [isAdmin, loadWorkflows, loadTeams, loadDetail]);
 
-  if (!isAdmin) return <div className="p-6 text-center text-red-600 font-semibold">Akses ditolak. Khusus admin.</div>;
+  if (!isAdmin) return <div className="p-6 text-center text-danger font-semibold">Akses ditolak. Khusus admin.</div>;
 
   const handleMutationResult = (result: WorkflowDetail) => {
     if (selectedId.current === result.id) setSelected(result);
@@ -169,37 +170,37 @@ export default function WorkflowSettingsPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <SettingsNav workspaceId={workspaceId} />
 
-      {toast && <div role="status" className="rounded border border-blue-300 bg-blue-50 p-3 text-sm text-blue-700">{toast}</div>}
-      {error && <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {toast && <div role="status" className="rounded border border-primary/20 bg-primary/10 p-3 text-sm text-primary">{toast}</div>}
+      {error && <div role="alert" className="rounded border border-danger/20 bg-danger/10 p-3 text-sm text-danger">{error}</div>}
       {teamsError && <div role="alert">{teamsError} <button onClick={loadTeams}>Coba muat ulang tim</button></div>}
-      {conflict && <button onClick={reloadWorkflow} className="rounded border border-yellow-400 bg-yellow-50 px-3 py-2 text-sm font-bold text-yellow-800">Muat Ulang Konfigurasi</button>}
+      {conflict && <button onClick={reloadWorkflow} className="rounded border border-warning/20 bg-warning/10 px-3 py-2 text-sm font-bold text-warning">Muat Ulang Konfigurasi</button>}
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-2xl font-bold">Alur Kerja</h2>
-        <button disabled={teamsLoading || !!teamsError || mutationPending} onClick={() => { setCreateOpen(true); setError(null); }} className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50">Alur Kerja Baru</button>
+        <button disabled={teamsLoading || !!teamsError || mutationPending} onClick={() => { setCreateOpen(true); setError(null); }} className="px-4 py-2 text-sm font-bold text-primary-foreground bg-primary rounded hover:bg-primary-hover disabled:opacity-50">Alur Kerja Baru</button>
       </div>
 
       <div className="flex gap-2">
         {(['all', 'active', 'archived'] as const).map((f) => (
-          <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 text-sm rounded font-medium ${filter === f ? 'bg-blue-50 text-blue-600 font-semibold' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}>{f === 'all' ? 'Semua' : f === 'active' ? 'Aktif' : 'Diarsipkan'}</button>
+          <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 text-sm rounded font-medium ${filter === f ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-surface-subtle '}`}>{f === 'all' ? 'Semua' : f === 'active' ? 'Aktif' : 'Diarsipkan'}</button>
         ))}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+        <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {filtered.map((wf) => (
-            <button key={wf.id} onClick={() => loadDetail(wf.id)} className={`text-left bg-white dark:bg-gray-900 border rounded-lg p-4 ${!wf.is_active ? 'opacity-60' : ''} ${selected?.id === wf.id ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200 dark:border-gray-800'}`}>
+            <button key={wf.id} onClick={() => loadDetail(wf.id)} className={`text-left bg-surface border rounded-lg p-4 ${selected?.id === wf.id ? 'ring-2 ring-primary border-primary' : 'border-border '}`}>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold">{wf.name}</span>
-                {wf.is_default && <span className="text-xs px-2 py-0.5 rounded font-medium bg-yellow-100 text-yellow-800">Bawaan</span>}
-                <span className={`text-xs px-2 py-0.5 rounded font-medium ${wf.team_id ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>{wf.team_id ? `Tim: ${teams.find((t) => t.id === wf.team_id)?.name || 'Tidak diketahui'}` : 'Ruang Kerja'}</span>
-                <span className={`text-xs px-2 py-0.5 rounded font-medium ${wf.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{wf.is_active ? 'Aktif' : 'Diarsipkan'}</span>
+                {wf.is_default && <span className="text-xs px-2 py-0.5 rounded font-medium bg-warning/10 text-warning">Bawaan</span>}
+                <span className={`text-xs px-2 py-0.5 rounded font-medium ${wf.team_id ? 'bg-info/10 text-info' : 'bg-muted text-muted-foreground'}`}>{wf.team_id ? `Tim: ${teams.find((t) => t.id === wf.team_id)?.name || 'Tidak diketahui'}` : 'Ruang Kerja'}</span>
+                <span className={`text-xs px-2 py-0.5 rounded font-medium ${wf.is_active ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>{wf.is_active ? 'Aktif' : 'Diarsipkan'}</span>
               </div>
             </button>
           ))}
-          {filtered.length === 0 && <p className="text-center text-gray-500 py-8 col-span-2">Tidak ada alur kerja.</p>}
+          {filtered.length === 0 && <p className="text-center text-muted-foreground py-8 col-span-2">Tidak ada alur kerja.</p>}
         </div>
       )}
 

@@ -115,14 +115,14 @@ function JoinContent() {
               disabled={loading || submitting}
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
-              className="flex-1 min-h-11 rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              className="flex-1 min-h-11 rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               placeholder="FLOZ-XXXX-XXXX-XXXX"
             />
             <button
               type="button"
               onClick={() => handlePreview(inputVal)}
               disabled={loading || submitting || !inputVal.trim()}
-              className="flex min-h-11 items-center justify-center rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              className="flex min-h-11 items-center justify-center rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
             >
               {loading ? 'Memeriksa...' : 'Periksa'}
             </button>
@@ -141,7 +141,7 @@ function JoinContent() {
                 type="button"
                 onClick={handleJoin}
                 disabled={submitting || !user}
-                className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               >
                 {submitting ? 'Sedang bergabung...' : !user ? 'Silakan Masuk untuk Bergabung' : 'Gabung sebagai Anggota'}
               </button>
@@ -152,7 +152,7 @@ function JoinContent() {
                 type="button"
                 onClick={handleRequestApproval}
                 disabled={submitting || !user}
-                className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                className="flex min-h-11 w-full items-center justify-center rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               >
                 {submitting ? 'Sedang mengirim permohonan...' : !user ? 'Silakan Masuk untuk Meminta' : 'Kirim Permohonan Gabung'}
               </button>
@@ -174,7 +174,7 @@ function JoinContent() {
       </div>
 
       <footer className="text-center text-sm">
-        <Link href="/onboarding" className="text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Link href="/onboarding" className="text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
           Kembali ke Penyiapan
         </Link>
       </footer>

@@ -26,6 +26,16 @@ import { formatDateTimeDisplay } from '../../../../lib/i18n-labels';
 
 export default function ApprovalsPage() {
   const params = useParams();
+  const workspaceId = String(params.workspaceId);
+  const { activeWorkspace, workspaceResolving } = useAuth();
+  if (workspaceResolving || activeWorkspace?.id !== workspaceId) {
+    return <div role="status" aria-label="Memuat Persetujuan">Memuat persetujuan…</div>;
+  }
+  return <WorkspaceApprovals key={workspaceId} />;
+}
+
+function WorkspaceApprovals() {
+  const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const workspaceId = String(params.workspaceId);
@@ -70,11 +80,21 @@ export default function ApprovalsPage() {
   const createModalRef = useRef<HTMLDivElement | null>(null);
   const decisionModalRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  const decisionTriggerRef = useRef<HTMLElement | null>(null);
+  const listRequestRef = useRef(0);
+  const detailRequestRef = useRef(0);
+  const membersRequestRef = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   const role = !workspaceResolving && activeWorkspace?.id === workspaceId ? activeWorkspace.role : 'MEMBER';
   const isManager = role === 'MANAGER';
   const isAdmin = role === 'ADMIN';
   const currentUserId = user?.id || '';
+  const currentTeamId = searchParams?.get('team_id') || '';
 
   // Update URL helper preserving valid query state
   const updateUrl = useCallback(
@@ -104,48 +124,52 @@ export default function ApprovalsPage() {
     [router, searchParams, workspaceId]
   );
 
+  const updateUrlRef = useRef(updateUrl);
+  updateUrlRef.current = updateUrl;
+
   // Normalize view if unauthorized
-  const normalizedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (currentView === 'all' && !isAdmin && normalizedRef.current !== 'all') {
-      normalizedRef.current = 'all';
-      updateUrl({ view: 'inbox', cursor: undefined });
-    } else if (currentView === 'managed' && !isManager && normalizedRef.current !== 'managed') {
-      normalizedRef.current = 'managed';
-      updateUrl({ view: 'inbox', cursor: undefined });
-    }
-  }, [currentView, isAdmin, isManager, updateUrl]);
+    if (workspaceResolving || activeWorkspace?.id !== workspaceId) return;
+    if ((currentView === 'all' && !isAdmin) || (currentView === 'managed' && !isManager)) updateUrl({ view: 'inbox' });
+  }, [activeWorkspace?.id, currentView, isAdmin, isManager, updateUrl, workspaceId, workspaceResolving]);
 
   // Fetch approval list
   const fetchApprovals = useCallback(async () => {
+    const request = ++listRequestRef.current;
     setLoading(true);
     setError(null);
     try {
       const res = await api.approvals.list(workspaceId, {
         view: currentView,
         status: currentStatus ? (currentStatus as 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED') : undefined,
+        team_id: currentView === 'managed' || currentView === 'all' ? currentTeamId || undefined : undefined,
         cursor: currentCursor || undefined,
         limit: 50,
       });
-      setApprovals(res.data);
-      setPaginationMeta(res.meta);
+      if (request === listRequestRef.current) {
+        setApprovals(res.data);
+        setPaginationMeta(res.meta);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Gagal memuat daftar persetujuan';
-      setError(message);
+      if (request === listRequestRef.current) setError(message);
     } finally {
-      setLoading(false);
+      if (request === listRequestRef.current) setLoading(false);
     }
-  }, [workspaceId, currentView, currentStatus, currentCursor]);
+  }, [workspaceId, currentView, currentStatus, currentTeamId, currentCursor]);
 
   useEffect(() => {
+    const requests = listRequestRef;
     if (!workspaceResolving && activeWorkspace?.id === workspaceId) fetchApprovals();
+    return () => { requests.current++; };
   }, [activeWorkspace?.id, fetchApprovals, workspaceId, workspaceResolving]);
 
   // Fetch workspace members for create modal
   const fetchMembers = useCallback(async () => {
+    const request = ++membersRequestRef.current;
     try {
       const res = await api.workspaces.members(workspaceId);
-      setMembers(res.data || []);
+      if (request === membersRequestRef.current) setMembers(res.data || []);
     } catch {
       // ignore
     }
@@ -154,23 +178,29 @@ export default function ApprovalsPage() {
   // Handle selected_approval_request_id
   const fetchDetail = useCallback(
     async (id: string) => {
+      const request = ++detailRequestRef.current;
+      setDetail(null);
       setLoadingDetail(true);
       setDetailError(null);
       try {
         const res = await api.approvals.get(workspaceId, id);
-        setDetail(res.data);
+        if (request === detailRequestRef.current) setDetail(res.data);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Gagal memuat detail persetujuan';
-        setDetailError(message);
+        if (request === detailRequestRef.current) setDetailError(message);
       } finally {
-        setLoadingDetail(false);
+        if (request === detailRequestRef.current) setLoadingDetail(false);
       }
     },
     [workspaceId]
   );
 
   useEffect(() => {
+    setMembers([]);
+    setCreateApproverId('');
     if (workspaceResolving || activeWorkspace?.id !== workspaceId) return;
+    const requests = detailRequestRef;
+    const memberRequests = membersRequestRef;
     if (selectedApprovalRequestId === 'new') {
       setIsCreateOpen(true);
       setDetail(null);
@@ -182,22 +212,42 @@ export default function ApprovalsPage() {
       setIsCreateOpen(false);
       setDetail(null);
     }
+    return () => { requests.current++; memberRequests.current++; };
   }, [activeWorkspace?.id, fetchDetail, fetchMembers, selectedApprovalRequestId, workspaceId, workspaceResolving]);
 
   // Focus trap and Escape key listener for dialogs
+  const activeModal = isDecisionModalOpen ? 'decision' : selectedApprovalRequestId === 'new' ? (isCreateOpen ? 'create' : null) : selectedApprovalRequestId ? 'detail' : null;
   useEffect(() => {
+    const detailModal = detailModalRef.current;
+    const modal = activeModal === 'decision' ? decisionModalRef.current : activeModal === 'create' ? createModalRef.current : activeModal === 'detail' ? detailModalRef.current : null;
+    if (!modal) return;
+    const focusable = () => Array.from(modal.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')).filter((element) => getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).display !== 'none');
+    if (!modal.contains(document.activeElement)) focusable()[0]?.focus();
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isDecisionModalOpen) {
+        e.preventDefault();
+        if (activeModal === 'decision') {
           setIsDecisionModalOpen(null);
         } else if (selectedApprovalRequestId) {
-          updateUrl({ selected_approval_request_id: null });
+          updateUrlRef.current({ selected_approval_request_id: null });
         }
+      } else if (e.key === 'Tab') {
+        const items = focusable();
+        const first = items[0], last = items[items.length - 1];
+        if (!first) { e.preventDefault(); modal.focus(); }
+        else if (e.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
       }
     };
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isDecisionModalOpen, selectedApprovalRequestId, updateUrl]);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      const trigger = activeModal === 'decision' ? decisionTriggerRef.current : triggerRef.current;
+      if (trigger?.isConnected) trigger.focus();
+      else if (activeModal === 'decision') detailModal?.querySelector('button')?.focus();
+      else document.querySelector<HTMLElement>('button[aria-label="New Approval Request"]')?.focus();
+    };
+  }, [activeModal, selectedApprovalRequestId]);
 
   // Decision Handler (Approve / Reject / Cancel)
   const handleExecuteAction = async () => {
@@ -238,17 +288,19 @@ export default function ApprovalsPage() {
         });
       }
 
+      if (!mounted.current) return;
       setDetail(updated.data);
       setIsDecisionModalOpen(null);
       setDecisionReason('');
       fetchApprovals();
     } catch {
+      if (!mounted.current) return;
       setConflict409(true);
       setIsDecisionModalOpen(null);
       fetchDetail(detail.id);
       fetchApprovals();
     } finally {
-      setActionSubmitting(false);
+      if (mounted.current) setActionSubmitting(false);
     }
   };
 
@@ -275,6 +327,7 @@ export default function ApprovalsPage() {
         task_id: createTaskId.trim() || null,
       });
 
+      if (!mounted.current) return;
       setIsCreateOpen(false);
       setCreateTitle('');
       setCreateDescription('');
@@ -284,6 +337,7 @@ export default function ApprovalsPage() {
       updateUrl({ selected_approval_request_id: res.data.id });
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
+      if (!mounted.current) return;
       if (code === 'SELF_APPROVAL_NOT_ALLOWED') {
         setCreateError('Anda tidak dapat memilih diri sendiri sebagai pemberi persetujuan.');
       } else if (code === 'INACTIVE_APPROVER') {
@@ -297,7 +351,7 @@ export default function ApprovalsPage() {
         setCreateError(message);
       }
     } finally {
-      setCreateSubmitting(false);
+      if (mounted.current) setCreateSubmitting(false);
     }
   };
 
@@ -360,7 +414,7 @@ export default function ApprovalsPage() {
               updateUrl({ selected_approval_request_id: 'new' });
             }}
             aria-label="New Approval Request"
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition shadow-xs focus-visible:ring-2 focus-visible:ring-focus-ring"
           >
             <Plus className="w-4 h-4 mr-2" />
             <span>Permintaan Baru</span>
@@ -403,7 +457,7 @@ export default function ApprovalsPage() {
               id="status-filter"
               value={currentStatus}
               onChange={(e) => updateUrl({ status: e.target.value })}
-              className="px-3 py-1.5 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition"
+              className="px-3 py-1.5 text-sm bg-surface border border-border rounded-md text-foreground focus-visible:ring-2 focus-visible:ring-focus-ring transition"
             >
               <option value="">Semua Status</option>
               <option value="PENDING">Menunggu</option>
@@ -420,8 +474,8 @@ export default function ApprovalsPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         ) : error ? (
-          <div className="rounded-md bg-destructive/10 p-4 border border-destructive/20" role="alert">
-            <p className="text-sm text-destructive">{error}</p>
+          <div className="rounded-md bg-danger/10 p-4 border border-danger/20" role="alert">
+            <p className="text-sm text-danger">{error}</p>
           </div>
         ) : approvals.length === 0 ? (
           <div className="text-center py-12 border border-dashed border-border rounded-lg bg-surface-subtle/50">
@@ -432,13 +486,13 @@ export default function ApprovalsPage() {
         ) : (
           <div className="space-y-3" role="tabpanel" id={`panel-${currentView}`} aria-labelledby={`tab-${currentView}`}>
             {approvals.map((item) => (
-              <div
+              <button type="button"
                 key={item.id}
                 onClick={(e) => {
                   triggerRef.current = e.currentTarget;
                   updateUrl({ selected_approval_request_id: item.id });
                 }}
-                className="flex items-center justify-between p-4 bg-surface border border-border rounded-lg hover:border-primary/50 cursor-pointer transition shadow-xs group"
+                className="flex w-full items-center justify-between p-4 text-left bg-surface border border-border rounded-lg hover:border-primary/50 cursor-pointer transition shadow-xs group"
               >
                 <div className="space-y-1.5 min-w-0 pr-4">
                   <div className="flex items-center space-x-2">
@@ -456,7 +510,7 @@ export default function ApprovalsPage() {
                   </div>
                 </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition flex-shrink-0" />
-              </div>
+              </button>
             ))}
 
             {/* Pagination Controls */}
@@ -476,7 +530,7 @@ export default function ApprovalsPage() {
         {/* Create Dialog Modal */}
         {isCreateOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay" role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
-            <div ref={createModalRef} className="w-full max-w-lg bg-surface rounded-xl shadow-xl overflow-hidden border border-border">
+            <div ref={createModalRef} tabIndex={-1} className="w-full max-w-lg bg-surface rounded-xl shadow-xl overflow-hidden border border-border">
               <div className="flex items-center justify-between px-6 py-4 border-b border-border">
                 <h2 id="create-dialog-title" className="text-lg font-semibold text-foreground">
                   Buat Permintaan Persetujuan Baru
@@ -492,14 +546,14 @@ export default function ApprovalsPage() {
 
               <form onSubmit={handleCreateSubmit} className="p-6 space-y-4">
                 {createError && (
-                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive" role="alert">
+                  <div className="p-3 bg-danger/10 border border-danger/20 rounded-md text-sm text-danger" role="alert">
                     {createError}
                   </div>
                 )}
 
                 <div>
                   <label htmlFor="create-title" className="block text-sm font-medium text-foreground mb-1">
-                    Judul <span className="text-destructive">*</span>
+                    Judul <span className="text-danger">*</span>
                   </label>
                   <input
                     id="create-title"
@@ -508,20 +562,20 @@ export default function ApprovalsPage() {
                     value={createTitle}
                     onChange={(e) => setCreateTitle(e.target.value)}
                     placeholder="misal: Persetujuan Pengeluaran Anggaran Q4"
-                    className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full px-3 py-2 text-sm bg-surface border border-border rounded-md text-foreground focus-visible:ring-2 focus-visible:ring-focus-ring"
                   />
                 </div>
 
                 <div>
                   <label htmlFor="create-approver" className="block text-sm font-medium text-foreground mb-1">
-                    Pemberi Persetujuan <span className="text-destructive">*</span>
+                    Pemberi Persetujuan <span className="text-danger">*</span>
                   </label>
                   <select
                     id="create-approver"
                     required
                     value={createApproverId}
                     onChange={(e) => setCreateApproverId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full px-3 py-2 text-sm bg-surface border border-border rounded-md text-foreground focus-visible:ring-2 focus-visible:ring-focus-ring"
                   >
                     <option value="">-- Pilih Pemberi Persetujuan --</option>
                     {members
@@ -553,7 +607,7 @@ export default function ApprovalsPage() {
                     value={createDescription}
                     onChange={(e) => setCreateDescription(e.target.value)}
                     placeholder="Konteks dan rincian permohonan persetujuan..."
-                    className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full px-3 py-2 text-sm bg-surface border border-border rounded-md text-foreground focus-visible:ring-2 focus-visible:ring-focus-ring"
                   />
                 </div>
 
@@ -567,7 +621,7 @@ export default function ApprovalsPage() {
                     value={createTaskId}
                     onChange={(e) => setCreateTaskId(e.target.value)}
                     placeholder="misal: 123e4567-e89b-12d3-a456-426614174000"
-                    className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full px-3 py-2 text-sm bg-surface border border-border rounded-md text-foreground focus-visible:ring-2 focus-visible:ring-focus-ring"
                   />
                 </div>
 
@@ -595,8 +649,8 @@ export default function ApprovalsPage() {
 
         {/* Approval Detail Drawer/Modal */}
         {selectedApprovalRequestId && selectedApprovalRequestId !== 'new' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-end bg-overlay" role="dialog" aria-modal="true" aria-labelledby="detail-dialog-title">
-            <div ref={detailModalRef} className="w-full max-w-2xl h-full bg-surface shadow-2xl flex flex-col border-l border-border overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-end bg-overlay" role="dialog" aria-modal={!isDecisionModalOpen} aria-labelledby="detail-dialog-title" inert={!!isDecisionModalOpen}>
+            <div ref={detailModalRef} tabIndex={-1} className="w-full max-w-2xl h-full bg-surface shadow-2xl flex flex-col border-l border-border overflow-y-auto">
               <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-surface z-10">
                 <h2 id="detail-dialog-title" className="text-lg font-bold text-foreground">
                   Detail Persetujuan
@@ -616,7 +670,7 @@ export default function ApprovalsPage() {
                 </div>
               ) : detailError ? (
                 <div className="p-6">
-                  <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-md text-destructive" role="alert">
+                  <div className="p-4 bg-danger/10 border border-danger/20 rounded-md text-danger" role="alert">
                     {detailError}
                   </div>
                 </div>
@@ -741,7 +795,8 @@ export default function ApprovalsPage() {
                       {canCancel && (
                         <button
                           aria-label="Cancel Request"
-                          onClick={() => {
+                          onClick={(e) => {
+                            decisionTriggerRef.current = e.currentTarget;
                             setDecisionReason('');
                             setActionError(null);
                             setIsDecisionModalOpen('CANCEL');
@@ -756,18 +811,20 @@ export default function ApprovalsPage() {
                         <>
                           <button
                             aria-label="Reject"
-                            onClick={() => {
+                            onClick={(e) => {
+                              decisionTriggerRef.current = e.currentTarget;
                               setDecisionReason('');
                               setActionError(null);
                               setIsDecisionModalOpen('REJECT');
                             }}
-                            className="px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-md transition shadow-xs"
+                            className="px-4 py-2 text-sm font-medium text-white dark:text-background bg-danger hover:bg-danger/90 rounded-md transition shadow-xs"
                           >
                             <span aria-hidden="true">Tolak</span>
                           </button>
                           <button
                             aria-label="Approve"
-                            onClick={() => {
+                            onClick={(e) => {
+                              decisionTriggerRef.current = e.currentTarget;
                               setDecisionReason('');
                               setActionError(null);
                               setIsDecisionModalOpen('APPROVE');
@@ -789,7 +846,7 @@ export default function ApprovalsPage() {
         {/* Action Decision Confirmation Modal */}
         {isDecisionModalOpen && detail && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay" role="dialog" aria-modal="true" aria-labelledby="decision-modal-title">
-            <div ref={decisionModalRef} className="w-full max-w-md bg-surface rounded-xl shadow-xl overflow-hidden border border-border p-6 space-y-4">
+            <div ref={decisionModalRef} tabIndex={-1} className="w-full max-w-md bg-surface rounded-xl shadow-xl overflow-hidden border border-border p-6 space-y-4">
               <h3 id="decision-modal-title" className="text-lg font-bold text-foreground">
                 {isDecisionModalOpen === 'APPROVE' && 'Konfirmasi Persetujuan'}
                 {isDecisionModalOpen === 'REJECT' && 'Konfirmasi Penolakan'}
@@ -797,7 +854,7 @@ export default function ApprovalsPage() {
               </h3>
 
               {actionError && (
-                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive" role="alert">
+                <div className="p-3 bg-danger/10 border border-danger/20 rounded-md text-sm text-danger" role="alert">
                   {actionError}
                 </div>
               )}
@@ -813,7 +870,7 @@ export default function ApprovalsPage() {
                   value={decisionReason}
                   onChange={(e) => setDecisionReason(e.target.value)}
                   placeholder={isDecisionModalOpen === 'REJECT' ? 'Jelaskan alasan permohonan ditolak...' : 'Catatan opsional...'}
-                  className="w-full px-3 py-2 text-sm bg-surface border border-input rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full px-3 py-2 text-sm bg-surface border border-border rounded-md text-foreground focus-visible:ring-2 focus-visible:ring-focus-ring"
                 />
               </div>
 
@@ -842,10 +899,10 @@ export default function ApprovalsPage() {
                   onClick={handleExecuteAction}
                   className={`px-4 py-2 text-sm font-medium rounded-md transition disabled:opacity-50 ${
                     isDecisionModalOpen === 'REJECT'
-                      ? 'text-destructive-foreground bg-destructive hover:bg-destructive/90'
+                      ? 'text-white dark:text-background bg-danger hover:bg-danger/90'
                       : isDecisionModalOpen === 'APPROVE'
                       ? 'text-white bg-emerald-600 hover:bg-emerald-700'
-                      : 'text-foreground bg-surface-elevated border border-border hover:bg-surface-subtle'
+                      : 'text-foreground bg-surface-raised border border-border hover:bg-surface-subtle'
                   }`}
                 >
                   <span aria-hidden="true">

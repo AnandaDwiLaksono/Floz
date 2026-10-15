@@ -87,6 +87,13 @@ export default function TasksPage() {
   const [availableTransitions, setAvailableTransitions] = useState<{ to_status_id: string; code: string; name: string }[]>([]);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const [editValidationError, setEditValidationError] = useState<string | null>(null);
+  const listRequest = useRef(0);
+  const detailRequest = useRef(0);
+
+  useEffect(() => {
+    const request = detailRequest;
+    return () => { request.current++; };
+  }, [workspaceId]);
 
   // Form State - Create
   const [createTitle, setCreateTitle] = useState('');
@@ -122,6 +129,7 @@ export default function TasksPage() {
   // Load static metadata (workflows, teams, members)
   useEffect(() => {
     if (workspaceResolving || activeWorkspace?.id !== workspaceId) return;
+    let active = true;
     const loadMetadata = async () => {
       try {
         const [wfRes, teamRes, memRes] = await Promise.all([
@@ -129,6 +137,7 @@ export default function TasksPage() {
           api.workspaces.teams(workspaceId),
           api.workspaces.members(workspaceId),
         ]);
+        if (!active) return;
         setWorkflows(wfRes.data);
         setTeams(teamRes.data);
         setMembers(memRes.data);
@@ -137,11 +146,13 @@ export default function TasksPage() {
       }
     };
     loadMetadata();
+    return () => { active = false; };
   }, [activeWorkspace?.id, workspaceId, workspaceResolving]);
 
   // Load Task list on filter change
   const fetchTasks = useCallback(async (cursor?: string) => {
     if (workspaceResolving || activeWorkspace?.id !== workspaceId) return;
+    const id = ++listRequest.current;
     if (cursor) {
       setLoadingMore(true);
     } else {
@@ -163,6 +174,7 @@ export default function TasksPage() {
         limit: 10,
         cursor,
       });
+      if (id !== listRequest.current) return;
       if (cursor) {
         setTasks((prev) => [...prev, ...res.data]);
       } else {
@@ -171,16 +183,21 @@ export default function TasksPage() {
       setHasMore(res.meta.pagination.has_more);
       setNextCursor(res.meta.pagination.next_cursor);
     } catch (err) {
+      if (id !== listRequest.current) return;
       const msg = err instanceof Error ? err.message : 'Tugas belum dapat dimuat';
       setError(msg);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (id === listRequest.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, [activeWorkspace?.id, workspaceId, workspaceResolving, q, status_id, priority, assignee_id, team_id, due_from, due_to, bucket, overdue, sort]);
 
   useEffect(() => {
-    fetchTasks();
+    const request = listRequest;
+    void fetchTasks();
+    return () => { request.current++; };
   }, [fetchTasks]);
 
   const updateFilters = (newParams: Record<string, string>) => {
@@ -194,6 +211,7 @@ export default function TasksPage() {
   };
 
   const handleCloseDetail = useCallback(() => {
+    detailRequest.current++;
     const params = new URLSearchParams(searchParams.toString());
     params.delete('selected_task_id');
     params.delete('edit_schedule');
@@ -202,7 +220,8 @@ export default function TasksPage() {
   }, [router, searchParams, workspaceId, contextReturnUrl]);
 
   // Open Detail & load transitions/history
-  const handleOpenDetail = useCallback(async (task: Task) => {
+  const handleOpenDetail = useCallback(async (task: Task, id = ++detailRequest.current) => {
+    if (id !== detailRequest.current) return;
     detailTriggerRef.current = document.activeElement as HTMLElement;
     setSelectedTask(task);
     setIsEditMode(editSchedule === '1');
@@ -214,9 +233,10 @@ export default function TasksPage() {
     setEditPriority(task.priority);
     setEditStartAt(task.start_at ? task.start_at.substring(0, 16) : '');
     setEditDueAt(task.due_at ? task.due_at.substring(0, 16) : '');
+    setAvailableTransitions([]);
     try {
       const transRes = await api.tasks.availableTransitions(workspaceId, task.id);
-      setAvailableTransitions(transRes.data);
+      if (id === detailRequest.current) setAvailableTransitions(transRes.data);
     } catch (err) {
       console.error('Failed to load transitions', err);
     }
@@ -240,7 +260,10 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (!selectedTaskId) return;
-    void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data));
+    const request = detailRequest;
+    const id = ++detailRequest.current;
+    void api.tasks.get(workspaceId, selectedTaskId).then((res) => handleOpenDetail(res.data, id)).catch(console.error);
+    return () => { request.current++; };
   }, [workspaceId, selectedTaskId, handleOpenDetail]);
 
   useEffect(() => {
@@ -310,11 +333,14 @@ export default function TasksPage() {
   }, [isCreateOpen]);
 
   const handleRefreshDetail = async (id: string) => {
+    const request = ++detailRequest.current;
     try {
       const res = await api.tasks.get(workspaceId, id);
+      if (request !== detailRequest.current) return;
       setSelectedTask(res.data);
       setAssigneeList(res.data.assignees.map((a) => ({ user_id: a.user_id, is_primary: a.is_primary })));
       const transRes = await api.tasks.availableTransitions(workspaceId, id);
+      if (request !== detailRequest.current) return;
       setAvailableTransitions(transRes.data);
       // Update item in list
       setTasks((prev) => prev.map((t) => (t.id === id ? res.data : t)));
@@ -558,7 +584,7 @@ export default function TasksPage() {
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
             {tasks.map((task) => (
               <li key={task.id} className="flex flex-col gap-3 p-4 transition hover:bg-surface-subtle sm:flex-row sm:items-center sm:justify-between">
-                <button type="button" aria-label={`Buka tugas ${task.title}`} onClick={() => { void api.tasks.get(workspaceId, task.id).then((res) => handleOpenDetail(res.data)); }} className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <button type="button" aria-label={`Buka tugas ${task.title}`} onClick={() => { const id = ++detailRequest.current; void api.tasks.get(workspaceId, task.id).then((res) => handleOpenDetail(res.data, id)).catch(console.error); }} className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                   <span className="text-xs font-semibold text-primary">{task.task_key}</span>
                   <span className="mt-1 block truncate text-base font-semibold">{task.title}</span>
                   <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">

@@ -23,8 +23,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const routeWorkspaceId = pathname.match(/^\/workspaces\/([^/]+)(?:\/|$)/)?.[1];
   const resolvedWorkspace = workspaceResolving || (routeWorkspaceId && activeWorkspace?.id !== routeWorkspaceId) ? null : activeWorkspace;
-  const { unreadCount, setUnreadCount } = useUnreadCount(resolvedWorkspace?.id);
-  const { notifications, loading: notificationsLoading, hasMore, error, loadMore, markRead, markAllRead, fetchNotifications } = useNotifications(resolvedWorkspace?.id, filterRead, setUnreadCount);
+  const { unreadCount, setUnreadCount, refetch: refreshUnreadCount } = useUnreadCount(resolvedWorkspace?.id);
+  const { notifications, loading: notificationsLoading, hasMore, error, loadMore, markRead, markAllRead, fetchNotifications } = useNotifications(resolvedWorkspace?.id, filterRead, setUnreadCount, refreshUnreadCount);
   const handleSelect = useCallback((notification: NotificationResource) => { markRead(notification.id); setNotificationsOpen(false); router.push(notificationRoute(resolvedWorkspace?.id ?? '', notification.entity_id ?? '', notification.context?.route, notification.type, notification.entity_type)); }, [markRead, resolvedWorkspace?.id, router]);
   useEffect(() => { if (!notificationsOpen) return; const outside = (event: MouseEvent) => { if (!notificationRef.current?.contains(event.target as Node)) { setNotificationsOpen(false); notificationTriggerRef.current?.focus(); } }; const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setNotificationsOpen(false); notificationTriggerRef.current?.focus(); } }; document.addEventListener('mousedown', outside); document.addEventListener('keydown', escape); return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', escape); }; }, [notificationsOpen]);
   const publicRoutes = ['/login', '/register', '/verify-email', '/join', '/invitations/accept', '/onboarding'];

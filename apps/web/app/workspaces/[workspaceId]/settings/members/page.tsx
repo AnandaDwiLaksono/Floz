@@ -132,7 +132,7 @@ export default function MembersSettingsPage() {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         <SettingsNav workspaceId={workspaceId} />
-        <div className="p-8 text-center text-destructive font-semibold bg-destructive/10 border border-destructive/20 rounded-xl">
+        <div className="p-8 text-center text-danger font-semibold bg-danger/10 border border-danger/20 rounded-xl">
           Akses ditolak. Khusus admin.
         </div>
       </div>
@@ -172,7 +172,7 @@ export default function MembersSettingsPage() {
               setTempPassword('');
               setProvError(null);
             }}
-            className="px-4 py-2 text-sm font-medium text-foreground bg-surface border border-input hover:bg-muted rounded-lg transition inline-flex items-center gap-1.5"
+            className="px-4 py-2 text-sm font-medium text-foreground bg-surface border border-border hover:bg-muted rounded-lg transition inline-flex items-center gap-1.5"
           >
             <UserPlus className="w-4 h-4" />
             Buat akun
@@ -182,7 +182,7 @@ export default function MembersSettingsPage() {
               setAddOpen(true);
               setAddError(null);
             }}
-            className="px-4 py-2 text-sm font-medium text-foreground bg-surface border border-input hover:bg-muted rounded-lg transition inline-flex items-center gap-1.5"
+            className="px-4 py-2 text-sm font-medium text-foreground bg-surface border border-border hover:bg-muted rounded-lg transition inline-flex items-center gap-1.5"
           >
             <UserCheck className="w-4 h-4" />
             Tambah anggota yang sudah terdaftar
@@ -197,12 +197,12 @@ export default function MembersSettingsPage() {
           placeholder="Cari nama atau email..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-10 pr-4 py-2.5 text-sm border border-input rounded-xl w-full bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-sm"
+          className="pl-10 pr-4 py-2.5 text-sm border border-border rounded-xl w-full bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring shadow-sm"
         />
       </div>
 
       {mutError && (
-        <div role="alert" className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
+        <div role="alert" className="rounded-xl border border-danger/20 bg-danger/10 p-4 text-sm text-danger flex items-center gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>{mutError}</span>
         </div>
@@ -234,7 +234,7 @@ export default function MembersSettingsPage() {
                         aria-label={`Role for ${m.email}`}
                         value={m.role}
                         onChange={(e) => handlePatch(m.user_id, { role: e.target.value })}
-                        className="rounded-lg border border-input bg-surface px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                       >
                         <option value="ADMIN">Admin</option>
                         <option value="MANAGER">Manajer</option>
@@ -247,7 +247,7 @@ export default function MembersSettingsPage() {
                         aria-label={`Status for ${m.email}`}
                         value={m.status}
                         onChange={(e) => handlePatch(m.user_id, { status: e.target.value })}
-                        className="rounded-lg border border-input bg-surface px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                       >
                         <option value="ACTIVE">Aktif</option>
                         <option value="INVITED">Diundang</option>
@@ -274,7 +274,7 @@ export default function MembersSettingsPage() {
                       aria-label={`Role for ${m.email}`}
                       value={m.role}
                       onChange={(e) => handlePatch(m.user_id, { role: e.target.value })}
-                      className="min-h-11 w-full rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="min-h-11 w-full rounded-lg border border-border bg-surface px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                     >
                       <option value="ADMIN">Admin</option>
                       <option value="MANAGER">Manajer</option>
@@ -288,7 +288,7 @@ export default function MembersSettingsPage() {
                       aria-label={`Status for ${m.email}`}
                       value={m.status}
                       onChange={(e) => handlePatch(m.user_id, { status: e.target.value })}
-                      className="min-h-11 w-full rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="min-h-11 w-full rounded-lg border border-border bg-surface px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                     >
                       <option value="ACTIVE">Aktif</option>
                       <option value="INVITED">Diundang</option>
@@ -325,14 +325,14 @@ export default function MembersSettingsPage() {
                   <button
                     aria-label={`Resend ${invitation.email}`}
                     onClick={() => void handleInvitationAction('resend', invitation.id)}
-                    className="rounded-lg border border-input bg-surface px-3 py-1.5 text-xs font-medium hover:bg-muted transition"
+                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-muted transition"
                   >
                     Kirim ulang
                   </button>
                   <button
                     aria-label={`Revoke ${invitation.email}`}
                     onClick={() => void handleInvitationAction('revoke', invitation.id)}
-                    className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive px-3 py-1.5 text-xs font-medium hover:bg-destructive/10 transition"
+                    className="rounded-lg border border-danger/30 bg-danger/5 text-danger px-3 py-1.5 text-xs font-medium hover:bg-danger/10 transition"
                   >
                     Cabut
                   </button>
@@ -355,7 +355,7 @@ export default function MembersSettingsPage() {
             <form onSubmit={handleInvite} className="space-y-4">
               <h3 className="text-lg font-bold text-foreground">Undang anggota</h3>
               {inviteError && (
-                <div role="alert" className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg">
+                <div role="alert" className="p-3 text-sm text-danger bg-danger/10 border border-danger/20 rounded-lg">
                   {inviteError}
                 </div>
               )}
@@ -369,7 +369,7 @@ export default function MembersSettingsPage() {
                   required
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full rounded-lg border border-input px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-lg border border-border px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 />
               </div>
               <div>
@@ -380,7 +380,7 @@ export default function MembersSettingsPage() {
                   id="invite_role"
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value)}
-                  className="w-full rounded-lg border border-input px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-lg border border-border px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
                   <option value="ADMIN">Admin</option>
                   <option value="MANAGER">Manajer</option>
@@ -392,7 +392,7 @@ export default function MembersSettingsPage() {
                 <button
                   type="button"
                   onClick={() => setInviteOpen(false)}
-                  className="rounded-lg border border-input px-4 py-2 text-sm font-medium hover:bg-muted transition"
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition"
                 >
                   Batal
                 </button>
@@ -435,7 +435,7 @@ export default function MembersSettingsPage() {
                     type="text"
                     readOnly
                     value={tempPassword}
-                    className="flex-1 rounded-lg border border-input px-3.5 py-2 text-sm font-mono bg-muted text-foreground"
+                    className="flex-1 rounded-lg border border-border px-3.5 py-2 text-sm font-mono bg-muted text-foreground"
                   />
                   <button
                     onClick={() => navigator.clipboard.writeText(tempPassword)}
@@ -449,7 +449,7 @@ export default function MembersSettingsPage() {
                     setProvisionOpen(false);
                     setTempPassword('');
                   }}
-                  className="w-full py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted transition"
+                  className="w-full py-2 text-sm font-medium border border-border rounded-lg hover:bg-muted transition"
                 >
                   Tutup
                 </button>
@@ -458,7 +458,7 @@ export default function MembersSettingsPage() {
               <form onSubmit={handleProvision} className="space-y-4">
                 <h3 className="text-lg font-bold text-foreground">Buat akun</h3>
                 {provError && (
-                  <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                  <div role="alert" className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
                     {provError}
                   </div>
                 )}
@@ -472,7 +472,7 @@ export default function MembersSettingsPage() {
                     required
                     value={provEmail}
                     onChange={(e) => setProvEmail(e.target.value)}
-                    className="w-full rounded-lg border border-input px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full rounded-lg border border-border px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   />
                 </div>
                 <div>
@@ -485,14 +485,14 @@ export default function MembersSettingsPage() {
                     required
                     value={provName}
                     onChange={(e) => setProvName(e.target.value)}
-                    className="w-full rounded-lg border border-input px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full rounded-lg border border-border px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   />
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
                     onClick={() => setProvisionOpen(false)}
-                    className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted transition font-medium"
+                    className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted transition font-medium"
                   >
                     Batal
                   </button>
@@ -522,7 +522,7 @@ export default function MembersSettingsPage() {
             <form onSubmit={handleAdd} className="space-y-4">
               <h3 className="text-lg font-bold text-foreground">Tambah anggota yang sudah terdaftar</h3>
               {addError && (
-                <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                <div role="alert" className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
                   {addError}
                 </div>
               )}
@@ -536,7 +536,7 @@ export default function MembersSettingsPage() {
                   required
                   value={addEmail}
                   onChange={(e) => setAddEmail(e.target.value)}
-                  className="w-full rounded-lg border border-input px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-lg border border-border px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 />
               </div>
               <div>
@@ -547,7 +547,7 @@ export default function MembersSettingsPage() {
                   id="add_role"
                   value={addRole}
                   onChange={(e) => setAddRole(e.target.value)}
-                  className="w-full rounded-lg border border-input px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-lg border border-border px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
                   <option value="ADMIN">Admin</option>
                   <option value="MANAGER">Manajer</option>
@@ -559,7 +559,7 @@ export default function MembersSettingsPage() {
                 <button
                   type="button"
                   onClick={() => setAddOpen(false)}
-                  className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted transition font-medium"
+                  className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted transition font-medium"
                 >
                   Batal
                 </button>

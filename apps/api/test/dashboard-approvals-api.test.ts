@@ -122,6 +122,54 @@ describe('Phase 10 Task 6 — Dashboard pending_approvals API & Drilldown URLs',
     expect(res.body.data.drilldown_url).toBe(`/workspaces/${workspaceId}/approvals?view=managed&status=PENDING&team_id=${team1Id}`);
   });
 
+  it('excludes former team approvers consistently from managed and team-filtered approval counts', async () => {
+    const { sql: client } = createDatabase(databaseUrl);
+    await client`UPDATE team_memberships SET left_at = NOW() WHERE team_id = ${team1Id} AND user_id = ${memberId}`;
+    await client.end();
+    const base = `/api/v1/workspaces/${workspaceId}`;
+    const dashboard = 'dashboard/manager?from=2026-09-01T00:00:00.000Z&to=2026-09-30T23:59:59.999Z';
+    const manager = await request(app.getHttpServer()).get(`${base}/${dashboard}`).set('Cookie', managerCookie).expect(200);
+    const managed = await request(app.getHttpServer()).get(`${base}/approval-requests?view=managed&status=PENDING`).set('Cookie', managerCookie).expect(200);
+    expect(manager.body.data.pending_approvals).toBe(1);
+    expect(managed.body.data).toHaveLength(manager.body.data.pending_approvals);
+    const managedFiltered = await request(app.getHttpServer()).get(`${base}/approval-requests?view=managed&status=PENDING&team_id=${team1Id}`).set('Cookie', managerCookie).expect(200);
+    const managerFiltered = await request(app.getHttpServer()).get(`${base}/${dashboard}&team_id=${team1Id}`).set('Cookie', managerCookie).expect(200);
+    expect(managedFiltered.body.data).toHaveLength(managerFiltered.body.data.pending_approvals);
+    const adminFiltered = await request(app.getHttpServer()).get(`${base}/${dashboard}&team_id=${team1Id}`).set('Cookie', adminCookie).expect(200);
+    const allFiltered = await request(app.getHttpServer()).get(`${base}/approval-requests?view=all&status=PENDING&team_id=${team1Id}`).set('Cookie', adminCookie).expect(200);
+    expect(adminFiltered.body.data.pending_approvals).toBe(0);
+    expect(allFiltered.body.data).toHaveLength(adminFiltered.body.data.pending_approvals);
+    const { sql: otherTeamClient } = createDatabase(databaseUrl);
+    const otherTeamId = (await otherTeamClient<{ id: string }[]>`INSERT INTO teams (workspace_id, name, manager_user_id) VALUES (${workspaceId}, 'Other Managed Team', ${managerId}) RETURNING id`)[0].id;
+    await otherTeamClient`INSERT INTO team_memberships (team_id, user_id) VALUES (${otherTeamId}, ${memberId})`;
+    await otherTeamClient.end();
+    const managedAcrossTeams = await request(app.getHttpServer()).get(`${base}/approval-requests?view=managed&status=PENDING`).set('Cookie', managerCookie).expect(200);
+    const managerAcrossTeams = await request(app.getHttpServer()).get(`${base}/${dashboard}`).set('Cookie', managerCookie).expect(200);
+    expect(managerAcrossTeams.body.data.pending_approvals).toBe(2);
+    expect(managedAcrossTeams.body.data).toHaveLength(managerAcrossTeams.body.data.pending_approvals);
+    const formerlyManagedTeam = await request(app.getHttpServer()).get(`${base}/${dashboard}&team_id=${team1Id}`).set('Cookie', managerCookie).expect(200);
+    expect(formerlyManagedTeam.body.data.pending_approvals).toBe(1);
+  });
+
+  it('intersects KPI team and assignee filters without widening manager access', async () => {
+    const { sql: client } = createDatabase(databaseUrl);
+    const team2Id = randomUUID(), task1 = randomUUID(), task2 = randomUUID();
+    const workflow = (await client<{ id: string }[]>`SELECT id FROM workflows WHERE workspace_id=${workspaceId} LIMIT 1`)[0].id;
+    const status = (await client<{ id: string }[]>`SELECT id FROM task_statuses WHERE workflow_id=${workflow} AND is_terminal=false LIMIT 1`)[0].id;
+    await client`INSERT INTO teams(id,workspace_id,name,manager_user_id) VALUES(${team2Id},${workspaceId},'Other Team',${managerId})`;
+    await client`INSERT INTO tasks(id,workspace_id,task_key,title,workflow_id,status_id,creator_id,team_id,due_at) VALUES
+      (${task1},${workspaceId},'DASH-TEAM-A','Team A',${workflow},${status},${adminId},${team1Id},'2026-09-09T00:00:00Z'),
+      (${task2},${workspaceId},'DASH-TEAM-B','Team B',${workflow},${status},${adminId},${team2Id},'2026-09-09T00:00:00Z')`;
+    await client`INSERT INTO task_assignees(task_id,user_id,assigned_by) VALUES(${task1},${memberId},${adminId}),(${task2},${memberId},${adminId})`;
+    await client.end();
+    const query = `from=2026-09-01T00:00:00.000Z&to=2026-09-30T00:00:00.000Z&team_id=${team1Id}&assignee_id=${memberId}`;
+    const admin = await request(app.getHttpServer()).get(`/api/v1/workspaces/${workspaceId}/reports/kpis?${query}`).set('Cookie', adminCookie).expect(200);
+    expect(admin.body.data.denominators.due).toBe(1);
+    expect(admin.body.data.workload).toBe(1);
+    await request(app.getHttpServer()).get(`/api/v1/workspaces/${workspaceId}/reports/kpis?${query}`).set('Cookie', managerCookie).expect(403);
+    await request(app.getHttpServer()).get(`/api/v1/workspaces/${workspaceId}/reports/kpis?${query}`).set('Cookie', memberCookie).expect(200);
+  });
+
   it('leaves Member Dashboard contract unchanged without pending_approvals', async () => {
     const res = await request(app.getHttpServer())
       .get(`/api/v1/workspaces/${workspaceId}/dashboard/member`)

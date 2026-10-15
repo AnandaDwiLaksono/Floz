@@ -1,5 +1,8 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { getCalendarLabelInstant } from '../lib/calendar-time';
+
+const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CalendarPage from '../app/workspaces/[workspaceId]/calendar/page';
 import TasksPage from '../app/workspaces/[workspaceId]/tasks/page';
@@ -103,6 +106,42 @@ describe('Task 8 Calendar reschedule flow', () => {
     });
     vi.mocked(api.tasks.get).mockResolvedValue({ data: sampleTaskDetail });
     vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
+  });
+
+  it('keeps the shell as the only main landmark', async () => {
+    render(<main><CalendarPage /></main>);
+    await screen.findByRole('heading', { name: 'Kalender' });
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+  });
+
+  it('keeps newest period response when older calendar request finishes last', async () => {
+    const old = deferred<Awaited<ReturnType<typeof api.tasks.calendar>>>();
+    vi.mocked(api.tasks.calendar).mockImplementation((_workspace, range) => range.from.startsWith('2026-08-18') ? old.promise : Promise.resolve({ data: [{ ...sampleCalendarTask, title: 'New period', start_at: '2026-08-19T09:00:00.000Z', due_at: '2026-08-19T10:00:00.000Z' }], meta: { from: '2026-08-19', to: '2026-08-20' } }));
+    mockSearchParams = new URLSearchParams('view=day&date=2026-08-18');
+    const page = render(<CalendarPage />);
+    await waitFor(() => expect(api.tasks.calendar).toHaveBeenCalledTimes(1));
+    mockSearchParams = new URLSearchParams('view=day&date=2026-08-19');
+    page.rerender(<CalendarPage />);
+    expect(await screen.findByRole('button', { name: 'New period' })).toBeInTheDocument();
+    await act(async () => old.resolve({ data: [sampleCalendarTask], meta: { from: '2026-08-18', to: '2026-08-19' } }));
+    expect(screen.getByRole('button', { name: 'New period' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Inspect pump' })).not.toBeInTheDocument();
+  });
+
+  it.each(['UTC', 'Asia/Jakarta', 'Pacific/Auckland', 'Pacific/Kiritimati'])('aligns month and day labels with create date in %s', async (timezone) => {
+    vi.mocked(api.workspaces.get).mockResolvedValue({ data: { id: 'workspace-1', name: 'Field Ops', slug: 'field-ops', timezone } });
+    vi.mocked(api.tasks.calendar).mockResolvedValue({ data: [], meta: { from: '2026-08-01', to: '2026-09-01' } });
+    mockSearchParams = new URLSearchParams('view=month&date=2026-08-31');
+    const page = render(<CalendarPage />);
+    const section = await screen.findAllByRole('region', { name: /Senin, 31 Agustus/ });
+    expect(section.length).toBeGreaterThan(0);
+    expect(within(section[0]).getByText('31')).toBeInTheDocument();
+    fireEvent.click(within(section[0]).getByRole('button', { name: 'Buat tugas pada 2026-08-31' }));
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('prefill_start_at=2026-08-31T09%3A00'));
+    mockSearchParams = new URLSearchParams('view=day&date=2026-08-31');
+    page.rerender(<CalendarPage />);
+    expect(await screen.findByText(/Senin, 31 Agustus 2026/)).toBeInTheDocument();
+    expect(new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(getCalendarLabelInstant('2026-08-31', timezone))).filter((part) => part.type === 'year' || part.type === 'month' || part.type === 'day').map((part) => part.value).join('-')).toBe('2026-08-31');
   });
 
   it('preserves return_to when opening Task Detail from calendar', async () => {

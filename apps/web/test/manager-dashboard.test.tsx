@@ -71,6 +71,8 @@ describe('Task 9 manager dashboard', () => {
     await waitFor(() => expect(api.workspaces.dashboardManager).toHaveBeenLastCalledWith('workspace-1', expect.objectContaining({ team_id: 'team-1' })));
     await waitFor(() => expect(api.workspaces.kpis).toHaveBeenLastCalledWith('workspace-1', expect.objectContaining({ team_id: 'team-1' })));
     expect(screen.getByText(/Ruang lingkup:/)).toBeInTheDocument();
+    expect(new URL(screen.getByRole('link', { name: 'Lihat tugas mendesak' }).getAttribute('href')!, 'https://floz.test').searchParams.get('team_id')).toBe('team-1');
+    expect(new URL(screen.getByRole('link', { name: 'Lihat daftar tugas' }).getAttribute('href')!, 'https://floz.test').searchParams.get('team_id')).toBe('team-1');
   });
 
   it('renders supported pending approvals and workload actions', async () => {

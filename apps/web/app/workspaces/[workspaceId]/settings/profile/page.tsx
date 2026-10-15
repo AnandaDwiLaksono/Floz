@@ -86,13 +86,13 @@ export default function ProfileSettingsPage() {
           </div>
 
           {profileError && (
-            <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3.5 text-sm text-destructive flex items-center gap-2">
+            <div role="alert" className="rounded-lg border border-danger/20 bg-danger/10 p-3.5 text-sm text-danger flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{profileError}</span>
             </div>
           )}
           {profileSuccess && (
-            <div role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3.5 text-sm text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+            <div role="status" className="rounded-lg border border-success/20 bg-success/10 p-3.5 text-sm text-success flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
               <span>{profileSuccess}</span>
             </div>
@@ -122,7 +122,7 @@ export default function ProfileSettingsPage() {
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full rounded-lg border border-input px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-lg border border-border px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               />
             </div>
 
@@ -136,7 +136,7 @@ export default function ProfileSettingsPage() {
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
                 placeholder="Asia/Jakarta"
-                className="w-full rounded-lg border border-input px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-lg border border-border px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               />
             </div>
 
@@ -148,7 +148,7 @@ export default function ProfileSettingsPage() {
                 id="profile_locale"
                 value={locale}
                 onChange={(e) => setLocale(e.target.value)}
-                className="w-full rounded-lg border border-input px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-lg border border-border px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 <option value="id-ID">id-ID (Bahasa Indonesia)</option>
                 <option value="en-US">en-US (Bahasa Inggris)</option>
@@ -176,13 +176,13 @@ export default function ProfileSettingsPage() {
           </div>
 
           {pwError && (
-            <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3.5 text-sm text-destructive flex items-center gap-2">
+            <div role="alert" className="rounded-lg border border-danger/20 bg-danger/10 p-3.5 text-sm text-danger flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{pwError}</span>
             </div>
           )}
           {pwSuccess && (
-            <div role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3.5 text-sm text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+            <div role="status" className="rounded-lg border border-success/20 bg-success/10 p-3.5 text-sm text-success flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
               <span>{pwSuccess}</span>
             </div>
@@ -198,7 +198,7 @@ export default function ProfileSettingsPage() {
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full rounded-lg border border-input px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-lg border border-border px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               />
             </div>
             <div>
@@ -210,7 +210,7 @@ export default function ProfileSettingsPage() {
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-lg border border-input px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-lg border border-border px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               />
             </div>
           </div>

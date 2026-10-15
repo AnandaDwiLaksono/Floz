@@ -126,6 +126,8 @@ describe('Workflow Settings — Task 9', () => {
     await waitFor(() => {
       const archivedBadges = screen.getAllByText(/Diarsipkan|Archived/);
       expect(archivedBadges.length).toBeGreaterThanOrEqual(1);
+      const archivedCard = screen.getByRole('button', { name: /Old Workflow/ });
+      expect(archivedCard.className).not.toMatch(/opacity-/);
     });
   });
 

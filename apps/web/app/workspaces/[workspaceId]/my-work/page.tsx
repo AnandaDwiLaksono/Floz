@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { api, ApiError, MyWorkTask } from '../../../../lib/api-client';
@@ -10,6 +10,7 @@ import { taskRoute } from '../../../../lib/task-route';
 import { formatStatusName, formatTransitionLabel, formatDateDisplay } from '../../../../lib/i18n-labels';
 
 type TaskSectionProps = {
+  timezone: string;
   title: string;
   tasks: MyWorkTask[];
   empty: string;
@@ -27,6 +28,7 @@ type TaskSectionProps = {
 };
 
 function TaskSection({
+  timezone,
   title,
   tasks,
   empty,
@@ -76,7 +78,7 @@ function TaskSection({
                       <span>{({ LOW: 'Rendah', MEDIUM: 'Sedang', HIGH: 'Tinggi', URGENT: 'Mendesak' } as Record<string, string>)[task.priority] || task.priority}</span>
                     </span>
                     <span className={`mt-1.5 block text-xs font-medium ${tone === 'danger' ? 'text-danger' : 'text-foreground'}`}>
-                      {tone === 'danger' ? 'Terlambat · ' : 'Tenggat · '}{new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(task.dueAt))}
+                      {tone === 'danger' ? 'Terlambat · ' : 'Tenggat · '}{new Intl.DateTimeFormat('id-ID', { timeZone: timezone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(task.dueAt))}
                     </span>
                   </button>
                   <button
@@ -149,7 +151,12 @@ export default function MyWorkPage() {
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.workspaces.myWork>> | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadedWorkspace, setLoadedWorkspace] = useState(workspaceId);
   const [timezone, setTimezone] = useState<string | null>(null);
+  const loadRequest = useRef(0);
+  const quickRequest = useRef(0);
+  const currentWorkspace = useRef(workspaceId);
+  currentWorkspace.current = workspaceId;
 
   // Quick Status state
   const [quickTask, setQuickTask] = useState<{ id: string; version: number } | null>(null);
@@ -160,13 +167,19 @@ export default function MyWorkPage() {
 
   const date = timezone ? getTodayInTimezone(timezone) : null;
   const load = useCallback(async () => {
+    if (workspaceId !== currentWorkspace.current) return;
+    const id = ++loadRequest.current;
     setLoading(true);
     setError('');
     try {
       const workspace = await api.workspaces.get(workspaceId);
+      if (id !== loadRequest.current || workspaceId !== currentWorkspace.current) return;
       setTimezone(workspace.data.timezone);
-      setResult(await api.workspaces.myWork(workspaceId, getTodayInTimezone(workspace.data.timezone)));
+      const summary = await api.workspaces.myWork(workspaceId, getTodayInTimezone(workspace.data.timezone));
+      if (id !== loadRequest.current || workspaceId !== currentWorkspace.current) return;
+      setResult(summary);
     } catch (err) {
+      if (id !== loadRequest.current || workspaceId !== currentWorkspace.current) return;
       setError(
         err instanceof ApiError && err.status === 403
           ? 'You do not have permission to view My Work.'
@@ -175,13 +188,24 @@ export default function MyWorkPage() {
           : 'My Work unavailable'
       );
     } finally {
-      setLoading(false);
+      if (id === loadRequest.current && workspaceId === currentWorkspace.current) setLoading(false);
     }
   }, [workspaceId]);
 
   useEffect(() => {
+    const loading = loadRequest;
+    const quick = quickRequest;
+    setLoadedWorkspace(workspaceId);
+    setResult(null);
+    setTimezone(null);
+    setActiveQuickTaskId(null);
+    setQuickTask(null);
+    setQuickTransitions([]);
+    setQuickError(null);
+    setLoadingQuickStatus(false);
     void load();
-  }, [load]);
+    return () => { loading.current++; quick.current++; };
+  }, [load, workspaceId]);
 
   const links = useMemo(() => {
     if (!date || !timezone || !user?.id) return null;
@@ -200,6 +224,7 @@ export default function MyWorkPage() {
   }, [date, timezone, user?.id, workspaceId]);
 
   const handleQuickStatus = async (task: MyWorkTask) => {
+    const id = ++quickRequest.current;
     setActiveQuickTaskId(task.id);
     setLoadingQuickStatus(true);
     setQuickError(null);
@@ -209,9 +234,11 @@ export default function MyWorkPage() {
         api.tasks.get(workspaceId, task.id),
         api.tasks.availableTransitions(workspaceId, task.id),
       ]);
+      if (id !== quickRequest.current || workspaceId !== currentWorkspace.current) return;
       setQuickTask({ id: task.id, version: detailRes.data.version });
       setQuickTransitions(transRes.data);
     } catch (err) {
+      if (id !== quickRequest.current || workspaceId !== currentWorkspace.current) return;
       setQuickError(
         err instanceof ApiError && err.status === 409
           ? 'VERSION_CONFLICT'
@@ -220,12 +247,13 @@ export default function MyWorkPage() {
           : 'Gagal memuat transisi status'
       );
     } finally {
-      setLoadingQuickStatus(false);
+      if (id === quickRequest.current && workspaceId === currentWorkspace.current) setLoadingQuickStatus(false);
     }
   };
 
   const handleTransition = async (toStatusId: string) => {
     if (!quickTask) return;
+    const id = ++quickRequest.current;
     setLoadingQuickStatus(true);
     setQuickError(null);
     try {
@@ -233,27 +261,32 @@ export default function MyWorkPage() {
         version: quickTask.version,
         to_status_id: toStatusId,
       });
-      setActiveQuickTaskId(null);
-      setQuickTask(null);
+      if (workspaceId !== currentWorkspace.current) return;
+      if (id === quickRequest.current) {
+        setActiveQuickTaskId(null);
+        setQuickTask(null);
+      }
       await load();
     } catch (err) {
+      if (id !== quickRequest.current || workspaceId !== currentWorkspace.current) return;
       if (err instanceof ApiError && err.status === 409) {
         setQuickError('VERSION_CONFLICT');
       } else {
         setQuickError(err instanceof Error ? err.message : 'Transition failed');
       }
     } finally {
-      setLoadingQuickStatus(false);
+      if (id === quickRequest.current && workspaceId === currentWorkspace.current) setLoadingQuickStatus(false);
     }
   };
 
   const handleCloseQuickStatus = () => {
+    quickRequest.current++;
     setActiveQuickTaskId(null);
     setQuickTask(null);
     setQuickError(null);
   };
 
-  if (loading) return (
+  if (loading || loadedWorkspace !== workspaceId) return (
     <div role="status" aria-label="Memuat Pekerjaan Saya" className="space-y-5">
       <div className="h-16 max-w-md animate-pulse rounded-lg bg-surface-subtle motion-reduce:animate-none" />
       <div className="h-36 animate-pulse rounded-xl border border-border bg-surface motion-reduce:animate-none" />
@@ -283,6 +316,7 @@ export default function MyWorkPage() {
   const { data, meta } = result;
 
   const sectionProps = {
+    timezone: meta.timezone,
     onOpen: (id: string) => router.push(taskRoute(workspaceId, id)),
     onQuickStatus: handleQuickStatus,
     activeQuickTaskId,

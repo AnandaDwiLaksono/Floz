@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import ApprovalsPage from '../app/workspaces/[workspaceId]/approvals/page';
 import { api, ApprovalRequestDetail, ApprovalRequestSummary } from '../lib/api-client';
 
@@ -158,6 +158,82 @@ describe('Phase 10 Task 8 — Approval Detail, Create, Approve/Reject/Cancel UX'
     fireEvent.keyDown(document, { key: 'Escape' });
 
     expect(mockPush).toHaveBeenCalledWith(expect.not.stringContaining('selected_approval_request_id'));
+  });
+
+  it('traps detail and decision focus; returns to the decision trigger then the list trigger', async () => {
+    const view = render(<ApprovalsPage />);
+    const trigger = await screen.findByRole('button', { name: /Deploy to Prod/i });
+    trigger.focus();
+    fireEvent.click(trigger);
+    mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+    view.rerender(<ApprovalsPage />);
+    const detailDialog = await screen.findByRole('dialog', { name: 'Detail Persetujuan' });
+    const close = within(detailDialog).getByRole('button', { name: 'Close approval detail' });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+    const approve = await within(detailDialog).findByRole('button', { name: 'Approve' });
+    approve.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.click(approve);
+    const decisionDialog = await screen.findByRole('dialog', { name: 'Konfirmasi Persetujuan' });
+    expect(document.activeElement).toBe(within(decisionDialog).getByRole('textbox', { name: 'Reason (Optional)' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(approve));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    mockSearchParams = new URLSearchParams();
+    view.rerender(<ApprovalsPage />);
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('restores focus to the new-request button for a detail deep link without a list trigger', async () => {
+    mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+    const view = render(<ApprovalsPage />);
+    await screen.findByRole('dialog', { name: 'Detail Persetujuan' });
+    mockSearchParams = new URLSearchParams();
+    view.rerender(<ApprovalsPage />);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New Approval Request' }));
+  });
+
+  it('ignores detail responses for a superseded selection', async () => {
+    let resolveOld!: (value: { data: ApprovalRequestDetail }) => void;
+    vi.spyOn(api.approvals, 'get').mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    mockSearchParams = new URLSearchParams('selected_approval_request_id=req-old');
+    const view = render(<ApprovalsPage />);
+    await waitFor(() => expect(api.approvals.get).toHaveBeenCalledWith('workspace-1', 'req-old'));
+    mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+    view.rerender(<ApprovalsPage />);
+    await within(await screen.findByRole('dialog', { name: 'Detail Persetujuan' })).findByText('Deploy to Prod');
+    await act(async () => resolveOld({ data: { ...mockDetail, id: 'req-old', title: 'Old request' } }));
+    expect(screen.queryByText('Old request')).not.toBeInTheDocument();
+  });
+
+  it('does not expose a late detail response after closing the dialog', async () => {
+    let resolveOld!: (value: { data: ApprovalRequestDetail }) => void;
+    vi.spyOn(api.approvals, 'get').mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    mockSearchParams = new URLSearchParams('selected_approval_request_id=req-old');
+    const view = render(<ApprovalsPage />);
+    await waitFor(() => expect(api.approvals.get).toHaveBeenCalledWith('workspace-1', 'req-old'));
+    mockSearchParams = new URLSearchParams();
+    view.rerender(<ApprovalsPage />);
+    await act(async () => resolveOld({ data: { ...mockDetail, id: 'req-old', title: 'Old request' } }));
+    mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+    view.rerender(<ApprovalsPage />);
+    expect(screen.queryByText('Old request')).not.toBeInTheDocument();
+    await within(await screen.findByRole('dialog', { name: 'Detail Persetujuan' })).findByText('Deploy to Prod');
+  });
+
+  it('keeps decision dialog keyboard focus when an unrelated URL parameter changes', async () => {
+    mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1');
+    const view = render(<ApprovalsPage />);
+    const approve = await screen.findByRole('button', { name: 'Approve' });
+    fireEvent.click(approve);
+    const reason = screen.getByRole('textbox', { name: 'Reason (Optional)' });
+    reason.focus();
+    mockSearchParams = new URLSearchParams('selected_approval_request_id=req-1&status=PENDING');
+    view.rerender(<ApprovalsPage />);
+    expect(document.activeElement).toBe(reason);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(approve));
   });
 
   it('supports Create Approval Request flow with eligible approvers and error handling', async () => {

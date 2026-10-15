@@ -121,31 +121,31 @@ export default function WorkflowCreateDialog({ teams, onClose, onCreate }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Create Workflow" className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-lg shadow-xl">
+      <div className="fixed inset-0 bg-overlay" onClick={onClose} />
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Create Workflow" className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-surface border border-border p-6 rounded-lg shadow-xl">
         <form onSubmit={handleSubmit} className="space-y-4">
           <h3 className="text-lg font-bold">Alur Kerja Baru</h3>
-          {error && <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+          {error && <div role="alert" className="rounded border border-danger/20 bg-danger/10 p-3 text-sm text-danger">{error}</div>}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="wf_name" className="mb-1 block text-sm font-medium">Nama</label>
-              <input id="wf_name" type="text" required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded border px-3 py-2 dark:bg-gray-800" />
+              <input id="wf_name" type="text" required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded border border-border bg-surface px-3 py-2" />
             </div>
             <div>
               <label htmlFor="wf_code" className="mb-1 block text-sm font-medium">Kode</label>
-              <input id="wf_code" type="text" required value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} className="w-full rounded border px-3 py-2 dark:bg-gray-800 uppercase" />
+              <input id="wf_code" type="text" required value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} className="w-full rounded border border-border bg-surface px-3 py-2 uppercase" />
             </div>
           </div>
 
           <div>
             <label htmlFor="wf_desc" className="mb-1 block text-sm font-medium">Deskripsi</label>
-            <textarea id="wf_desc" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded border px-3 py-2 dark:bg-gray-800 h-16" />
+            <textarea id="wf_desc" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded border border-border bg-surface px-3 py-2 h-16" />
           </div>
 
           <div>
             <label htmlFor="wf_team" className="mb-1 block text-sm font-medium">Cakupan tim</label>
-            <select id="wf_team" value={teamId} onChange={(e) => setTeamId(e.target.value)} className="w-full rounded border px-3 py-2 dark:bg-gray-800">
+            <select id="wf_team" value={teamId} onChange={(e) => setTeamId(e.target.value)} className="w-full rounded border border-border bg-surface px-3 py-2">
               <option value="">Seluruh ruang kerja</option>
               {activeTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -155,26 +155,26 @@ export default function WorkflowCreateDialog({ teams, onClose, onCreate }: {
             <h4 className="text-sm font-semibold mb-2">Status</h4>
             <div className="space-y-1">
               {statuses.map((s, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                <div key={i} className="flex items-center gap-2 text-sm bg-surface-subtle p-2 rounded">
                   <span className="font-medium">{s.name}</span>
-                  <span className="text-xs text-gray-500">{s.code}</span>
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700">{s.category}</span>
-                  {s.is_initial && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Awal</span>}
-                  {!s.is_initial && (s.category === 'TODO' || s.category === 'IN_PROGRESS') && <button type="button" onClick={() => setInitial(i)} aria-label="Set Initial" className="text-xs text-blue-600 hover:underline">Jadikan Awal</button>}
-                  <button type="button" onClick={() => removeStatus(i)} className="text-xs text-red-600 hover:underline ml-auto">Hapus</button>
+                  <span className="text-xs text-muted-foreground">{s.code}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-muted">{s.category}</span>
+                  {s.is_initial && <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">Awal</span>}
+                  {!s.is_initial && (s.category === 'TODO' || s.category === 'IN_PROGRESS') && <button type="button" onClick={() => setInitial(i)} aria-label="Set Initial" className="text-xs text-primary hover:underline">Jadikan Awal</button>}
+                  <button type="button" onClick={() => removeStatus(i)} className="text-xs text-danger hover:underline ml-auto">Hapus</button>
                 </div>
               ))}
             </div>
             <div className="flex gap-2 mt-2">
-              <input placeholder="Nama" value={newStatusName} onChange={(e) => setNewStatusName(e.target.value)} className="flex-1 rounded border px-2 py-1 text-sm dark:bg-gray-800" />
-              <input placeholder="KODE" value={newStatusCode} onChange={(e) => setNewStatusCode(e.target.value.toUpperCase())} className="w-24 rounded border px-2 py-1 text-sm dark:bg-gray-800 uppercase" />
-              <select value={newStatusCategory} onChange={(e) => setNewStatusCategory(e.target.value as StatusInput['category'])} className="rounded border px-2 py-1 text-sm dark:bg-gray-800">
+              <input placeholder="Nama" value={newStatusName} onChange={(e) => setNewStatusName(e.target.value)} className="flex-1 rounded border border-border bg-surface px-2 py-1 text-sm" />
+              <input placeholder="KODE" value={newStatusCode} onChange={(e) => setNewStatusCode(e.target.value.toUpperCase())} className="w-24 rounded border border-border bg-surface px-2 py-1 text-sm uppercase" />
+              <select value={newStatusCategory} onChange={(e) => setNewStatusCategory(e.target.value as StatusInput['category'])} className="rounded border border-border bg-surface px-2 py-1 text-sm">
                 <option value="TODO">TODO</option>
                 <option value="IN_PROGRESS">IN_PROGRESS</option>
                 <option value="DONE">DONE</option>
                 <option value="CANCELLED">CANCELLED</option>
               </select>
-              <button type="button" onClick={addStatus} className="px-3 py-1 text-sm font-bold bg-gray-200 rounded hover:bg-gray-300 dark:bg-gray-700">Tambah</button>
+              <button type="button" onClick={addStatus} className="px-3 py-1 text-sm font-bold bg-muted rounded hover:bg-border-strong">Tambah</button>
             </div>
           </div>
 
@@ -195,7 +195,7 @@ export default function WorkflowCreateDialog({ teams, onClose, onCreate }: {
                       {statuses.map((to) => (
                         <td key={to.code} className="p-1 border text-center">
                           {from.code === to.code ? (
-                            <span className="text-gray-300">—</span>
+                            <span className="text-foreground">—</span>
                           ) : (
                             <input
                               type="checkbox"
@@ -214,8 +214,8 @@ export default function WorkflowCreateDialog({ teams, onClose, onCreate }: {
           </div>
 
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded hover:bg-gray-50">Batal</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-bold bg-blue-600 text-white rounded disabled:opacity-50">{saving ? 'Membuat...' : 'Buat'}</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded hover:bg-surface-subtle">Batal</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded disabled:opacity-50">{saving ? 'Membuat...' : 'Buat'}</button>
           </div>
         </form>
       </div>

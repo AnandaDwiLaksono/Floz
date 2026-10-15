@@ -37,7 +37,7 @@ export default function JoinSettingsPage() {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         <SettingsNav workspaceId={workspaceId} />
-        <div className="p-8 text-center text-destructive font-semibold bg-destructive/10 border border-destructive/20 rounded-xl">
+        <div className="p-8 text-center text-danger font-semibold bg-danger/10 border border-danger/20 rounded-xl">
           Akses ditolak. Khusus admin.
         </div>
       </div>
@@ -76,7 +76,7 @@ export default function JoinSettingsPage() {
       </div>
 
       {error && (
-        <div role="alert" className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
+        <div role="alert" className="rounded-xl border border-danger/20 bg-danger/10 p-4 text-sm text-danger flex items-center gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
@@ -96,7 +96,7 @@ export default function JoinSettingsPage() {
             id="join_policy"
             value={policy}
             onChange={(e) => void updatePolicy(e.target.value)}
-            className="w-full sm:w-80 rounded-lg border border-input px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full sm:w-80 rounded-lg border border-border px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           >
             {policies.map((value) => (
               <option key={value} value={value}>
@@ -131,7 +131,7 @@ export default function JoinSettingsPage() {
                 <button
                   type="button"
                   onClick={() => void revoke()}
-                  className="rounded-lg border border-input bg-surface px-4 py-2 text-sm font-medium hover:bg-muted transition"
+                  className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted transition"
                 >
                   Cabut kode
                 </button>
@@ -169,7 +169,7 @@ export default function JoinSettingsPage() {
                     <button
                       type="button"
                       onClick={() => void review(request.id, false)}
-                      className="rounded-lg border border-input bg-surface px-3 py-1.5 text-xs font-medium hover:bg-muted transition"
+                      className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-muted transition"
                     >
                       Tolak
                     </button>

@@ -76,6 +76,10 @@ export function getCalendarRange(view: CalendarView, date: string, timezone: str
   return { from: fromZonedMidnight(start, timezone).toISOString(), to: fromZonedMidnight(end, timezone).toISOString() };
 }
 
+export function getCalendarLabelInstant(date: string, timezone: string): string {
+  return fromZoned(parseDate(date), timezone, 12).toISOString();
+}
+
 export function formatCalendarLabel(iso: string, timezone: string, options?: Intl.DateTimeFormatOptions): string {
   return new Intl.DateTimeFormat(undefined, { timeZone: timezone, ...options }).format(new Date(iso));
 }

@@ -43,7 +43,7 @@ export default function TeamsSettingsPage() {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         <SettingsNav workspaceId={workspaceId} />
-        <div className="p-8 text-center text-destructive font-semibold bg-destructive/10 border border-destructive/20 rounded-xl">
+        <div className="p-8 text-center text-danger font-semibold bg-danger/10 border border-danger/20 rounded-xl">
           Akses ditolak. Khusus admin.
         </div>
       </div>
@@ -133,7 +133,7 @@ export default function TeamsSettingsPage() {
       </div>
 
       {error && (
-        <div role="alert" className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
+        <div role="alert" className="rounded-xl border border-danger/20 bg-danger/10 p-4 text-sm text-danger flex items-center gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
@@ -160,7 +160,7 @@ export default function TeamsSettingsPage() {
                     <span
                       className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
                         team.isActive
-                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
+                          ? 'bg-success/10 text-success border border-success/20'
                           : 'bg-muted text-muted-foreground border border-border'
                       }`}
                     >
@@ -177,7 +177,7 @@ export default function TeamsSettingsPage() {
                       aria-label={`Manager for ${team.name}`}
                       value={team.manager_user_id ?? ''}
                       onChange={(e) => handleManagerChange(team, e.target.value)}
-                      className="text-xs border border-input rounded-lg px-2.5 py-1.5 bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="text-xs border border-border rounded-lg px-2.5 py-1.5 bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                     >
                       <option value="">Tanpa manajer</option>
                       {managers.map((m) => (
@@ -192,7 +192,7 @@ export default function TeamsSettingsPage() {
                     onClick={() => handleToggleActive(team)}
                     className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
                       team.isActive
-                        ? 'border border-input bg-surface hover:bg-muted text-foreground'
+                        ? 'border border-border bg-surface hover:bg-muted text-foreground'
                         : 'bg-primary text-primary-foreground hover:bg-primary/90'
                     }`}
                   >
@@ -234,7 +234,7 @@ export default function TeamsSettingsPage() {
               </div>
 
               {createError && (
-                <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                <div role="alert" className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
                   {createError}
                 </div>
               )}
@@ -249,7 +249,7 @@ export default function TeamsSettingsPage() {
                   required
                   value={createName}
                   onChange={(e) => setCreateName(e.target.value)}
-                  className="w-full rounded-lg border border-input px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-lg border border-border px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 />
               </div>
 
@@ -261,7 +261,7 @@ export default function TeamsSettingsPage() {
                   id="team_desc"
                   value={createDesc}
                   onChange={(e) => setCreateDesc(e.target.value)}
-                  className="w-full rounded-lg border border-input px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring h-20"
+                  className="w-full rounded-lg border border-border px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring h-20"
                 />
               </div>
 
@@ -273,7 +273,7 @@ export default function TeamsSettingsPage() {
                   id="team_manager"
                   value={createManager}
                   onChange={(e) => setCreateManager(e.target.value)}
-                  className="w-full rounded-lg border border-input px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-lg border border-border px-3.5 py-2 text-sm bg-surface text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
                   <option value="">Tanpa manajer</option>
                   {managers.map((m) => (
@@ -288,7 +288,7 @@ export default function TeamsSettingsPage() {
                 <button
                   type="button"
                   onClick={() => setCreateOpen(false)}
-                  className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted transition font-medium"
+                  className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted transition font-medium"
                 >
                   Batal
                 </button>

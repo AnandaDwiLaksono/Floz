@@ -64,7 +64,7 @@ export async function getManagerDashboard(db: DatabaseClient, input: DashboardIn
 
     // pending approvals for ADMIN: all workspace pending steps, optionally filtered by team_id
     const approvalsPredicate = input.teamIds && input.teamIds.length
-      ? sql`EXISTS (SELECT 1 FROM team_memberships tm WHERE tm.user_id = approval_steps.approver_user_id AND tm.team_id IN ${sql`(${sql.join(input.teamIds.map((id) => sql`${id}`), sql`, `)})`})`
+      ? sql`EXISTS (SELECT 1 FROM team_memberships tm WHERE tm.user_id = approval_steps.approver_user_id AND tm.left_at IS NULL AND tm.team_id IN ${sql`(${sql.join(input.teamIds.map((id) => sql`${id}`), sql`, `)})`})`
       : sql`true`;
     const pendingApprovalsRows = await db.execute(sql`SELECT COUNT(DISTINCT approval_steps.id)::int AS count FROM approval_steps WHERE workspace_id = ${input.workspaceId} AND status = 'PENDING' AND ${approvalsPredicate}`);
     const pending_approvals = Number((pendingApprovalsRows[0] as unknown as { count: number }).count);
@@ -79,7 +79,7 @@ export async function getManagerDashboard(db: DatabaseClient, input: DashboardIn
 
   // pending approvals for MANAGER: assigned directly to manager OR assigned to effective members of teams canonically managed
   const approvalsPredicate = ids.length
-    ? sql`(approval_steps.approver_user_id = ${input.userId} OR EXISTS (SELECT 1 FROM team_memberships tm WHERE tm.user_id = approval_steps.approver_user_id AND tm.team_id IN ${sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`}))`
+    ? sql`(approval_steps.approver_user_id = ${input.userId} OR EXISTS (SELECT 1 FROM team_memberships tm WHERE tm.user_id = approval_steps.approver_user_id AND tm.left_at IS NULL AND tm.team_id IN ${sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`}))`
     : sql`approval_steps.approver_user_id = ${input.userId}`;
   const pendingApprovalsRows = await db.execute(sql`SELECT COUNT(DISTINCT approval_steps.id)::int AS count FROM approval_steps WHERE workspace_id = ${input.workspaceId} AND status = 'PENDING' AND ${approvalsPredicate}`);
   const pending_approvals = Number((pendingApprovalsRows[0] as unknown as { count: number }).count);

@@ -74,7 +74,8 @@ describe('Workflow Status List — Task 10', () => {
 
   it('shows positions and locks archived workflow mutations', () => {
     renderList({ is_active: false });
-    expect(screen.getByText(/Posisi 1|Position 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Posisi 1|Position 1/)).toHaveClass('text-muted-foreground');
+    expect(within(screen.getByRole('group', { name: 'Old Status' })).getByText('Diarsipkan')).toHaveClass('text-muted-foreground');
     expect(screen.getByRole('button', { name: /Add Status|Tambah Status/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Pulihkan|Restore/i })).toBeDisabled();
   });

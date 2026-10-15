@@ -159,7 +159,7 @@ export class ApprovalService {
       SELECT DISTINCT tm.user_id
       FROM team_memberships tm
       JOIN teams t ON t.id = tm.team_id
-      WHERE t.workspace_id = ${workspaceId} AND t.manager_user_id = ${managerUserId} AND t.is_active = true
+      WHERE t.workspace_id = ${workspaceId} AND t.manager_user_id = ${managerUserId} AND t.is_active = true AND tm.left_at IS NULL
       UNION
       SELECT ${managerUserId} AS user_id
     `;
@@ -197,7 +197,7 @@ export class ApprovalService {
       const managedIds = await this.managedUserIds(workspaceId, actorId);
       if (query.team_id) {
         const teamMembers = (await this.sql<{ user_id: string }[]>`
-          SELECT user_id FROM team_memberships WHERE team_id = ${query.team_id}
+          SELECT user_id FROM team_memberships WHERE team_id = ${query.team_id} AND left_at IS NULL
         `).map((r) => r.user_id);
         const filtered = managedIds.filter((id) => teamMembers.includes(id) || id === actorId);
         viewPredicate = filtered.length ? this.sql`st.approver_user_id IN ${this.sql(filtered)}` : this.sql`FALSE`;
@@ -207,7 +207,7 @@ export class ApprovalService {
     } else if (view === 'all') {
       if (query.team_id) {
         const teamMembers = (await this.sql<{ user_id: string }[]>`
-          SELECT user_id FROM team_memberships WHERE team_id = ${query.team_id}
+          SELECT user_id FROM team_memberships WHERE team_id = ${query.team_id} AND left_at IS NULL
         `).map((r) => r.user_id);
         viewPredicate = teamMembers.length ? this.sql`st.approver_user_id IN ${this.sql(teamMembers)}` : this.sql`FALSE`;
       }

@@ -3,10 +3,29 @@ import { api } from '../api-client';
 import { NotificationResource } from '../../components/notification-item';
 
 export function useUnreadCount(workspaceId: string | undefined) {
-  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [unreadCount, updateUnreadCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
+  const requestId = useRef(0);
+  const [scope, setScope] = useState({ workspaceId });
+  const activeScope = useRef<typeof scope | null>(null);
+
+  // Reset before children render; an effect alone exposes the previous workspace.
+  if (scope.workspaceId !== workspaceId) {
+    setScope({ workspaceId });
+    updateUnreadCount(0);
+    setLoading(!!workspaceId);
+    setError(null);
+  }
+
+  const setUnreadCount = useCallback((updater: number | ((prev: number) => number)) => {
+    if (activeScope.current === scope) {
+      requestId.current++;
+      updateUnreadCount(updater);
+      setLoading(false);
+    }
+  }, [scope]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -16,32 +35,33 @@ export function useUnreadCount(workspaceId: string | undefined) {
   }, []);
 
   const fetchUnreadCount = useCallback(async () => {
+    if (activeScope.current !== scope) return;
+    const id = ++requestId.current;
     if (!workspaceId) {
-      if (isMountedRef.current) setUnreadCount(0);
+      if (isMountedRef.current) { setUnreadCount(0); setLoading(false); setError(null); }
       return;
     }
+    setLoading(true);
     try {
       if (isMountedRef.current) setError(null);
       const res = await api.notifications.unreadCount(workspaceId);
-      if (isMountedRef.current) setUnreadCount(res.data.count);
+      if (isMountedRef.current && id === requestId.current && activeScope.current === scope) updateUnreadCount(res.data.count);
     } catch (err: unknown) {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && id === requestId.current) {
         const msg = err instanceof Error ? err.message : 'Failed to fetch unread count';
         setError(msg);
       }
+    } finally {
+      if (isMountedRef.current && id === requestId.current) setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, scope, setUnreadCount]);
+
 
   useEffect(() => {
-    if (!workspaceId) {
-      setUnreadCount(0);
-      return;
-    }
-
-    setLoading(true);
-    fetchUnreadCount().finally(() => {
-      if (isMountedRef.current) setLoading(false);
-    });
+    const request = requestId;
+    const active = activeScope;
+    active.current = scope;
+    void fetchUnreadCount();
 
     // ~60 second polling interval when document is visible
     const intervalId = setInterval(() => {
@@ -62,13 +82,15 @@ export function useUnreadCount(workspaceId: string | undefined) {
     }
 
     return () => {
+      active.current = null;
+      request.current++;
       clearInterval(intervalId);
       if (typeof window !== 'undefined') {
         window.removeEventListener('visibilitychange', handleFocus);
         window.removeEventListener('focus', handleFocus);
       }
     };
-  }, [workspaceId, fetchUnreadCount]);
+  }, [workspaceId, scope, fetchUnreadCount]);
 
   return {
     unreadCount,
@@ -82,7 +104,8 @@ export function useUnreadCount(workspaceId: string | undefined) {
 export function useNotifications(
   workspaceId: string | undefined,
   filterRead: boolean | null = null,
-  onUnreadCountChange?: (updater: (prev: number) => number) => void
+  _onUnreadCountChange?: (updater: (prev: number) => number) => void,
+  refreshUnreadCount?: () => Promise<void>
 ) {
   const [notifications, setNotifications] = useState<NotificationResource[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -90,6 +113,20 @@ export function useNotifications(
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
+  const requestId = useRef(0);
+  const [scope, setScope] = useState({ workspaceId, filterRead });
+  const activeScope = useRef<typeof scope | null>(null);
+  const currentFetch = useRef<(() => Promise<void>) | null>(null);
+  const currentRefreshUnreadCount = useRef(refreshUnreadCount);
+
+  if (scope.workspaceId !== workspaceId || scope.filterRead !== filterRead) {
+    setScope({ workspaceId, filterRead });
+    setNotifications([]);
+    setHasMore(false);
+    setNextCursor(null);
+    setLoading(!!workspaceId);
+    setError(null);
+  }
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -98,15 +135,16 @@ export function useNotifications(
     };
   }, []);
 
-  const filterReadRef = useRef(filterRead);
-  filterReadRef.current = filterRead;
-
   const fetchNotifications = useCallback(async () => {
+    if (activeScope.current !== scope) return;
+    const id = ++requestId.current;
     if (!workspaceId) {
       if (isMountedRef.current) {
         setNotifications([]);
         setHasMore(false);
         setNextCursor(null);
+        setLoading(false);
+        setError(null);
       }
       return;
     }
@@ -117,113 +155,104 @@ export function useNotifications(
     }
 
     try {
-      const readParam = filterReadRef.current === null ? undefined : !filterReadRef.current;
+      const readParam = filterRead === null ? undefined : !filterRead;
       const res = await api.notifications.list(workspaceId, {
         read: readParam,
         limit: 20,
       });
 
-      if (isMountedRef.current) {
+      if (isMountedRef.current && id === requestId.current) {
         setNotifications(res.data);
         setHasMore(res.meta.pagination.has_more);
         setNextCursor(res.meta.pagination.next_cursor);
       }
     } catch (err: unknown) {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && id === requestId.current) {
         const msg = err instanceof Error ? err.message : 'Failed to fetch notifications';
         setError(msg);
       }
     } finally {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && id === requestId.current) {
         setLoading(false);
       }
     }
-  }, [workspaceId]);
+  }, [workspaceId, filterRead, scope]);
 
   useEffect(() => {
-    fetchNotifications();
-  }, [workspaceId, filterRead, fetchNotifications]);
+    const request = requestId;
+    const active = activeScope;
+    active.current = scope;
+    void fetchNotifications();
+    return () => { active.current = null; request.current++; };
+  }, [workspaceId, filterRead, scope, fetchNotifications]);
+
+  useEffect(() => {
+    currentFetch.current = fetchNotifications;
+    currentRefreshUnreadCount.current = refreshUnreadCount;
+  }, [workspaceId, filterRead, scope, fetchNotifications, refreshUnreadCount]);
 
   const loadMore = useCallback(async () => {
-    if (!workspaceId || !hasMore || !nextCursor || loading) return;
+    if (activeScope.current !== scope || !workspaceId || !hasMore || !nextCursor || loading) return;
+    const id = ++requestId.current;
 
     if (isMountedRef.current) setLoading(true);
     try {
-      const readParam = filterReadRef.current === null ? undefined : !filterReadRef.current;
+      const readParam = filterRead === null ? undefined : !filterRead;
       const res = await api.notifications.list(workspaceId, {
         read: readParam,
         limit: 20,
         cursor: nextCursor,
       });
 
-      if (isMountedRef.current) {
+      if (isMountedRef.current && id === requestId.current) {
         setNotifications((prev) => [...prev, ...res.data]);
         setHasMore(res.meta.pagination.has_more);
         setNextCursor(res.meta.pagination.next_cursor);
       }
     } catch (err: unknown) {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && id === requestId.current) {
         const msg = err instanceof Error ? err.message : 'Failed to load more notifications';
         setError(msg);
       }
     } finally {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && id === requestId.current) {
         setLoading(false);
       }
     }
-  }, [workspaceId, hasMore, nextCursor, loading]);
+  }, [workspaceId, hasMore, nextCursor, loading, filterRead, scope]);
+
+  const reconcileMutation = useCallback(async () => {
+    if (!isMountedRef.current || activeScope.current?.workspaceId !== workspaceId || !workspaceId) return;
+    // A late mutation may invalidate a newer visit; fetch anew, never apply its old response.
+    await Promise.all([currentFetch.current?.(), currentRefreshUnreadCount.current?.()]);
+  }, [workspaceId]);
 
   const markRead = useCallback(
     async (notificationId: string) => {
-      if (!workspaceId) return;
-
-      const target = notifications.find((n) => n.id === notificationId);
-      const wasUnread = target && !target.is_read;
-
-      // Optimistic update
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true, read_at: new Date().toISOString() } : n))
-      );
-
-      if (wasUnread && onUnreadCountChange) {
-        onUnreadCountChange((prev) => Math.max(0, prev - 1));
-      }
+      if (activeScope.current !== scope || !workspaceId) return;
 
       try {
         await api.notifications.markRead(workspaceId, notificationId, true);
       } catch {
-        // Revert on error
-        fetchNotifications();
-        if (wasUnread && onUnreadCountChange) {
-          onUnreadCountChange((prev) => prev + 1);
-        }
+        // Keep server-confirmed state; refresh also handles uncertain failures.
+      } finally {
+        await reconcileMutation();
       }
     },
-    [workspaceId, notifications, fetchNotifications, onUnreadCountChange]
+    [workspaceId, reconcileMutation, scope]
   );
 
   const markAllRead = useCallback(async () => {
-    if (!workspaceId) return;
-
-    const previousNotifications = notifications;
-
-    // Optimistic update
-    setNotifications((prev) =>
-      prev.map((n) => ({ ...n, is_read: true, read_at: n.read_at || new Date().toISOString() }))
-    );
-
-    if (onUnreadCountChange) {
-      onUnreadCountChange(() => 0);
-    }
+    if (activeScope.current !== scope || !workspaceId) return;
 
     try {
       await api.notifications.markAllRead(workspaceId);
     } catch {
-      // Revert on error
-      setNotifications(previousNotifications);
-      fetchNotifications();
+      // Keep server-confirmed state; refresh also handles uncertain failures.
+    } finally {
+      await reconcileMutation();
     }
-  }, [workspaceId, notifications, fetchNotifications, onUnreadCountChange]);
+  }, [workspaceId, reconcileMutation, scope]);
 
   return {
     notifications,

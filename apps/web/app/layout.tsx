@@ -20,7 +20,7 @@ export const metadata = {
   },
 };
 
-const themeBootstrap = `(() => { const stored = localStorage.getItem('floz-theme'); const theme = stored === 'dark' ? 'dark' : 'light'; document.documentElement.dataset.theme = theme; document.documentElement.style.colorScheme = theme; })()`;
+const themeBootstrap = `(() => { let stored; try { stored = localStorage.getItem('floz-theme'); } catch {} const theme = stored === 'dark' ? 'dark' : 'light'; document.documentElement.dataset.theme = theme; document.documentElement.style.colorScheme = theme; })()`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

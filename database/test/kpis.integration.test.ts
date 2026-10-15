@@ -75,6 +75,27 @@ describe.skipIf(!databaseUrl)('kpis integration', () => {
     expect(result.denominators).toEqual({ due: 1, completed: 1, overdue: 0, onTime: 0 });
   });
 
+  it('intersects assignee and team scopes, including empty managed teams', async () => {
+    const teamA = randomUUID(), teamB = randomUUID();
+    const taskA = randomUUID(), taskB = randomUUID();
+    await sql`INSERT INTO teams(id,workspace_id,name) VALUES(${teamA},${workspaceId},'KPI A'),(${teamB},${workspaceId},'KPI B')`;
+    try {
+      await sql`INSERT INTO tasks(id,workspace_id,task_key,title,workflow_id,status_id,creator_id,team_id,due_at) VALUES
+        (${taskA},${workspaceId},'TEAM_A','Team A',${workflowId},${activeStatusId},${userId},${teamA},'2026-09-06T00:00:00Z'),
+        (${taskB},${workspaceId},'TEAM_B','Team B',${workflowId},${activeStatusId},${userId},${teamB},'2026-09-06T00:00:00Z')`;
+      await sql`INSERT INTO task_assignees(task_id,user_id,assigned_by) VALUES(${taskA},${userId},${userId}),(${taskB},${userId},${userId})`;
+      const scope: ReportingScope = { workspaceId, userId, from: '2026-09-01T00:00:00Z', to: '2026-09-10T00:00:00Z', evaluationAt: new Date('2026-09-10T00:00:00Z'), timezone: 'UTC' };
+      expect((await getKpis(db, { ...scope, teamIds: [teamA] })).denominators.due).toBe(1);
+      expect((await getKpis(db, { ...scope, teamIds: [teamB] })).denominators.due).toBe(1);
+      expect((await getKpis(db, { ...scope, teamIds: [] })).denominators.due).toBe(0);
+      expect((await getKpis(db, { ...scope, teamIds: [teamA] })).workload).toBe(1);
+    } finally {
+      await sql`DELETE FROM task_assignees WHERE task_id IN (${taskA},${taskB})`;
+      await sql`DELETE FROM tasks WHERE id IN (${taskA},${taskB})`;
+      await sql`DELETE FROM teams WHERE id IN (${teamA},${teamB})`;
+    }
+  });
+
   it('reflects live reopen and reschedule mutations', async () => {
     await sql`UPDATE tasks SET completed_at=NULL,status_id=${activeStatusId},due_at='2026-09-12T00:00:00Z' WHERE task_key='DONE' AND workspace_id=${workspaceId}`;
     const result = await getKpis(db, { workspaceId, from: '2026-09-01T00:00:00Z', to: '2026-09-10T00:00:00Z', evaluationAt: new Date('2026-09-10T00:00:00Z'), timezone: 'UTC' });

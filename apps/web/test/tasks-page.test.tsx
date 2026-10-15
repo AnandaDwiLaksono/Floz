@@ -100,6 +100,47 @@ describe('Task 10 Task filter UI completion', () => {
     });
   });
 
+  it('keeps latest filtered list when prior request resolves last', async () => {
+    let resolve!: (value: Awaited<ReturnType<typeof api.tasks.list>>) => void;
+    vi.mocked(api.tasks.list).mockImplementationOnce(() => new Promise((done) => { resolve = done; })).mockResolvedValueOnce({ data: [{ ...mockTask, title: 'New filter' }], meta: { pagination: { limit: 10, has_more: false, next_cursor: null } } });
+    const page = render(<TasksPage />);
+    await waitFor(() => expect(api.tasks.list).toHaveBeenCalledTimes(1));
+    mockSearchParams = new URLSearchParams('priority=HIGH');
+    page.rerender(<TasksPage />);
+    expect(await screen.findByRole('button', { name: 'Buka tugas New filter' })).toBeInTheDocument();
+    await act(async () => resolve({ data: [mockTask], meta: { pagination: { limit: 10, has_more: false, next_cursor: null } } }));
+    expect(screen.getByRole('button', { name: 'Buka tugas New filter' })).toBeInTheDocument();
+  });
+
+  it('ignores old load-more response after changing filters', async () => {
+    let resolve!: (value: Awaited<ReturnType<typeof api.tasks.list>>) => void;
+    vi.mocked(api.tasks.list).mockResolvedValueOnce({ data: [mockTask], meta: { pagination: { limit: 10, has_more: true, next_cursor: 'page-2' } } })
+      .mockImplementationOnce(() => new Promise((done) => { resolve = done; }))
+      .mockResolvedValueOnce({ data: [{ ...mockTask, id: 'new', title: 'New filter' }], meta: { pagination: { limit: 10, has_more: false, next_cursor: null } } });
+    const page = render(<TasksPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Muat lebih banyak' }));
+    await waitFor(() => expect(api.tasks.list).toHaveBeenCalledTimes(2));
+    mockSearchParams = new URLSearchParams('priority=HIGH');
+    page.rerender(<TasksPage />);
+    expect(await screen.findByRole('button', { name: 'Buka tugas New filter' })).toBeInTheDocument();
+    await act(async () => resolve({ data: [{ ...mockTask, id: 'old-page', title: 'Old page' }], meta: { pagination: { limit: 10, has_more: false, next_cursor: null } } }));
+    expect(screen.queryByRole('button', { name: 'Buka tugas Old page' })).not.toBeInTheDocument();
+  });
+
+  it('ignores old detail response after opening another task', async () => {
+    let resolve!: (value: Awaited<ReturnType<typeof api.tasks.get>>) => void;
+    const another = { ...mockTask, id: 'task-2', title: 'New detail' };
+    vi.mocked(api.tasks.list).mockResolvedValue({ data: [mockTask, another], meta: { pagination: { limit: 10, has_more: false, next_cursor: null } } });
+    vi.mocked(api.tasks.get).mockImplementationOnce(() => new Promise((done) => { resolve = done; })).mockResolvedValueOnce({ data: another });
+    vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
+    render(<TasksPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Buka tugas Inspect pump' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Buka tugas New detail' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'New detail' })).toBeInTheDocument());
+    await act(async () => resolve({ data: mockTask }));
+    expect(screen.getByRole('heading', { name: 'New detail' })).toBeInTheDocument();
+  });
+
   it('removes cursor pagination state when filters change', async () => {
     mockSearchParams = new URLSearchParams('cursor=cursor-123&priority=LOW');
     render(<TasksPage />);

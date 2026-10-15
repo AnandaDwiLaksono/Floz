@@ -34,7 +34,7 @@ export default function WorkspaceSettingsPage() {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         <SettingsNav workspaceId={workspaceId} />
-        <div className="p-8 text-center text-destructive font-semibold bg-destructive/10 border border-destructive/20 rounded-xl">
+        <div className="p-8 text-center text-danger font-semibold bg-danger/10 border border-danger/20 rounded-xl">
           Akses ditolak. Khusus admin.
         </div>
       </div>
@@ -79,13 +79,13 @@ export default function WorkspaceSettingsPage() {
             </div>
 
             {error && (
-              <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3.5 text-sm text-destructive flex items-center gap-2">
+              <div role="alert" className="rounded-lg border border-danger/20 bg-danger/10 p-3.5 text-sm text-danger flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{error}</span>
               </div>
             )}
             {success && (
-              <div role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3.5 text-sm text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+              <div role="status" className="rounded-lg border border-success/20 bg-success/10 p-3.5 text-sm text-success flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                 <span>{success}</span>
               </div>
@@ -102,7 +102,7 @@ export default function WorkspaceSettingsPage() {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded-lg border border-input px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-lg border border-border px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 />
               </div>
 
@@ -117,7 +117,7 @@ export default function WorkspaceSettingsPage() {
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
                   placeholder="Asia/Jakarta"
-                  className="w-full rounded-lg border border-input px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-lg border border-border px-3.5 py-2.5 bg-surface text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 />
               </div>
             </div>

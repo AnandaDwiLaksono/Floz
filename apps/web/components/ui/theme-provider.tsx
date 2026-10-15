@@ -7,21 +7,23 @@ export type Theme = 'light' | 'dark';
 const ThemeContext = createContext<{ theme: Theme; setTheme: (theme: Theme) => void } | null>(null);
 
 function savedTheme(): Theme {
-  return localStorage.getItem('floz-theme') === 'dark' ? 'dark' : 'light';
+  try { return localStorage.getItem('floz-theme') === 'dark' ? 'dark' : 'light'; }
+  catch { return 'light'; }
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => setTheme(savedTheme()), []);
 
   useEffect(() => {
+    if (theme === null) return;
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
-    localStorage.setItem('floz-theme', theme);
+    try { localStorage.setItem('floz-theme', theme); } catch { /* preference is optional */ }
   }, [theme]);
 
-  return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={{ theme: theme ?? 'light', setTheme }}>{children}</ThemeContext.Provider>;
 }
 
 export function useOptionalTheme() {
