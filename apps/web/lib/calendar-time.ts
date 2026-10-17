@@ -122,6 +122,12 @@ export function getTaskCalendarDayKeys(task: { start_at: string | null; due_at: 
   });
 }
 
+export function getWorkspaceDateTimeInput(iso: string | null, timezone: string): string {
+  if (!iso) return '';
+  const parts = zonedParts(new Date(iso), timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+  return `${formatDate({ year: parts.year, month: parts.month, day: parts.day })}T${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
+}
+
 export function getWorkspaceDateTime(value: string, timezone: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
   if (!match) throw new Error('Invalid workspace date-time');

@@ -71,6 +71,7 @@ const mockTask: Task = {
 describe('Task 10 Task filter UI completion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    workspace.timezone = 'UTC';
     mockSearchParams = new URLSearchParams();
     vi.mocked(api.workspaces.get).mockResolvedValue({
       data: { id: 'workspace-1', name: 'Field Ops', slug: 'field-ops', timezone: 'UTC' },
@@ -98,6 +99,37 @@ describe('Task 10 Task filter UI completion', () => {
       data: [mockTask],
       meta: { pagination: { limit: 10, has_more: false, next_cursor: null } },
     });
+  });
+
+  it.each([
+    ['Asia/Jakarta', '2026-10-16T09:00', '2026-10-16T10:00'],
+    ['UTC', '2026-10-16T02:00', '2026-10-16T03:00'],
+    ['Asia/Jakarta', '', ''],
+  ])('preserves unchanged schedule exactly in %s (%s)', async (timezone, start, due) => {
+    workspace.timezone = timezone;
+    const task = { ...mockTask, start_at: start ? '2026-10-16T02:00:42.123Z' : null, due_at: due ? '2026-10-16T03:00:59.456Z' : null };
+    mockSearchParams = new URLSearchParams('selected_task_id=task-1&edit_schedule=1');
+    vi.mocked(api.tasks.get).mockResolvedValue({ data: task });
+    vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
+    vi.mocked(api.tasks.update).mockResolvedValue({ data: task });
+    render(<TasksPage />);
+    expect(await screen.findByLabelText('Mulai')).toHaveValue(start);
+    expect(screen.getByLabelText('Tenggat')).toHaveValue(due);
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan perubahan' }));
+    await waitFor(() => expect(api.tasks.update).toHaveBeenCalledWith('workspace-1', 'task-1', expect.objectContaining({ start_at: task.start_at, due_at: task.due_at })));
+  });
+
+  it('converts changed workspace-local schedule and clears an existing deadline', async () => {
+    workspace.timezone = 'Asia/Jakarta';
+    mockSearchParams = new URLSearchParams('selected_task_id=task-1&edit_schedule=1');
+    vi.mocked(api.tasks.get).mockResolvedValue({ data: mockTask });
+    vi.mocked(api.tasks.availableTransitions).mockResolvedValue({ data: [] });
+    vi.mocked(api.tasks.update).mockResolvedValue({ data: mockTask });
+    render(<TasksPage />);
+    fireEvent.change(await screen.findByLabelText('Mulai'), { target: { value: '2026-10-16T09:00' } });
+    fireEvent.change(screen.getByLabelText('Tenggat'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan perubahan' }));
+    await waitFor(() => expect(api.tasks.update).toHaveBeenCalledWith('workspace-1', 'task-1', expect.objectContaining({ start_at: '2026-10-16T02:00:00.000Z', due_at: null })));
   });
 
   it('keeps latest filtered list when prior request resolves last', async () => {

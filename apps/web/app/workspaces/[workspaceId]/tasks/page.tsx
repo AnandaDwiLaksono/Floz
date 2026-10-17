@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { api, Task, Team, WorkspaceMember, Workflow, ApiError } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
-import { getWorkspaceDateTime } from '../../../../lib/calendar-time';
+import { getWorkspaceDateTime, getWorkspaceDateTimeInput } from '../../../../lib/calendar-time';
 import { TaskCommentsSection } from '../../../../components/task-comments-section';
 import {
   Plus,
@@ -231,8 +231,8 @@ export default function TasksPage() {
     setEditTitle(task.title);
     setEditDescription(task.description || '');
     setEditPriority(task.priority);
-    setEditStartAt(task.start_at ? task.start_at.substring(0, 16) : '');
-    setEditDueAt(task.due_at ? task.due_at.substring(0, 16) : '');
+    setEditStartAt(getWorkspaceDateTimeInput(task.start_at, workspaceTimezone));
+    setEditDueAt(getWorkspaceDateTimeInput(task.due_at, workspaceTimezone));
     setAvailableTransitions([]);
     try {
       const transRes = await api.tasks.availableTransitions(workspaceId, task.id);
@@ -240,7 +240,7 @@ export default function TasksPage() {
     } catch (err) {
       console.error('Failed to load transitions', err);
     }
-  }, [workspaceId, editSchedule]);
+  }, [workspaceId, editSchedule, workspaceTimezone]);
 
   useEffect(() => {
     if (!createTimezone && workspaceTimezone) {
@@ -437,8 +437,8 @@ export default function TasksPage() {
         title: editTitle,
         description: editDescription || null,
         priority: editPriority,
-        start_at: editStartAt ? (workspaceTimezone ? getWorkspaceDateTime(editStartAt, workspaceTimezone) : new Date(editStartAt).toISOString()) : null,
-        due_at: editDueAt ? (workspaceTimezone ? getWorkspaceDateTime(editDueAt, workspaceTimezone) : new Date(editDueAt).toISOString()) : null,
+        start_at: editStartAt === getWorkspaceDateTimeInput(selectedTask.start_at, workspaceTimezone) ? selectedTask.start_at : editStartAt ? (workspaceTimezone ? getWorkspaceDateTime(editStartAt, workspaceTimezone) : new Date(editStartAt).toISOString()) : null,
+        due_at: editDueAt === getWorkspaceDateTimeInput(selectedTask.due_at, workspaceTimezone) ? selectedTask.due_at : editDueAt ? (workspaceTimezone ? getWorkspaceDateTime(editDueAt, workspaceTimezone) : new Date(editDueAt).toISOString()) : null,
       });
       setSelectedTask(res.data);
       setIsEditMode(false);
